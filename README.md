@@ -53,3 +53,10 @@ Siga os passos rápidos abaixo para obter seu arquivo de credenciais:
 - **Scanner Inteligente**: O app monitora sua área de transferência (clipboard) enquanto está na aba do Scanner. Ao copiar um link do Drive, ele é preenchido automaticamente!
 - **Download Direto por Stream**: Os downloads são feitos em chunks direto da rede para a escrita em disco, minimizando o uso de memória RAM.
 - **Notificações Nativas**: O app envia um balão de notificação no Windows para avisar quando todos os downloads da fila forem concluídos.
+
+---
+
+## 📄 Licença
+
+Este projeto está licenciado sob a licença **GNU General Public License v3.0 (GPL-3.0)**. Consulte o arquivo [LICENSE](LICENSE) para obter mais detalhes.
+

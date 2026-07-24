@@ -14,7 +14,7 @@
     "sequential"
   ],
   "author": "Antigravity",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dependencies": {
     "googleapis": "^140.0.1"
   },
