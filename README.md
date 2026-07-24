@@ -4,11 +4,6 @@ Este é um aplicativo desktop independente, desenvolvido em Electron, projetado 
 
 ## 🚀 Como Executar
 
-Para iniciar o aplicativo no Windows, basta dar dois cliques no arquivo:
-👉 **`run.bat`** (na raiz do projeto).
-
-*Se for a primeira vez que você roda o app, ele instalará silenciosamente as dependências necessárias antes de abrir a janela do aplicativo.*
-
 ---
 
 ## ⚙️ Configuração da Conta Google (Passo a Passo)
