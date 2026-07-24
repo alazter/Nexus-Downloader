@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 100 100" width="36" height="36" class="brand-logo-svg">
+            <defs>
+              <linearGradient id="nexusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00f2fe"/>
+                <stop offset="50%" stop-color="#4facfe"/>
+                <stop offset="100%" stop-color="#7f00ff"/>
+              </linearGradient>
+              <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <g filter="url(#cyanGlow)">
+              <path d="M 20 18 L 32 18 L 32 78 L 20 78 Z" fill="url(#nexusGradient)" />
+              <path d="M 32 18 L 60 55 L 60 18 L 74 18 L 74 52 L 86 52 L 67 82 L 48 52 L 60 52 Z" fill="url(#nexusGradient)" />
+            </g>
+          </svg>
+        </div>
+        <span class="brand-name">Nexus Downloader</span>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="scanner">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            <line x1="11" y1="8" x2="11" y2="14"></line>
+            <line x1="8" y1="11" x2="14" y2="11"></line>
+          </svg>
+          Scanner
+        </button>
+        <button class="nav-item" data-tab="queue">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          Fila
+          <span class="badge" id="queue-badge" style="display: none;">0</span>
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Ajustes
+        </button>
+      </nav>
+
+      <!-- CARD DE CONEXÃO GOOGLE -->
+      <div class="auth-card">
+        <div class="auth-status-container">
+          <div class="status-indicator disconnected" id="auth-indicator"></div>
+          <span class="status-text" id="auth-status-text">Conta Desconectada</span>
+        </div>
+        <button class="btn btn-sm btn-outline-primary btn-block" id="auth-sidebar-btn">Conectar</button>
+      </div>
+    </aside>
+
+    <!-- CONTENT WRAPPER -->
+    <main class="main-content">
+      
+      <!-- SCANNER TAB -->
+      <section class="tab-content active" id="scanner-tab">
+        <div class="content-header">
+          <h1>Scanner de Links</h1>
+          <p>Cole links do Google Drive ou Bunkr (ex: bunkr.cr/a/...) para listar os arquivos e baixar sequencialmente.</p>
+        </div>
+
+        <div class="card scan-input-container">
+          <div class="scan-input-header">
+            <label for="drive-link" class="scan-input-label">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+              Links do Google Drive / Bunkr para Escanear
+            </label>
+            <button class="btn btn-sm btn-outline" id="btn-paste" title="Colar links da área de transferência">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+              </svg>
+              Colar Links
+            </button>
+          </div>
+
+          <div class="scan-textarea-wrapper">
+            <textarea id="drive-link" rows="4" placeholder="Insira ou cole um ou múltiplos links do Google Drive ou Bunkr aqui (um por linha)..." autocomplete="off"></textarea>
+          </div>
+
+          <div class="scan-actions-row">
+            <span class="scan-hint">Suporta links de pastas completas e arquivos individuais.</span>
+            <button class="btn btn-primary btn-scan-main" id="btn-scan">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+              <span class="btn-text">Escanear Arquivos</span>
+              <div class="spinner" id="scan-spinner" style="display: none;"></div>
+            </button>
+          </div>
+        </div>
+
+        <!-- RESULTADOS DO SCAN -->
+        <div class="card results-card" id="results-container" style="display: none;">
+          <div class="results-header">
+            <div class="selection-info">
+              <input type="checkbox" id="select-all-files" checked>
+              <span id="selected-count">0 arquivos selecionados (0 B)</span>
+            </div>
+            <button class="btn btn-secondary" id="btn-add-selected">Adicionar à Fila</button>
+          </div>
+
+          <div class="results-table-wrapper">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th width="40"></th>
+                  <th>Nome do Arquivo</th>
+                  <th>Caminho Relativo</th>
+                  <th width="120">Tamanho</th>
+                </tr>
+              </thead>
+              <tbody id="results-list">
+                <!-- Inserido dinamicamente via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ESTADO VAZIO -->
+        <div class="empty-state" id="scan-empty-state">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <line x1="12" y1="11" x2="12" y2="17"></line>
+              <line x1="9" y1="14" x2="15" y2="14"></line>
+            </svg>
+          </div>
+          <h3>Nenhum link escaneado ainda</h3>
+          <p>Copie um link compartilhado do Google Drive e clique em Escanear para iniciar.</p>
+        </div>
+      </section>
+
+      <!-- QUEUE TAB -->
+      <section class="tab-content" id="queue-tab">
+        <div class="content-header">
+          <div class="header-action-group">
+            <div>
+              <h1>Fila de Downloads</h1>
+              <p>Os arquivos são processados sequencialmente para proteger seu disco contra sobrecarga.</p>
+            </div>
+            <div class="action-buttons">
+              <button class="btn btn-primary" id="btn-resume-all" title="Retomar / Iniciar Todos os Downloads">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Retomar Tudo
+              </button>
+              <button class="btn btn-outline" id="btn-pause-all" title="Pausar Todos os Downloads">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                Pausar Tudo
+              </button>
+              <button class="btn btn-outline" id="btn-restart-all" title="Reiniciar Fila Inteira do Zero">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                Reiniciar Fila
+              </button>
+              <button class="btn btn-outline" id="btn-open-dir">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Abrir Pasta
+              </button>
+              <button class="btn btn-outline" id="btn-clear-completed">Limpar Concluídos</button>
+              <button class="btn btn-outline-danger" id="btn-clear-all">Limpar Tudo</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOWNLOAD ATIVO CARD -->
+        <div class="active-download-card" id="active-download-panel" style="display: none;">
+          <div class="active-header">
+            <div class="active-title-group">
+              <span class="active-badge">Baixando</span>
+              <h2 id="active-filename" class="text-truncate">NomeDoArquivo.mp4</h2>
+            </div>
+            <div class="active-controls">
+              <button class="btn-circle btn-circle-primary" id="btn-active-pause" title="Pausar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-pause">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-play" style="display: none;">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+              </button>
+              <button class="btn-circle btn-circle-danger" id="btn-active-cancel" title="Cancelar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="active-meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">Progresso</span>
+              <span class="meta-value" id="active-progress-text">0%</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Velocidade</span>
+              <span class="meta-value" id="active-speed-text">0 MB/s</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Tempo Restante (ETA)</span>
+              <span class="meta-value" id="active-eta-text">00:00:00</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Baixado</span>
+              <span class="meta-value" id="active-bytes-text">0 MB / 0 MB</span>
+            </div>
+          </div>
+
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="active-progress-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- FILA DE ESPERA -->
+        <div class="card queue-list-card">
+          <div class="queue-list-header">
+            <h3>Lista de Downloads (<span id="queue-total-count">0</span>)</h3>
+          </div>
+          <div class="queue-items-container" id="queue-items-list">
+            <!-- Inserido dinamicamente via JS -->
+            <div class="empty-state-small" id="queue-empty-state">
+              <p>A fila de downloads está vazia no momento.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS TAB -->
+      <section class="tab-content" id="settings-tab">
+        <div class="content-header">
+          <h1>Configurações e Conta</h1>
+          <p>Gerencie o local de salvamento, limites de escrita e conexão com a conta Google.</p>
+        </div>
+
+        <div class="settings-grid">
+          
+          <!-- CONFIGURAÇÕES DE DOWNLOAD -->
+          <div class="card settings-card">
+            <h2>Preferências do Aplicativo</h2>
+            
+            <!-- Diretorio -->
+            <div class="setting-item">
+              <label class="setting-label">Pasta de Salvamento</label>
+              <div class="input-group">
+                <input type="text" id="setting-download-path" readonly>
+                <button class="btn btn-outline" id="btn-change-path">Alterar</button>
+              </div>
+              <span class="setting-hint">Os arquivos baixados e as estruturas de pastas serão criados dentro deste diretório.</span>
+            </div>
+
+            <!-- Limites -->
+            <div class="setting-item">
+              <div class="setting-row">
+                <div>
+                  <label class="setting-label">Downloads Simultâneos</label>
+                  <span class="setting-hint">Limite para proteger a velocidade de escrita do HD (1 recomendado).</span>
+                </div>
+                <div class="concurrency-selector">
+                  <select id="setting-concurrency">
+                    <option value="1">1 arquivo por vez (Seguro para HD)</option>
+                    <option value="2">2 simultâneos (Recomendado para SSD)</option>
+                    <option value="3">3 simultâneos (Rápido - Conexões até 500Mb/s)</option>
+                    <option value="4">4 simultâneos (Muito rápido - Conexões até 800Mb/s)</option>
+                    <option value="5">5 simultâneos (Velocidade Máxima - Fibra Gigabyte)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Modo de Conexao -->
+            <div class="setting-item">
+              <div class="setting-row">
+                <div>
+                  <label class="setting-label">Modo de Download (Conexões por Arquivo)</label>
+                  <span class="setting-hint">Conexão única evita estouro de cota e bloqueios do Google. Multiconexão acelera em conexões rápidas.</span>
+                </div>
+                <div class="concurrency-selector">
+                  <select id="setting-download-mode">
+                    <option value="single">Conexão Única (Mais Seguro - Evita Bloqueio de Cota)</option>
+                    <option value="multi">Multiconexão Otimizada (Mais Rápido - 4 Conexões)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Notificacoes -->
+            <div class="setting-item">
+              <div class="setting-row-toggle">
+                <div>
+                  <label class="setting-label">Notificações do Sistema</label>
+                  <span class="setting-hint">Emitir um som e balão de aviso do Windows ao finalizar a fila inteira.</span>
+                </div>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="setting-notifications" checked>
+                  <label for="setting-notifications"></label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CREDENCIAIS GOOGLE -->
+          <div class="card settings-card">
+            <h2>Conexão Google Drive API</h2>
+            <div class="auth-box-container">
+              
+              <!-- ESTADO DESCONECTADO -->
+              <div id="settings-auth-disconnected">
+                <p class="warning-text">
+                  Para baixar arquivos privados ou usufruir de cotas ilimitadas de downloads em contas Premium, você deve carregar o arquivo <strong>credentials.json</strong> de uma aplicação criada no console do Google Cloud.
+                </p>
+                
+                <div class="drag-drop-zone" id="credentials-dropzone">
+                  <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 8px; color: var(--accent-primary);">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                  <p>Arraste e solte o arquivo <strong>credentials.json</strong> aqui</p>
+                  <span>ou clique para selecionar do disco</span>
+                </div>
+                <input type="file" id="credentials-file-input" accept=".json" style="display: none;">
+                <div class="toast error-toast" id="credentials-error" style="display: none;">Erro ao salvar credenciais. Verifique se o arquivo está correto.</div>
+                <div class="toast success-toast" id="credentials-success" style="display: none;">Credenciais carregadas com sucesso! Agora você já pode fazer login.</div>
+
+                <button class="btn btn-primary btn-block" id="btn-google-login" style="margin-top: 15px;">
+                  Conectar Conta Google
+                </button>
+              </div>
+
+              <!-- ESTADO CONECTADO -->
+              <div id="settings-auth-connected" style="display: none;">
+                <div class="connection-status-banner">
+                  <div class="banner-icon-success">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <div class="banner-details">
+                    <h3>Conta Google Conectada</h3>
+                    <p>Sua API do Google Drive está ativa e autorizada.</p>
+                  </div>
+                </div>
+                
+                <button class="btn btn-outline-danger btn-block" id="btn-google-logout" style="margin-top: 20px;">
+                  Desconectar Conta Google
+                </button>
+              </div>
+
+              <!-- ASSISTENTE PASSO A PASSO -->
+              <div class="accordion" style="margin-top: 20px;">
+                <div class="accordion-header" id="btn-toggle-wizard">
+                  <span>Como obter o arquivo credentials.json?</span>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="accordion-arrow">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="accordion-content" id="wizard-content">
+                  <ol class="wizard-steps">
+                    <li>Acesse o <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> e crie um novo projeto.</li>
+                    <li>No menu esquerdo, vá em <strong>APIs e Serviços</strong> > <strong>Biblioteca</strong>, pesquise por <strong>Google Drive API</strong> e clique em <strong>Ativar</strong>.</li>
+                    <li>Vá em <strong>Tela de consentimento OAuth</strong>, defina como <strong>Externo</strong>, preencha os dados obrigatórios e avance. Na aba "Usuários de teste", adicione seu próprio e-mail do Google Drive.</li>
+                    <li>Vá em <strong>Credenciais</strong> > <strong>Criar Credenciais</strong> > <strong>ID do cliente OAuth</strong>.</li>
+                    <li>Escolha o tipo de aplicativo <strong>Aplicativo de Desktop</strong> e digite um nome (ex: "Downloader"). Clique em Criar.</li>
+                    <li>Uma tela se abrirá com o botão <strong>Fazer download do JSON</strong>. Baixe-o, mude o nome para <code>credentials.json</code> e arraste-o para a área pontilhada acima!</li>
+                  </ol>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
