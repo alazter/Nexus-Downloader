@@ -2,8 +2,6 @@
 
 Este é um aplicativo desktop independente, desenvolvido em Electron, projetado especificamente para baixar arquivos e pastas do Google Drive de forma sequencial (um por vez por padrão), evitando a compactação zip chata do site do Google Drive e sem sobrecarregar a taxa de escrita do seu HD.
 
-## 🚀 Como Executar
-
 ---
 
 ## ⚙️ Configuração da Conta Google (Passo a Passo)
