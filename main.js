@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -164,12 +165,65 @@ function createWindow() {
   });
 }
 
+// Configuração do Auto-Updater
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Verificando atualizações...');
+    if (mainWindow) mainWindow.webContents.send('updater-status', { status: 'checking', msg: 'Verificando atualizações...' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Nova atualização encontrada:', info.version);
+    if (mainWindow) mainWindow.webContents.send('updater-status', { status: 'available', version: info.version, msg: `Nova versão v${info.version} disponível!` });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[AutoUpdater] Nenhuma atualização disponível.');
+    if (mainWindow) mainWindow.webContents.send('updater-status', { status: 'not-available', msg: 'O sistema já está atualizado.' });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Erro:', err);
+    if (mainWindow) mainWindow.webContents.send('updater-status', { status: 'error', msg: 'Erro ao verificar atualização.' });
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater-status', {
+        status: 'downloading',
+        percent: progressObj.percent.toFixed(1),
+        speed: progressObj.bytesPerSecond
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Atualização baixada e pronta para instalar.');
+    if (mainWindow) {
+      mainWindow.webContents.send('updater-status', {
+        status: 'downloaded',
+        version: info.version,
+        msg: `Versão v${info.version} pronta! Reinicie para instalar.`
+      });
+    }
+  });
+}
+
 // Inicializa a janela quando o app estiver pronto
 app.whenReady().then(() => {
   createWindow();
 
   // Tenta inicializar o cliente do Google com credenciais existentes
   initGoogleClient();
+
+  // Configura e verifica atualizações automaticamente
+  setupAutoUpdater();
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(err => console.error('[AutoUpdater] erro inicial:', err));
+  }, 4000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1175,4 +1229,18 @@ ipcMain.handle('restart-queue', () => {
 
 ipcMain.handle('open-downloads-folder', () => {
   shell.openPath(config.downloadPath);
+});
+
+// IPC Handlers para Auto-Updater
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, updateInfo: result ? result.updateInfo : null };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('restart-and-install', () => {
+  autoUpdater.quitAndInstall();
 });

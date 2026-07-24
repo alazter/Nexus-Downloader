@@ -30,5 +30,13 @@ contextBridge.exposeInMainWorld('api', {
     // Remove listeners antigos antes de adicionar um novo para evitar vazamentos
     ipcRenderer.removeAllListeners('queue-updated');
     ipcRenderer.on('queue-updated', (event, queue) => callback(queue));
+  },
+
+  // Auto Updater
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  restartAndInstall: () => ipcRenderer.invoke('restart-and-install'),
+  onUpdaterStatus: (callback) => {
+    ipcRenderer.removeAllListeners('updater-status');
+    ipcRenderer.on('updater-status', (event, data) => callback(data));
   }
 });
