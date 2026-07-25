@@ -1,6 +1,18 @@
-# Google Drive Sequential Downloader (Electron)
+# ⚡ Nexus Downloader
 
-Este é um aplicativo desktop independente, desenvolvido em Electron, projetado especificamente para baixar arquivos e pastas do Google Drive de forma sequencial (um por vez por padrão), evitando a compactação zip chata do site do Google Drive e sem sobrecarregar a taxa de escrita do seu HD.
+<p align="left">
+  <a href="https://github.com/alazter/nexus-downloader/releases">
+    <img src="https://img.shields.io/github/downloads/alazter/nexus-downloader/total?style=for-the-badge&logo=github&color=007acc&label=TOTAL%20DOWNLOADS" alt="Downloads Totais">
+  </a>
+  <a href="https://github.com/alazter/nexus-downloader/releases/latest">
+    <img src="https://img.shields.io/github/v/release/alazter/nexus-downloader?style=for-the-badge&logo=github&color=28a745&label=LATEST%20RELEASE" alt="Última Versão">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/alazter/nexus-downloader?style=for-the-badge&color=ff6b6b&label=LICENÇA" alt="Licença">
+  </a>
+</p>
+
+Este é um aplicativo desktop independente e portátil, desenvolvido em Electron com auto-update, projetado especificamente para baixar arquivos e pastas (Google Drive, Bunkr, etc.) de forma ultrarrápida e sequencial (ou paralela), evitando a compactação zip chata do site do Google Drive e sem sobrecarregar a taxa de escrita do seu disco.
 
 ## ⚙️ Configuração da Conta Google (Passo a Passo)
 
