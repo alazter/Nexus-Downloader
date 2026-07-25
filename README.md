@@ -7,8 +7,8 @@
   <a href="https://github.com/alazter/nexus-downloader/releases/latest">
     <img src="https://img.shields.io/github/v/release/alazter/nexus-downloader?style=for-the-badge&logo=github&color=28a745&label=LATEST%20RELEASE" alt="Última Versão">
   </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/alazter/nexus-downloader?style=for-the-badge&color=ff6b6b&label=LICENÇA" alt="Licença">
+  <a href="https://github.com/alazter/nexus-downloader/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/alazter/nexus-downloader?style=for-the-badge&color=ff6b6b&label=LICENSE" alt="Licença">
   </a>
 </p>
 
@@ -61,5 +61,5 @@ Siga os passos rápidos abaixo para obter seu arquivo de credenciais:
 
 ## 📄 Licença
 
-Este projeto está licenciado sob a licença **GNU General Public License v3.0 (GPL-3.0)**. Consulte o arquivo [LICENSE](LICENSE) para obter mais detalhes.
+Este projeto está licenciado sob a licença **GNU General Public License v3.0 (GPL-3.0)**. Consulte o arquivo [LICENSE](https://github.com/alazter/nexus-downloader/blob/main/LICENSE) para obter mais detalhes.
 
