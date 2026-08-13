@@ -206,6 +206,10 @@ async function resolveBunkrDirectUrl(numericId, fileId) {
     const rawReq = (u, opts = {}) => new Promise((res, rej) => {
       const p = new URL(u);
       const tr = p.protocol === 'https:' ? https : http;
+      let chunks = [];
+      let bytesRead = 0;
+      const maxBytes = 64 * 1024; // Apenas os primeiros 64KB para verificar desafios HTML/JS
+
       const req = tr.request({
         hostname: p.hostname,
         port: p.port || (p.protocol === 'https:' ? 443 : 80),
@@ -217,11 +221,40 @@ async function resolveBunkrDirectUrl(numericId, fileId) {
           ...(opts.headers || {})
         }
       }, response => {
-        let chunks = [];
-        response.on('data', c => chunks.push(c));
-        response.on('end', () => res({ statusCode: response.statusCode, headers: response.headers, text: Buffer.concat(chunks).toString('utf8') }));
+        let isDone = false;
+        const finish = () => {
+          if (isDone) return;
+          isDone = true;
+          const buf = Buffer.concat(chunks);
+          let text = '';
+          try { text = buf.toString('utf8'); } catch (e) {}
+          res({ statusCode: response.statusCode, headers: response.headers, text });
+        };
+
+        response.on('data', c => {
+          if (bytesRead < maxBytes) {
+            chunks.push(c);
+            bytesRead += c.length;
+            if (bytesRead >= maxBytes) {
+              try { req.destroy(); } catch (e) {}
+              finish();
+            }
+          }
+        });
+        response.on('end', finish);
+        response.on('close', finish);
       });
-      req.on('error', rej);
+
+      req.on('error', err => {
+        if (chunks.length > 0) {
+          const buf = Buffer.concat(chunks);
+          let text = '';
+          try { text = buf.toString('utf8'); } catch (e) {}
+          return res({ statusCode: 200, headers: {}, text });
+        }
+        rej(err);
+      });
+
       if (opts.body) req.write(opts.body);
       req.end();
     });

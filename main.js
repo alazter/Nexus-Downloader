@@ -7,6 +7,7 @@ const https = require('https');
 const url = require('url');
 const { google } = require('googleapis');
 const { isBunkrUrl, scanBunkrLink, resolveBunkrDirectUrl } = require('./bunkr-scanner');
+const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -95,6 +96,10 @@ function saveQueue() {
   try {
     const serialized = downloadQueue.map(item => ({
       id: item.id,
+      fileId: item.fileId || null,
+      numericId: item.numericId || null,
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_'))),
+      mediafireUrl: item.mediafireUrl || null,
       name: item.name,
       size: item.size,
       relativePath: item.relativePath,
@@ -505,10 +510,24 @@ function downloadBunkrFile(queueItem) {
     }
 
     try {
-      console.log(`[Bunkr] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
-      const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
-      const directUrl = bunkrInfo.directUrl || bunkrInfo;
-      console.log(`[Bunkr] URL direta obtida com sucesso.`);
+      let directUrl = '';
+      let referer = 'https://bunkr.cr/';
+      let cookieHeader = '';
+
+      if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
+        console.log(`[MediaFire Worker] Resolvendo link direto CDN para "${queueItem.name}"...`);
+        const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, queueItem.mediafireUrl);
+        directUrl = mfInfo.directUrl;
+        referer = mfInfo.referer || 'https://www.mediafire.com/';
+      } else {
+        console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
+        const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
+        directUrl = bunkrInfo.directUrl || bunkrInfo;
+        referer = bunkrInfo.referer || 'https://bunkr.cr/';
+        cookieHeader = bunkrInfo.cookieHeader || '';
+      }
+
+      console.log(`[HTTP Direct Worker] URL direta obtida com sucesso:`, directUrl);
 
       if (abortController.signal.aborted) {
         return reject(new Error('Download cancelado'));
@@ -521,8 +540,8 @@ function downloadBunkrFile(queueItem) {
         rejectUnauthorized: false,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          'Referer': bunkrInfo.referer || 'https://bunkr.cr/',
-          'Cookie': bunkrInfo.cookieHeader || ''
+          'Referer': referer,
+          'Cookie': cookieHeader
         }
       };
 
@@ -618,7 +637,7 @@ function downloadBunkrFile(queueItem) {
 }
 
 function downloadFile(queueItem) {
-  if (queueItem.isHttpDirect) {
+  if (queueItem.isHttpDirect || (queueItem.id && (queueItem.id.startsWith('mediafire_') || queueItem.id.startsWith('bunkr_')))) {
     return downloadBunkrFile(queueItem);
   }
 
@@ -921,6 +940,17 @@ function downloadFile(queueItem) {
         try { fs.unlinkSync(localFilePath); } catch (e) {}
       }
       await cleanupTempFile();
+
+      if (err.message && (err.message.includes('invalid_grant') || err.message.includes('Invalid Credentials'))) {
+        console.warn('[AUTH] Token do Google Drive expirou (invalid_grant). Removendo token.json invalido...');
+        if (fs.existsSync(TOKEN_FILE)) {
+          try { fs.unlinkSync(TOKEN_FILE); } catch (e) {}
+        }
+        driveService = null;
+        reject(new Error('Sessão do Google expirada (invalid_grant). Vá em Ajustes, clique em Desconectar e conecte sua Conta Google novamente.'));
+        return;
+      }
+
       reject(err);
     }
   });
@@ -1036,6 +1066,22 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
   let aggregatedFiles = [];
 
   for (const link of lines) {
+    // 0. Links do MediaFire
+    if (isMediaFireUrl(link)) {
+      try {
+        console.log('[main.js] Link do MediaFire detectado! Escaneando:', link);
+        const mfFiles = await scanMediaFireLink(link);
+        if (mfFiles && mfFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(mfFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do MediaFire para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link MediaFire:', link, err.message);
+        throw new Error(`Erro ao escanear MediaFire: ${err.message}`);
+      }
+      continue;
+    }
     // 1. Verifica se é um link do Bunkr
     if (isBunkrUrl(link)) {
       try {
@@ -1100,7 +1146,8 @@ ipcMain.handle('add-to-queue', (event, files) => {
         id: file.id,
         fileId: file.fileId,
         numericId: file.numericId,
-        isHttpDirect: file.isHttpDirect || false,
+        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_'))),
+        mediafireUrl: file.mediafireUrl || null,
         name: file.name,
         size: file.size,
         relativePath: file.relativePath,
