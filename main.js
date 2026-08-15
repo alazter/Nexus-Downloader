@@ -1164,7 +1164,24 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
   let aggregatedFiles = [];
 
   for (const link of lines) {
-    // 0. Links do MediaFire
+    // 0. Links do TeraBox
+    if (isTeraBoxUrl(link)) {
+      try {
+        console.log('[main.js] Link do TeraBox detectado! Escaneando:', link);
+        const tbFiles = await scanTeraBoxLink(link);
+        if (tbFiles && tbFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(tbFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do TeraBox para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link TeraBox:', link, err.message);
+        throw new Error(`Erro ao escanear TeraBox: ${err.message}`);
+      }
+      continue;
+    }
+
+    // 0.1. Links do MediaFire
     if (isMediaFireUrl(link)) {
       try {
         console.log('[main.js] Link do MediaFire detectado! Escaneando:', link);
@@ -1244,8 +1261,11 @@ ipcMain.handle('add-to-queue', (event, files) => {
         id: file.id,
         fileId: file.fileId,
         numericId: file.numericId,
-        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_'))),
+        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_'))),
         mediafireUrl: file.mediafireUrl || null,
+        teraboxUrl: file.teraboxUrl || null,
+        teraboxDlink: file.teraboxDlink || null,
+        teraboxCookie: file.teraboxCookie || null,
         name: file.name,
         size: file.size,
         relativePath: file.relativePath,
