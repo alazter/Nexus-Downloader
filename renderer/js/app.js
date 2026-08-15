@@ -247,6 +247,55 @@ if (btnCheckVersion) {
     }
   });
 }
+
+// Escuta automática de eventos do Auto-Updater
+if (window.api && window.api.onUpdaterStatus) {
+  let updatePromptShown = false;
+
+  window.api.onUpdaterStatus(async (data) => {
+    if (!data) return;
+
+    if (data.status === 'available') {
+      if (updateNotice) {
+        updateNotice.textContent = `Nova v${data.version || ''} disponível`;
+        updateNotice.style.display = 'block';
+      }
+
+      if (!updatePromptShown) {
+        updatePromptShown = true;
+        const wantDownload = await showCustomConfirm(
+          `Uma nova versão (v${data.version || ''}) do Nexus Downloader está disponível! Deseja baixar e instalar a nova versão agora?`,
+          'Atualização Disponível'
+        );
+
+        if (wantDownload) {
+          if (updateNotice) {
+            updateNotice.textContent = 'Iniciando download...';
+          }
+          await window.api.downloadUpdate();
+        }
+      }
+    } else if (data.status === 'downloading') {
+      if (updateNotice) {
+        updateNotice.textContent = `Baixando atualização: ${data.percent || 0}%...`;
+        updateNotice.style.display = 'block';
+      }
+    } else if (data.status === 'downloaded') {
+      if (updateNotice) {
+        updateNotice.textContent = 'Versão pronta para instalar';
+        updateNotice.style.display = 'block';
+      }
+      const wantInstall = await showCustomConfirm(
+        `A nova versão v${data.version || ''} foi baixada com sucesso! Clique em Confirmar para reiniciar o Nexus Downloader, atualizar o ícone na área de trabalho e abrir na nova versão.`,
+        'Atualização Pronta'
+      );
+
+      if (wantInstall) {
+        window.api.restartAndInstall();
+      }
+    }
+  });
+}
 // Configuração do drag & drop do credentials.json
 credentialsDropzone.addEventListener('click', () => {
   credentialsFileInput.click();

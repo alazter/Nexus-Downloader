@@ -191,7 +191,7 @@ function createWindow() {
 }
 
 // Configuração do Auto-Updater
-autoUpdater.autoDownload = true;
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 function setupAutoUpdater() {
@@ -1365,6 +1365,15 @@ ipcMain.handle('check-for-updates', async () => {
   try {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: result ? result.updateInfo : null };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Auto Updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
   restartAndInstall: () => ipcRenderer.invoke('restart-and-install'),
   onUpdaterStatus: (callback) => {
     ipcRenderer.removeAllListeners('updater-status');
