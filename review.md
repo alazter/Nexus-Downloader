@@ -1,6 +1,29 @@
 # Nexus Downloader - Diário de Bordo & Registro de Alterações (review.md)
 
-**Última Atualização:** 12/08/2026
+**Última Atualização:** 14/08/2026
+
+---
+
+## 2. Sessão de 14/08/2026 - Renderização Fluida da Fila (Anti-Flicker), Modais Customizados e Ajustes de UI/UX
+
+### Alterações e Implementações do Dia
+
+#### 1. Refatoração In-Place da Fila de Downloads (Zero Flickering)
+- **Problema:** A função `renderQueue` recriava toda a estrutura DOM da fila a cada atualização de progresso ou mudança de estado dos downloads, resultando em oscilações visuais (flickering), perda momentânea de foco e desorganização dos toggles de pastas expandidas/recolhidas.
+- **Solução:** Implementado sistema de renderização diferencial in-place em `renderer/js/app.js`:
+  - Reutilização dos elementos HTML existentes da pasta e dos itens individuais.
+  - Funções especializadas `updateQueueItemElement` e `updateQueueItemActions` para alterar pontualmente apenas textos, larguras de barra de progresso e badges.
+  - Preservação intacta dos estados de expansão/recolhimento das pastas (`expandedFolders` e `collapsedFolders`).
+
+#### 2. Modais Customizados de Confirmação (`showCustomConfirm`)
+- **Problema:** O uso do `window.confirm()` nativo síncrono congelava a interface do Electron e destoava do design dark moderno do Nexus Downloader.
+- **Solução:** 
+  - Desenvolvido modal customizado assíncrono totalmente integrado à UI da aplicação (`showCustomConfirm`).
+  - Aplicado às operações críticas: remoção de item individual, reinício de downloads pendentes e limpeza total da fila.
+
+#### 3. Refinamento Estético e Atualização dos Ícones
+- **Problema:** Necessidade de alinhamento visual dos badges de estado, botões de ação e ícones de identidade visual da aplicação.
+- **Solução:** Atualizados estilos em `renderer/css/style.css`, `renderer/index.html` e renovados os artefatos de ícones em `renderer/icon.png` e `renderer/icon.svg`.
 
 ---
 
@@ -31,9 +54,13 @@
 
 ---
 
-## Arquivos Criados / Modificados
+## Arquivos Criados / Modificados (Acumulado)
 
-- **`mediafire-scanner.js`** (Criado): Módulo de varredura e resolução de URLs do MediaFire (arquivos e pastas).
-- **`main.js`** (Modificado): Suporte a MediaFire no IPC scanner, serialização de fila, tratamento de token Google expirado e roteamento do worker HTTP Direct.
-- **`bunkr-scanner.js`** (Modificado): Limite de leitura de buffer de 64KB para validações HTTP.
-- **`review.md`** (Criado): Documentação oficial do progresso e alterações do projeto.
+- **`renderer/js/app.js`** (Modificado): Refatoração anti-flickering da fila (`updateQueueItemElement`, DOM in-place) e modais `showCustomConfirm`.
+- **`renderer/index.html`** (Modificado): Estrutura HTML para o modal de confirmação customizado.
+- **`renderer/css/style.css`** (Modificado): Estilização do modal customizado, animações e refinamentos da lista de downloads.
+- **`renderer/icon.png` / `renderer/icon.svg`** (Modificados): Atualização dos artefatos visuais de ícones do aplicativo.
+- **`main.js`** (Modificado): Ajustes de backend Electron e handlers IPC.
+- **`mediafire-scanner.js`** (Criado): Módulo de varredura e resolução de URLs do MediaFire.
+- **`bunkr-scanner.js`** (Modificado): Otimização de leitura de buffer HTTP.
+- **`review.md`** (Atualizado): Documentação oficial de progresso.

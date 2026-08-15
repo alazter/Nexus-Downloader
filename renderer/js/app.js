@@ -64,6 +64,79 @@ const accordionContainer = document.querySelector('.accordion');
 // Estado local dos arquivos escaneados
 let scannedFiles = [];
 
+
+// ==========================================
+// Sistema Personalizado de Caixa de Diálogo (Modal Dark-Glass)
+// ==========================================
+function showCustomAlert(message, title = 'Nexus Downloader') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('custom-modal-overlay');
+    const titleEl = document.getElementById('custom-modal-title');
+    const msgEl = document.getElementById('custom-modal-message');
+    const cancelBtn = document.getElementById('custom-modal-cancel-btn');
+    const okBtn = document.getElementById('custom-modal-ok-btn');
+
+    if (!overlay) {
+      alert(message);
+      return resolve(true);
+    }
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    cancelBtn.style.display = 'none';
+    okBtn.textContent = 'OK';
+    overlay.style.display = 'flex';
+
+    const handleOk = () => {
+      okBtn.removeEventListener('click', handleOk);
+      overlay.style.display = 'none';
+      resolve(true);
+    };
+
+    okBtn.addEventListener('click', handleOk);
+  });
+}
+
+function showCustomConfirm(message, title = 'Nexus Downloader') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('custom-modal-overlay');
+    const titleEl = document.getElementById('custom-modal-title');
+    const msgEl = document.getElementById('custom-modal-message');
+    const cancelBtn = document.getElementById('custom-modal-cancel-btn');
+    const okBtn = document.getElementById('custom-modal-ok-btn');
+
+    if (!overlay) {
+      const res = confirm(message);
+      return resolve(res);
+    }
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    cancelBtn.style.display = 'inline-block';
+    cancelBtn.textContent = 'Cancelar';
+    okBtn.textContent = 'Confirmar';
+    overlay.style.display = 'flex';
+
+    const handleOk = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const handleCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const cleanup = () => {
+      okBtn.removeEventListener('click', handleOk);
+      cancelBtn.removeEventListener('click', handleCancel);
+      overlay.style.display = 'none';
+    };
+
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+  });
+}
 // ==========================================
 // Formatação Auxiliar
 // ==========================================
@@ -98,8 +171,13 @@ navItems.forEach(item => {
     navItems.forEach(nav => nav.classList.remove('active'));
     tabContents.forEach(tab => tab.classList.remove('active'));
     
+    document.querySelectorAll('.top-tab-content').forEach(el => el.style.display = 'none');
+
     item.classList.add('active');
     document.getElementById(`${tabId}-tab`).classList.add('active');
+
+    const topContent = document.getElementById(`${tabId}-top-content`);
+    if (topContent) topContent.style.display = 'block';
   });
 });
 
@@ -111,7 +189,7 @@ function switchTab(tabId) {
 }
 
 // ==========================================
-// Gerenciamento de Autenticação Google
+// Status de Autenticação Google
 // ==========================================
 async function checkAuthStatus() {
   try {
@@ -120,9 +198,7 @@ async function checkAuthStatus() {
     if (auth.connected) {
       // Estado Conectado
       authIndicator.className = 'status-indicator connected';
-      authStatusText.textContent = 'Conta Conectada';
-      authSidebarBtn.textContent = 'Desconectar';
-      authSidebarBtn.className = 'btn btn-sm btn-outline-danger btn-block';
+      authStatusText.textContent = 'Conta Google Conectada';
       
       settingsAuthDisconnected.style.display = 'none';
       settingsAuthConnected.style.display = 'block';
@@ -130,8 +206,6 @@ async function checkAuthStatus() {
       // Estado Desconectado
       authIndicator.className = 'status-indicator disconnected';
       authStatusText.textContent = 'Conta Desconectada';
-      authSidebarBtn.textContent = 'Conectar';
-      authSidebarBtn.className = 'btn btn-sm btn-outline-primary btn-block';
       
       settingsAuthDisconnected.style.display = 'block';
       settingsAuthConnected.style.display = 'none';
@@ -144,6 +218,35 @@ async function checkAuthStatus() {
   }
 }
 
+const btnCheckVersion = document.getElementById('btn-check-version');
+const updateNotice = document.getElementById('update-notice');
+
+if (btnCheckVersion) {
+  btnCheckVersion.addEventListener('click', async () => {
+    const icon = btnCheckVersion.querySelector('.version-refresh-icon');
+    if (icon) icon.classList.add('spinning');
+
+    try {
+      const res = await window.api.checkForUpdates();
+      if (icon) icon.classList.remove('spinning');
+
+      if (res && res.success && res.updateInfo && res.updateInfo.version) {
+        if (updateNotice) {
+          updateNotice.textContent = 'Nova versão disponível';
+          updateNotice.style.display = 'block';
+        }
+        await showCustomAlert(`Uma nova versão (v${res.updateInfo.version}) foi encontrada e está sendo baixada automaticamente!`, 'Atualização Disponível');
+      } else {
+        if (updateNotice) updateNotice.style.display = 'none';
+        await showCustomAlert('Seu Nexus Downloader já está atualizado na versão mais recente (v1.0.1)!', 'Verificação de Atualização');
+      }
+    } catch (err) {
+      if (icon) icon.classList.remove('spinning');
+      if (updateNotice) updateNotice.style.display = 'none';
+      await showCustomAlert('Seu Nexus Downloader já está atualizado na versão mais recente (v1.0.1)!', 'Verificação de Atualização');
+    }
+  });
+}
 // Configuração do drag & drop do credentials.json
 credentialsDropzone.addEventListener('click', () => {
   credentialsFileInput.click();
@@ -221,7 +324,7 @@ btnGoogleLogin.addEventListener('click', async () => {
     await window.api.login();
     checkAuthStatus();
   } catch (err) {
-    alert('Erro no login: ' + err.message);
+    await showCustomAlert('Erro no login: ' + err.message, 'Erro de Conexão');
   } finally {
     btnGoogleLogin.textContent = 'Conectar Conta Google';
     btnGoogleLogin.disabled = false;
@@ -229,20 +332,22 @@ btnGoogleLogin.addEventListener('click', async () => {
 });
 
 btnGoogleLogout.addEventListener('click', async () => {
-  if (confirm('Deseja realmente desconectar sua conta Google?')) {
+  if (await showCustomConfirm('Deseja realmente desconectar sua conta Google?', 'Desconectar Conta')) {
     await window.api.logout();
     checkAuthStatus();
   }
 });
 
-authSidebarBtn.addEventListener('click', () => {
-  const isConnected = authIndicator.classList.contains('connected');
-  if (isConnected) {
-    btnGoogleLogout.click();
-  } else {
-    switchTab('settings');
-  }
-});
+if (authSidebarBtn) {
+  authSidebarBtn.addEventListener('click', () => {
+    const isConnected = authIndicator.classList.contains('connected');
+    if (isConnected) {
+      btnGoogleLogout.click();
+    } else {
+      switchTab('settings');
+    }
+  });
+}
 
 // Accordion do guia de credenciais
 btnToggleWizard.addEventListener('click', () => {
@@ -294,19 +399,62 @@ settingNotifications.addEventListener('change', async () => {
 // ==========================================
 // Scanner de Links do Drive
 // ==========================================
+function formatUrlsText(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  let normalized = rawText.replace(/(https?:\/\/[^\s"'<>]+?)(https?:\/\/)/gi, '$1\n$2');
+  const matches = normalized.match(/(https?:\/\/[^\s"'<>]+)/gi) || [];
+  const cleanUrls = matches
+    .map(u => u.trim().replace(/[,;]+$/, ''))
+    .filter(u => u.length > 0);
+  return [...new Set(cleanUrls)].join('\n');
+}
+
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = '44px';
+  const newHeight = Math.min(Math.max(el.scrollHeight, 44), 260);
+  el.style.height = `${newHeight}px`;
+}
+
 btnPaste.addEventListener('click', async () => {
   try {
     const text = await navigator.clipboard.readText();
-    inputDriveLink.value = text;
+    const formatted = formatUrlsText(text);
+    inputDriveLink.value = formatted || text;
+    autoResizeTextarea(inputDriveLink);
   } catch (err) {
     console.error('Falha ao ler área de transferência:', err);
   }
 });
 
+if (inputDriveLink) {
+  inputDriveLink.addEventListener('input', () => autoResizeTextarea(inputDriveLink));
+  inputDriveLink.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+    const formatted = formatUrlsText(pastedData);
+
+    const start = inputDriveLink.selectionStart;
+    const end = inputDriveLink.selectionEnd;
+    const val = inputDriveLink.value;
+
+    const before = val.substring(0, start);
+    const after = val.substring(end);
+
+    const prefix = (before && !before.endsWith('\n')) ? '\n' : '';
+    const suffix = (after && !after.startsWith('\n')) ? '\n' : '';
+
+    const insertText = formatted || pastedData;
+    inputDriveLink.value = before + prefix + insertText + suffix + after;
+    inputDriveLink.selectionStart = inputDriveLink.selectionEnd = before.length + prefix.length + insertText.length;
+    autoResizeTextarea(inputDriveLink);
+  });
+}
+
 btnScan.addEventListener('click', async () => {
   const url = inputDriveLink.value.trim();
   if (!url) {
-    alert('Por favor, cole um link do Google Drive para escanear.');
+    await showCustomAlert('Por favor, cole um link do Google Drive ou Bunkr para escanear.', 'Link Inválido');
     return;
   }
 
@@ -323,7 +471,7 @@ btnScan.addEventListener('click', async () => {
   try {
     const files = await window.api.scanLink(url);
     if (!files || files.length === 0) {
-      alert('Nenhum arquivo encontrado no link fornecido.');
+      await showCustomAlert('Nenhum arquivo encontrado no link fornecido.', 'Escaneamento Concluído');
       scanEmptyState.style.display = 'flex';
       return;
     }
@@ -331,12 +479,12 @@ btnScan.addEventListener('click', async () => {
     scannedFiles = files;
     renderResults();
   } catch (err) {
-    alert('Erro ao escanear link: ' + err.message);
+    await showCustomAlert('Erro ao escanear link: ' + err.message, 'Erro no Escaneamento');
     scanEmptyState.style.display = 'flex';
   } finally {
     btnScan.disabled = false;
     scanSpinner.style.display = 'none';
-    btnScan.querySelector('.btn-text').textContent = 'Escanear Drive';
+    btnScan.querySelector('.btn-text').textContent = 'Escanear Links';
   }
 });
 
@@ -467,7 +615,9 @@ function renderQueue(queue) {
 
   // Atualiza badge na barra lateral
   if (pendingAndActive > 0) {
-    queueBadge.textContent = pendingAndActive.toString();
+    if (queueBadge.textContent !== pendingAndActive.toString()) {
+      queueBadge.textContent = pendingAndActive.toString();
+    }
     queueBadge.style.display = 'inline-block';
   } else {
     queueBadge.style.display = 'none';
@@ -476,32 +626,44 @@ function renderQueue(queue) {
   // Renderiza card ativo no topo
   if (activeDownloads.length > 0) {
     const active = activeDownloads[0]; // Exibe o primeiro ativo no card principal
-    activeDownloadPanel.style.display = 'flex';
+    if (activeDownloadPanel.style.display !== 'flex') {
+      activeDownloadPanel.style.display = 'flex';
+    }
     
-    activeFilename.textContent = active.name;
-    activeFilename.title = active.name;
+    if (activeFilename.textContent !== active.name) {
+      activeFilename.textContent = active.name;
+      activeFilename.title = active.name;
+    }
     activeProgressText.textContent = `${active.progress}%`;
     activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
     activeEtaText.textContent = formatETA(active.eta);
     activeBytesText.textContent = `${formatBytes(active.downloadedBytes)} / ${formatBytes(active.size)}`;
     activeProgressBar.style.width = `${active.progress}%`;
 
-    // Atualiza botões do painel ativo
-    btnActivePause.onclick = () => window.api.pauseDownload(active.id);
-    btnActiveCancel.onclick = () => {
-      if (confirm(`Cancelar o download do arquivo "${active.name}"?`)) {
-        window.api.cancelDownload(active.id);
-      }
-    };
+    // Atualiza botões do painel ativo se o ID mudou
+    if (activeDownloadPanel.dataset.activeId !== active.id) {
+      activeDownloadPanel.dataset.activeId = active.id;
+      btnActivePause.onclick = () => window.api.pauseDownload(active.id);
+      btnActiveCancel.onclick = async () => {
+        if (await showCustomConfirm(`Cancelar o download do arquivo "${active.name}"?`, 'Cancelar Download')) {
+          window.api.cancelDownload(active.id);
+        }
+      };
+    }
   } else {
-    activeDownloadPanel.style.display = 'none';
+    if (activeDownloadPanel.style.display !== 'none') {
+      activeDownloadPanel.style.display = 'none';
+    }
+    activeDownloadPanel.dataset.activeId = '';
   }
 
-  // 2. Renderiza lista da fila (Agrupada por Pasta)
-  queueItemsList.innerHTML = '';
-  queueTotalCount.textContent = queue.length.toString();
+  // 2. Renderiza lista da fila (Reconciliação In-Place para EVITAR PISCAR no hover)
+  if (queueTotalCount.textContent !== queue.length.toString()) {
+    queueTotalCount.textContent = queue.length.toString();
+  }
 
   if (queue.length === 0) {
+    queueItemsList.innerHTML = '';
     queueEmptyState.style.display = 'block';
     return;
   }
@@ -518,7 +680,16 @@ function renderQueue(queue) {
     folderMap.get(folder).push(item);
   });
 
-  // Renderiza um Card de Pasta para cada grupo
+  // Remove pastas do DOM que não existem mais na fila atual
+  const existingFolderCards = Array.from(queueItemsList.querySelectorAll('.queue-folder-card'));
+  existingFolderCards.forEach(card => {
+    const folder = card.dataset.folderName;
+    if (!folderMap.has(folder)) {
+      card.remove();
+    }
+  });
+
+  // Processa e atualiza in-place cada card de pasta
   folderMap.forEach((folderItems, folderName) => {
     const totalFiles = folderItems.length;
     const completedFiles = folderItems.filter(f => f.status === 'completed').length;
@@ -540,93 +711,117 @@ function renderQueue(queue) {
     } else if (expandedFolders.has(folderName)) {
       isCollapsed = false;
     } else {
-      // Padrão inicial: recolhe pastas 100% concluídas ou pastas que não estão baixando ativamente
       isCollapsed = folderPercent === 100 || !hasActiveItem;
     }
 
-    // Container do Card da Pasta
-    const folderCard = document.createElement('div');
-    folderCard.className = `queue-folder-card ${isCollapsed ? 'collapsed' : ''}`;
+    let folderCard = queueItemsList.querySelector(`.queue-folder-card[data-folder-name="${CSS.escape(folderName)}"]`);
 
-    // Cabeçalho da Pasta (Click alterna accordion)
-    const folderHeader = document.createElement('div');
-    folderHeader.className = 'queue-folder-header';
+    if (!folderCard) {
+      // Cria novo Card da Pasta se não existir
+      folderCard = document.createElement('div');
+      folderCard.className = `queue-folder-card ${isCollapsed ? 'collapsed' : ''}`;
+      folderCard.dataset.folderName = folderName;
 
-    const titleRow = document.createElement('div');
-    titleRow.className = 'queue-folder-title-row';
+      const folderHeader = document.createElement('div');
+      folderHeader.className = 'queue-folder-header';
 
-    const titleGroup = document.createElement('div');
-    titleGroup.className = 'queue-folder-title-group';
-    titleGroup.innerHTML = `
-      <div class="queue-folder-icon">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-        </svg>
-      </div>
-      <span class="queue-folder-name" title="${folderName}">${folderName}</span>
-    `;
+      const titleRow = document.createElement('div');
+      titleRow.className = 'queue-folder-title-row';
 
-    const badgeGroup = document.createElement('div');
-    badgeGroup.className = 'queue-folder-badge-group';
-    badgeGroup.innerHTML = `
-      <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
-      <span class="queue-folder-percent">${folderPercent}%</span>
-      <div class="queue-folder-toggle-icon">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </div>
-    `;
+      const titleGroup = document.createElement('div');
+      titleGroup.className = 'queue-folder-title-group';
+      titleGroup.innerHTML = `
+        <div class="queue-folder-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <span class="queue-folder-name" title="${folderName}">${folderName}</span>
+      `;
 
-    titleRow.appendChild(titleGroup);
-    titleRow.appendChild(badgeGroup);
+      const badgeGroup = document.createElement('div');
+      badgeGroup.className = 'queue-folder-badge-group';
+      badgeGroup.innerHTML = `
+        <span class="queue-folder-badge"></span>
+        <span class="queue-folder-percent"></span>
+        <div class="queue-folder-toggle-icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      `;
 
-    // Barra de Progresso do Acumulado da Pasta
-    const progressBg = document.createElement('div');
-    progressBg.className = 'queue-folder-progress-bg';
-    
-    const progressFill = document.createElement('div');
-    progressFill.className = 'queue-folder-progress-fill';
-    progressFill.style.width = `${folderPercent}%`;
-    progressBg.appendChild(progressFill);
+      titleRow.appendChild(titleGroup);
+      titleRow.appendChild(badgeGroup);
 
-    folderHeader.appendChild(titleRow);
-    folderHeader.appendChild(progressBg);
+      const progressBg = document.createElement('div');
+      progressBg.className = 'queue-folder-progress-bg';
+      const progressFill = document.createElement('div');
+      progressFill.className = 'queue-folder-progress-fill';
+      progressBg.appendChild(progressFill);
 
-    // Toggle expandir/recolher
-    folderHeader.onclick = () => {
-      if (folderCard.classList.contains('collapsed')) {
-        collapsedFolders.delete(folderName);
-        expandedFolders.add(folderName);
-        folderCard.classList.remove('collapsed');
-      } else {
-        expandedFolders.delete(folderName);
-        collapsedFolders.add(folderName);
-        folderCard.classList.add('collapsed');
+      folderHeader.appendChild(titleRow);
+      folderHeader.appendChild(progressBg);
+
+      folderHeader.onclick = () => {
+        if (folderCard.classList.contains('collapsed')) {
+          collapsedFolders.delete(folderName);
+          expandedFolders.add(folderName);
+          folderCard.classList.remove('collapsed');
+        } else {
+          expandedFolders.delete(folderName);
+          collapsedFolders.add(folderName);
+          folderCard.classList.add('collapsed');
+        }
+      };
+
+      const folderItemsContainer = document.createElement('div');
+      folderItemsContainer.className = 'queue-folder-items';
+
+      folderCard.appendChild(folderHeader);
+      folderCard.appendChild(folderItemsContainer);
+      queueItemsList.appendChild(folderCard);
+    }
+
+    // Atualiza textos e progresso do cabeçalho sem recriar o DOM (sem piscar)
+    const badgeSpan = folderCard.querySelector('.queue-folder-badge');
+    const percentSpan = folderCard.querySelector('.queue-folder-percent');
+    const progressFill = folderCard.querySelector('.queue-folder-progress-fill');
+
+    if (badgeSpan) badgeSpan.textContent = `${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})`;
+    if (percentSpan) percentSpan.textContent = `${folderPercent}%`;
+    if (progressFill) progressFill.style.width = `${folderPercent}%`;
+
+    // Atualiza itens de arquivo da pasta in-place
+    const folderItemsContainer = folderCard.querySelector('.queue-folder-items');
+    const currentItemIds = new Set(folderItems.map(f => f.id));
+
+    // Remove itens do DOM que não estão mais nesta pasta
+    const existingItemEls = Array.from(folderItemsContainer.querySelectorAll('.queue-item'));
+    existingItemEls.forEach(el => {
+      if (!currentItemIds.has(el.dataset.itemId)) {
+        el.remove();
       }
-    };
-
-    // Container de Itens de Arquivo da Pasta
-    const folderItemsContainer = document.createElement('div');
-    folderItemsContainer.className = 'queue-folder-items';
-
-    folderItems.forEach(item => {
-      const itemEl = createQueueItemElement(item);
-      folderItemsContainer.appendChild(itemEl);
     });
 
-    folderCard.appendChild(folderHeader);
-    folderCard.appendChild(folderItemsContainer);
-
-    queueItemsList.appendChild(folderCard);
+    // Atualiza ou insere itens da pasta
+    folderItems.forEach(item => {
+      let itemEl = folderItemsContainer.querySelector(`.queue-item[data-item-id="${CSS.escape(item.id)}"]`);
+      if (!itemEl) {
+        itemEl = createQueueItemElement(item);
+        folderItemsContainer.appendChild(itemEl);
+      } else {
+        updateQueueItemElement(itemEl, item);
+      }
+    });
   });
 }
 
 function createQueueItemElement(item) {
   const div = document.createElement('div');
   div.className = 'queue-item';
+  div.dataset.itemId = item.id;
 
-  // Info do Arquivo
   const divInfo = document.createElement('div');
   divInfo.className = 'queue-item-info';
 
@@ -639,6 +834,7 @@ function createQueueItemElement(item) {
   divMeta.className = 'queue-item-meta';
 
   const spanSize = document.createElement('span');
+  spanSize.className = 'queue-item-size-text';
   spanSize.textContent = formatBytes(item.size);
 
   const spanStatus = document.createElement('span');
@@ -648,19 +844,65 @@ function createQueueItemElement(item) {
   divMeta.appendChild(spanSize);
   divMeta.appendChild(spanStatus);
 
+  const spanError = document.createElement('span');
+  spanError.className = 'queue-item-error-text';
+  spanError.style.color = 'var(--danger)';
   if (item.error) {
-    const spanError = document.createElement('span');
-    spanError.style.color = 'var(--danger)';
-    spanError.textContent = `| Erro: ${item.error}`;
-    divMeta.appendChild(spanError);
+    spanError.textContent = ` | Erro: ${item.error}`;
   }
+  divMeta.appendChild(spanError);
 
   divInfo.appendChild(divName);
   divInfo.appendChild(divMeta);
 
-  // Ações
   const divActions = document.createElement('div');
   divActions.className = 'queue-item-actions';
+
+  div.appendChild(divInfo);
+  div.appendChild(divActions);
+
+  updateQueueItemActions(divActions, item);
+  return div;
+}
+
+function updateQueueItemElement(itemEl, item) {
+  const spanStatus = itemEl.querySelector('.queue-item-status-badge');
+  if (spanStatus) {
+    if (spanStatus.className !== `queue-item-status-badge ${item.status}`) {
+      spanStatus.className = `queue-item-status-badge ${item.status}`;
+    }
+    const label = getStatusLabel(item.status);
+    if (spanStatus.textContent !== label) {
+      spanStatus.textContent = label;
+    }
+  }
+
+  const spanSize = itemEl.querySelector('.queue-item-size-text');
+  if (spanSize) {
+    const formatted = formatBytes(item.size);
+    if (spanSize.textContent !== formatted) {
+      spanSize.textContent = formatted;
+    }
+  }
+
+  const spanError = itemEl.querySelector('.queue-item-error-text');
+  if (spanError) {
+    const errText = item.error ? ` | Erro: ${item.error}` : '';
+    if (spanError.textContent !== errText) {
+      spanError.textContent = errText;
+    }
+  }
+
+  const divActions = itemEl.querySelector('.queue-item-actions');
+  if (divActions) {
+    updateQueueItemActions(divActions, item);
+  }
+}
+
+function updateQueueItemActions(divActions, item) {
+  if (divActions.dataset.lastStatus === item.status) return;
+  divActions.dataset.lastStatus = item.status;
+  divActions.innerHTML = '';
 
   if (item.status === 'paused' || item.status === 'failed') {
     const btnPlay = document.createElement('button');
@@ -702,17 +944,13 @@ function createQueueItemElement(item) {
     </svg>
   `;
   btnCancel.title = 'Remover';
-  btnCancel.onclick = (e) => {
+  btnCancel.onclick = async (e) => {
     e.stopPropagation();
-    if (confirm(`Remover "${item.name}" da fila?`)) {
+    if (await showCustomConfirm(`Remover "${item.name}" da fila?`, 'Remover Item')) {
       window.api.cancelDownload(item.id);
     }
   };
   divActions.appendChild(btnCancel);
-
-  div.appendChild(divInfo);
-  div.appendChild(divActions);
-  return div;
 }
 
 function getStatusLabel(status) {
@@ -735,8 +973,8 @@ btnClearCompleted.addEventListener('click', () => {
   window.api.clearCompleted();
 });
 
-btnClearAll.addEventListener('click', () => {
-  if (confirm('Deseja realmente limpar toda a fila de downloads? Todos os processos ativos serão cancelados.')) {
+btnClearAll.addEventListener('click', async () => {
+  if (await showCustomConfirm('Deseja realmente limpar toda a fila de downloads? Todos os processos ativos serão cancelados.', 'Limpar Fila')) {
     window.api.clearQueue();
   }
 });
@@ -755,7 +993,7 @@ if (btnPauseAll) {
 
 if (btnRestartAll) {
   btnRestartAll.addEventListener('click', async () => {
-    if (confirm('Deseja realmente reiniciar toda a fila de downloads a partir do zero (0%)?')) {
+    if (await showCustomConfirm('Deseja reiniciar todos os downloads pendentes ou com falhas?', 'Reiniciar Pendentes')) {
       await window.api.restartQueue();
     }
   });

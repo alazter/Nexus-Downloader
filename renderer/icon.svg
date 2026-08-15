@@ -1,20 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
   <defs>
-    <linearGradient id="nexusGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f2fe"/>
-      <stop offset="50%" stop-color="#4facfe"/>
-      <stop offset="100%" stop-color="#7f00ff"/>
+    <linearGradient id="nexusEmblemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#00f2fe"/>
     </linearGradient>
-    <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="3" result="blur" />
+    <linearGradient id="nexusArrowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#00f2fe"/>
+    </linearGradient>
+    <filter id="nexusGlowFilter" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
       <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
   </defs>
-  <g filter="url(#cyanGlow)">
-    <path d="M 20 18 L 32 18 L 32 78 L 20 78 Z" fill="url(#nexusGradient)" />
-    <path d="M 32 18 L 60 55 L 60 18 L 74 18 L 74 52 L 86 52 L 67 82 L 48 52 L 60 52 Z" fill="url(#nexusGradient)" />
+
+  <g filter="url(#nexusGlowFilter)">
+    <!-- Contorno da Nuvem Neon -->
+    <path d="M 28 64 C 18 64 12 56 12 46 C 12 37 19 30 28 30 C 32 20 42 14 54 14 C 67 14 77 22 80 32 C 87 33 92 40 92 48 C 92 57 85 64 76 64 Z" 
+          fill="none" stroke="url(#nexusEmblemGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Emblema da Seta de Download -->
+    <path d="M 50 18 L 62 46 L 53 46 L 53 60 L 64 60 L 50 82 L 36 60 L 47 60 L 47 46 L 38 46 Z" 
+          fill="none" stroke="url(#nexusArrowGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

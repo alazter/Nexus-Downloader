@@ -59,13 +59,33 @@ let config = {
   downloadPath: path.join(app.getPath('downloads'), 'GoogleDriveDownloads'),
   maxConcurrent: 1,
   notificationsEnabled: true,
-  downloadMode: 'single' // 'single' (Conexao Unica - Seguro) ou 'multi' (Multiconexao)
+  downloadMode: 'single', // Legado
+  downloadModes: {
+    gdrive: 'single',
+    bunkr: 'multi',
+    mediafire: 'multi'
+  }
 };
+
+function getDownloadMode(service) {
+  if (config.downloadModes && config.downloadModes[service]) {
+    return config.downloadModes[service];
+  }
+  return config.downloadMode || 'single';
+}
 
 // Carregar configurações salvas
 if (fs.existsSync(CONFIG_FILE)) {
   try {
-    config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
+    const loaded = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    config = {
+      ...config,
+      ...loaded,
+      downloadModes: {
+        ...config.downloadModes,
+        ...(loaded.downloadModes || {})
+      }
+    };
   } catch (err) {
     console.error('Erro ao ler config.json:', err);
   }
@@ -141,10 +161,10 @@ loadQueue();
 // Criação da janela do Electron
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1060,
+    width: 1080,
     height: 720,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 980,
+    minHeight: 680,
     frame: true,
     titleBarStyle: 'default',
     webPreferences: {
@@ -545,7 +565,9 @@ function downloadBunkrFile(queueItem) {
         }
       };
 
-      const writeStream = fs.createWriteStream(localFilePath, { highWaterMark: 1024 * 1024 });
+      const service = (queueItem.id && queueItem.id.startsWith('mediafire_')) ? 'mediafire' : 'bunkr';
+      const mode = getDownloadMode(service);
+      const isMultiMode = mode === 'multi' && (queueItem.size > 5 * 1024 * 1024);
 
       let lastTime = Date.now();
       let lastBytes = 0;
@@ -569,17 +591,92 @@ function downloadBunkrFile(queueItem) {
         }
       }, 500);
 
+      // Multiconexão Otimizada (4 segmentos paralelos)
+      if (isMultiMode && queueItem.size > 0) {
+        console.log(`[HTTP Direct Worker] Iniciando multiconexão (4 conexões) para ${service}: "${queueItem.name}"`);
+        const numSegments = 4;
+        const totalSize = queueItem.size;
+        const segmentSize = Math.floor(totalSize / numSegments);
+
+        fs.writeFileSync(localFilePath, '');
+        fs.truncateSync(localFilePath, totalSize);
+
+        let segmentsProgress = new Array(numSegments).fill(0);
+        const segmentPromises = [];
+
+        for (let i = 0; i < numSegments; i++) {
+          const start = i * segmentSize;
+          const end = (i === numSegments - 1) ? totalSize - 1 : (start + segmentSize - 1);
+          const segmentIndex = i;
+
+          const p = new Promise((resSeg, rejSeg) => {
+            const segOptions = {
+              ...reqOptions,
+              headers: {
+                ...reqOptions.headers,
+                'Range': `bytes=${start}-${end}`
+              }
+            };
+
+            const segReq = transport.get(directUrl, segOptions, res => {
+              if (res.statusCode !== 200 && res.statusCode !== 206) {
+                return rejSeg(new Error(`Servidor retornou HTTP ${res.statusCode}`));
+              }
+
+              const writeStream = fs.createWriteStream(localFilePath, {
+                flags: 'r+',
+                start: start,
+                highWaterMark: 1024 * 1024
+              });
+
+              res.on('data', chunk => {
+                if (isAborted) return;
+                segmentsProgress[segmentIndex] += chunk.length;
+                queueItem.downloadedBytes = segmentsProgress.reduce((a, b) => a + b, 0);
+              });
+
+              res.pipe(writeStream);
+
+              writeStream.on('finish', () => {
+                writeStream.close();
+                resSeg();
+              });
+
+              writeStream.on('error', rejSeg);
+              res.on('error', rejSeg);
+            });
+
+            segReq.on('error', rejSeg);
+          });
+
+          segmentPromises.push(p);
+        }
+
+        try {
+          await Promise.all(segmentPromises);
+          clearInterval(progressInterval);
+          return resolve();
+        } catch (err) {
+          clearInterval(progressInterval);
+          return reject(err);
+        }
+      }
+
+      // Conexão Única (Single stream fallback)
+      console.log(`[HTTP Direct Worker] Iniciando conexão única para ${service}: "${queueItem.name}"`);
+      const writeStream = fs.createWriteStream(localFilePath, { highWaterMark: 1024 * 1024 });
+
       const req = transport.get(directUrl, reqOptions, res => {
         if (res.statusCode !== 200 && res.statusCode !== 206) {
           clearInterval(progressInterval);
           writeStream.destroy();
-          return reject(new Error(`Servidor Bunkr retornou HTTP ${res.statusCode}`));
+          return reject(new Error(`Servidor retornou HTTP ${res.statusCode}`));
         }
 
         if (res.headers['content-type'] && res.headers['content-type'].includes('text/html')) {
           clearInterval(progressInterval);
           writeStream.destroy();
-          return reject(new Error('Servidor Bunkr retornou HTML (desafio não resolvido)'));
+          return reject(new Error('Servidor retornou HTML (desafio não resolvido)'));
         }
 
         const totalLength = parseInt(res.headers['content-length'], 10);
@@ -609,27 +706,7 @@ function downloadBunkrFile(queueItem) {
           reject(err);
         });
 
-        res.on('error', err => {
-          clearInterval(progressInterval);
-          writeStream.destroy();
-          reject(err);
-        });
       });
-
-      req.on('error', err => {
-        clearInterval(progressInterval);
-        writeStream.destroy();
-        reject(err);
-      });
-
-      abortController.signal.addEventListener('abort', () => {
-        isAborted = true;
-        clearInterval(progressInterval);
-        try { req.destroy(); } catch (e) {}
-        try { writeStream.destroy(); } catch (e) {}
-        reject(new Error('Download cancelado pelo usuario'));
-      });
-
     } catch (err) {
       reject(err);
     }
@@ -698,7 +775,7 @@ function downloadFile(queueItem) {
     // Motor de Download (Conexão Única ou Multiconexão Otimizada)
     const downloadSegmented = async (fileId, totalSize) => {
       let numSegments = 1;
-      const isMultiMode = (config.downloadMode || 'single') === 'multi';
+      const isMultiMode = getDownloadMode('gdrive') === 'multi';
 
       if (isMultiMode && totalSize > 10 * 1024 * 1024) {
         numSegments = 4; // Máximo de 4 conexões paralelas para acelerar sem estourar rate-limit do Google
@@ -966,7 +1043,14 @@ ipcMain.handle('get-config', () => {
 });
 
 ipcMain.handle('set-config', (event, newConfig) => {
-  config = { ...config, ...newConfig };
+  config = {
+    ...config,
+    ...newConfig,
+    downloadModes: {
+      ...config.downloadModes,
+      ...(newConfig.downloadModes || {})
+    }
+  };
   saveConfig();
   return config;
 });
@@ -1054,9 +1138,10 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
     throw new Error('Por favor, forneça pelo menos um link válido.');
   }
 
-  const lines = inputLinks
-    .split(/\r?\n/)
-    .map(l => l.trim())
+  const normalizedInput = inputLinks.replace(/(https?:\/\/[^\s"'<>]+?)(https?:\/\/)/gi, '$1\n$2');
+  const extractedUrls = normalizedInput.match(/(https?:\/\/[^\s"'<>]+)/gi) || [];
+  const lines = extractedUrls
+    .map(l => l.trim().replace(/[,;]+$/, ''))
     .filter(l => l.length > 0);
 
   if (lines.length === 0) {
@@ -1258,16 +1343,13 @@ ipcMain.handle('resume-all-downloads', () => {
 });
 
 ipcMain.handle('restart-queue', () => {
-  for (const [fileId, active] of activeDownloads.entries()) {
-    active.abortController.abort();
-  }
-  activeDownloads.clear();
-
   downloadQueue.forEach(item => {
-    item.status = 'pending';
-    item.progress = 0;
-    item.downloadedBytes = 0;
-    item.error = null;
+    if (item.status !== 'completed') {
+      item.status = 'pending';
+      item.progress = 0;
+      item.downloadedBytes = 0;
+      item.error = null;
+    }
   });
 
   updateQueueUI();
