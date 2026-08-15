@@ -8,6 +8,7 @@ const url = require('url');
 const { google } = require('googleapis');
 const { isBunkrUrl, scanBunkrLink, resolveBunkrDirectUrl } = require('./bunkr-scanner');
 const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
+const { isTeraBoxUrl, scanTeraBoxLink, resolveTeraBoxDirectUrl } = require('./terabox-scanner');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -118,8 +119,11 @@ function saveQueue() {
       id: item.id,
       fileId: item.fileId || null,
       numericId: item.numericId || null,
-      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_'))),
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_'))),
       mediafireUrl: item.mediafireUrl || null,
+      teraboxUrl: item.teraboxUrl || null,
+      teraboxDlink: item.teraboxDlink || null,
+      teraboxCookie: item.teraboxCookie || null,
       name: item.name,
       size: item.size,
       relativePath: item.relativePath,
@@ -534,7 +538,13 @@ function downloadBunkrFile(queueItem) {
       let referer = 'https://bunkr.cr/';
       let cookieHeader = '';
 
-      if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
+      if (queueItem.id && queueItem.id.startsWith('terabox_')) {
+        console.log(`[TeraBox Worker] Resolvendo link direto de alta velocidade para "${queueItem.name}"...`);
+        const tbInfo = await resolveTeraBoxDirectUrl(queueItem.numericId, queueItem.teraboxUrl, queueItem.teraboxDlink, queueItem.teraboxCookie);
+        directUrl = tbInfo.directUrl;
+        referer = tbInfo.referer || 'https://www.terabox.com/';
+        cookieHeader = tbInfo.cookie || '';
+      } else if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
         console.log(`[MediaFire Worker] Resolvendo link direto CDN para "${queueItem.name}"...`);
         const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, queueItem.mediafireUrl);
         directUrl = mfInfo.directUrl;
@@ -565,7 +575,10 @@ function downloadBunkrFile(queueItem) {
         }
       };
 
-      const service = (queueItem.id && queueItem.id.startsWith('mediafire_')) ? 'mediafire' : 'bunkr';
+      let service = 'bunkr';
+      if (queueItem.id && queueItem.id.startsWith('terabox_')) service = 'terabox';
+      else if (queueItem.id && queueItem.id.startsWith('mediafire_')) service = 'mediafire';
+
       const mode = getDownloadMode(service);
       const isMultiMode = mode === 'multi' && (queueItem.size > 5 * 1024 * 1024);
 
@@ -714,7 +727,7 @@ function downloadBunkrFile(queueItem) {
 }
 
 function downloadFile(queueItem) {
-  if (queueItem.isHttpDirect || (queueItem.id && (queueItem.id.startsWith('mediafire_') || queueItem.id.startsWith('bunkr_')))) {
+  if (queueItem.isHttpDirect || (queueItem.id && (queueItem.id.startsWith('terabox_') || queueItem.id.startsWith('mediafire_') || queueItem.id.startsWith('bunkr_')))) {
     return downloadBunkrFile(queueItem);
   }
 
