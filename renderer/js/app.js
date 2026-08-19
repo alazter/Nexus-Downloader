@@ -167,17 +167,38 @@ function formatETA(seconds) {
 navItems.forEach(item => {
   item.addEventListener('click', () => {
     const tabId = item.getAttribute('data-tab');
+    console.log('[Tab Switch] Switching to tab:', tabId);
     
     navItems.forEach(nav => nav.classList.remove('active'));
-    tabContents.forEach(tab => tab.classList.remove('active'));
-    
-    document.querySelectorAll('.top-tab-content').forEach(el => el.style.display = 'none');
+
+    document.querySelectorAll('.tab-content').forEach(tab => {
+      tab.classList.remove('active');
+      tab.style.display = 'none';
+    });
+
+    document.querySelectorAll('.top-tab-content').forEach(el => {
+      el.classList.remove('active');
+      el.style.display = 'none';
+    });
 
     item.classList.add('active');
-    document.getElementById(`${tabId}-tab`).classList.add('active');
+
+    const targetTab = document.getElementById(`${tabId}-tab`);
+    if (targetTab) {
+      targetTab.classList.add('active');
+      targetTab.style.display = 'flex';
+      console.log(`[Tab Switch] ${tabId}-tab rect:`, targetTab.getBoundingClientRect());
+    }
 
     const topContent = document.getElementById(`${tabId}-top-content`);
-    if (topContent) topContent.style.display = 'block';
+    if (topContent) {
+      topContent.classList.add('active');
+      topContent.style.display = 'block';
+    }
+
+    if (tabId === 'torbox') {
+      loadTorboxDownloads();
+    }
   });
 });
 
@@ -189,33 +210,107 @@ function switchTab(tabId) {
 }
 
 // ==========================================
-// Status de Autenticação Google
+// Status de Autenticação & Rodapé Duplo
 // ==========================================
+let currentFooterServiceIndex = 0;
+let currentDisplayedService = 'gdrive';
+let footerCycleInterval = null;
+
+async function updateFooterStatus() {
+  try {
+    const auth = await window.api.checkAuth();
+    const config = await window.api.getConfig();
+
+    const gdriveConnected = auth && auth.connected;
+    const torboxConnected = config && config.torboxApiKey && config.torboxEnabled;
+
+    const container = document.getElementById('footer-status-container') || document.querySelector('.auth-status-container');
+    const indicator = document.getElementById('footer-status-indicator') || document.getElementById('auth-indicator');
+    const textSpan = document.getElementById('footer-status-text') || document.getElementById('auth-status-text');
+
+    if (!container || !indicator || !textSpan) return;
+
+    let targetService = 'gdrive';
+    let isConnected = false;
+    let label = '';
+
+    if (gdriveConnected && torboxConnected) {
+      // Cenário 1: Ambos conectados -> Alterna a cada 4s
+      targetService = currentFooterServiceIndex % 2 === 0 ? 'gdrive' : 'torbox';
+      isConnected = true;
+      label = targetService === 'gdrive' ? 'Google Drive: Conectado' : 'Torbox API: Conectada';
+      currentFooterServiceIndex++;
+    } else if (!gdriveConnected && !torboxConnected) {
+      // Cenário 3: Ambos desconectados -> Alterna a cada 4s
+      targetService = currentFooterServiceIndex % 2 === 0 ? 'gdrive' : 'torbox';
+      isConnected = false;
+      label = targetService === 'gdrive' ? 'Google Drive: Desconectado' : 'Torbox API: Desconectada';
+      currentFooterServiceIndex++;
+    } else if (!gdriveConnected && torboxConnected) {
+      // Cenário 2A: Apenas Google Drive desconectado -> Trava no Google Drive
+      targetService = 'gdrive';
+      isConnected = false;
+      label = 'Google Drive: Desconectado';
+    } else {
+      // Cenário 2B: Apenas Torbox desconectado -> Trava no Torbox
+      targetService = 'torbox';
+      isConnected = false;
+      label = 'Torbox API: Desconectada';
+    }
+
+    currentDisplayedService = targetService;
+
+    // Transição suave de opacidade (fade-out / fade-in)
+    container.classList.add('fade-out');
+    setTimeout(() => {
+      indicator.className = `status-indicator ${isConnected ? 'connected' : 'disconnected'}`;
+      textSpan.textContent = label;
+      applyFooterStatusPosition();
+      container.classList.remove('fade-out');
+    }, 300);
+
+  } catch (err) {
+    console.error('Erro ao atualizar status do rodapé:', err);
+  }
+}
+
+function startFooterStatusCycle() {
+  if (footerCycleInterval) clearInterval(footerCycleInterval);
+  updateFooterStatus();
+  footerCycleInterval = setInterval(updateFooterStatus, 4000);
+}
+
 async function checkAuthStatus() {
   try {
     const auth = await window.api.checkAuth();
     
     if (auth.connected) {
-      // Estado Conectado
-      authIndicator.className = 'status-indicator connected';
-      authStatusText.textContent = 'Conta Google Conectada';
-      
       settingsAuthDisconnected.style.display = 'none';
       settingsAuthConnected.style.display = 'block';
     } else {
-      // Estado Desconectado
-      authIndicator.className = 'status-indicator disconnected';
-      authStatusText.textContent = 'Conta Desconectada';
-      
       settingsAuthDisconnected.style.display = 'block';
       settingsAuthConnected.style.display = 'none';
-      
-      // Mantém o botão ativo para podermos dar feedback amigável se clicado sem credenciais
       btnGoogleLogin.disabled = false;
     }
+    updateFooterStatus();
   } catch (err) {
     console.error('Erro ao verificar status de autenticação:', err);
   }
+}
+
+// Evento de clique no status do rodapé -> Navega diretamente até o card correspondente em Ajustes
+const footerStatusContainer = document.getElementById('footer-status-container') || document.querySelector('.auth-status-container');
+if (footerStatusContainer) {
+  footerStatusContainer.addEventListener('click', () => {
+    switchTab('settings');
+    setTimeout(() => {
+      const targetId = currentDisplayedService === 'torbox' ? 'card-torbox-settings' : 'card-gdrive-settings';
+      const targetCard = document.getElementById(targetId);
+      if (targetCard) {
+        targetCard.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 150);
+  });
 }
 
 const btnCheckVersion = document.getElementById('btn-check-version');
@@ -418,7 +513,114 @@ async function loadConfig() {
   if (settingDownloadMode) {
     settingDownloadMode.value = config.downloadMode || 'single';
   }
+
+  const modes = config.downloadModes || {};
+  const elGdrive = document.getElementById('setting-mode-gdrive');
+  const elBunkr = document.getElementById('setting-mode-bunkr');
+  const elMediaFire = document.getElementById('setting-mode-mediafire');
+  const elTeraBox = document.getElementById('setting-mode-terabox');
+  const elOneDrive = document.getElementById('setting-mode-onedrive');
+  const elTorbox = document.getElementById('setting-mode-torbox');
+
+  if (elGdrive) elGdrive.value = modes.gdrive || 'single';
+  if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
+  if (elMediaFire) elMediaFire.value = modes.mediafire || 'multi';
+  if (elTeraBox) elTeraBox.value = modes.terabox || 'multi';
+  if (elOneDrive) elOneDrive.value = modes.onedrive || 'single';
+  if (elTorbox) elTorbox.value = modes.torbox || 'multi';
+
+  const settingTorboxKey = document.getElementById('setting-torbox-api-key');
+  const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
+  if (settingTorboxKey) settingTorboxKey.value = config.torboxApiKey || '';
+  if (settingTorboxEnabled) settingTorboxEnabled.checked = !!config.torboxEnabled;
+
   settingNotifications.checked = config.notificationsEnabled;
+}
+
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox'].forEach(service => {
+  const el = document.getElementById(`setting-mode-${service}`);
+  if (el) {
+    el.addEventListener('change', async () => {
+      const config = await window.api.getConfig();
+      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi' };
+      modes[service] = el.value;
+      await window.api.setConfig({ downloadModes: modes });
+    });
+  }
+});
+
+const settingTorboxKey = document.getElementById('setting-torbox-api-key');
+const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
+const btnTestTorboxKey = document.getElementById('btn-test-torbox-key');
+const torboxKeyStatus = document.getElementById('torbox-key-status');
+const btnToggleTorboxKey = document.getElementById('btn-toggle-torbox-key');
+const iconEyeShow = document.getElementById('icon-eye-show');
+const iconEyeHide = document.getElementById('icon-eye-hide');
+
+if (btnToggleTorboxKey && settingTorboxKey) {
+  btnToggleTorboxKey.addEventListener('click', () => {
+    const isPassword = settingTorboxKey.type === 'password';
+    settingTorboxKey.type = isPassword ? 'text' : 'password';
+    if (iconEyeShow && iconEyeHide) {
+      iconEyeShow.style.display = isPassword ? 'none' : 'block';
+      iconEyeHide.style.display = isPassword ? 'block' : 'none';
+    }
+  });
+}
+
+if (settingTorboxKey) {
+  settingTorboxKey.addEventListener('change', async () => {
+    await window.api.setConfig({ torboxApiKey: settingTorboxKey.value.trim() });
+  });
+}
+
+if (settingTorboxEnabled) {
+  settingTorboxEnabled.addEventListener('change', async () => {
+    await window.api.setConfig({ torboxEnabled: settingTorboxEnabled.checked });
+  });
+}
+
+if (btnTestTorboxKey) {
+  btnTestTorboxKey.addEventListener('click', async () => {
+    const key = settingTorboxKey ? settingTorboxKey.value.trim() : '';
+    if (!key) {
+      if (torboxKeyStatus) {
+        torboxKeyStatus.style.display = 'block';
+        torboxKeyStatus.style.color = '#ef4444';
+        torboxKeyStatus.textContent = 'Por favor, insira uma API Key antes de testar.';
+      }
+      return;
+    }
+
+    btnTestTorboxKey.disabled = true;
+    btnTestTorboxKey.textContent = 'Testando...';
+    if (torboxKeyStatus) torboxKeyStatus.style.display = 'none';
+
+    try {
+      const res = await window.api.testTorboxApiKey(key);
+      if (torboxKeyStatus) {
+        torboxKeyStatus.style.display = 'block';
+        if (res.success) {
+          torboxKeyStatus.style.color = '#10b981';
+          torboxKeyStatus.textContent = '✓ ' + res.message;
+          await window.api.setConfig({ torboxApiKey: key, torboxEnabled: true });
+          if (settingTorboxEnabled) settingTorboxEnabled.checked = true;
+        } else {
+          torboxKeyStatus.style.color = '#ef4444';
+          torboxKeyStatus.textContent = '✕ ' + (res.message || 'Falha na conexão.');
+        }
+      }
+    } catch (e) {
+      if (torboxKeyStatus) {
+        torboxKeyStatus.style.display = 'block';
+        torboxKeyStatus.style.color = '#ef4444';
+        torboxKeyStatus.textContent = '✕ Erro ao validar a chave.';
+      }
+    } finally {
+      btnTestTorboxKey.disabled = false;
+      btnTestTorboxKey.textContent = 'Validar Conexão';
+    }
+  });
 }
 
 btnChangePath.addEventListener('click', async () => {
@@ -503,7 +705,7 @@ if (inputDriveLink) {
 btnScan.addEventListener('click', async () => {
   const url = inputDriveLink.value.trim();
   if (!url) {
-    await showCustomAlert('Por favor, cole um link do Google Drive ou Bunkr para escanear.', 'Link Inválido');
+    await showCustomAlert('Por favor, cole um link do Google Drive, Bunkr, MediaFire, TeraBox, Microsoft OneDrive ou Torbox (Torrents/Debrid) para escanear.', 'Link Inválido');
     return;
   }
 
@@ -512,24 +714,27 @@ btnScan.addEventListener('click', async () => {
   scanSpinner.style.display = 'block';
   btnScan.querySelector('.btn-text').textContent = 'Escaneando...';
   
-  resultsContainer.style.display = 'none';
   scanEmptyState.style.display = 'none';
-  resultsList.innerHTML = '';
-  scannedFiles = [];
 
   try {
     const files = await window.api.scanLink(url);
     if (!files || files.length === 0) {
       await showCustomAlert('Nenhum arquivo encontrado no link fornecido.', 'Escaneamento Concluído');
-      scanEmptyState.style.display = 'flex';
+      if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
       return;
     }
 
-    scannedFiles = files;
+    files.forEach(nf => {
+      if (!scannedFiles.some(existing => existing.id === nf.id)) {
+        scannedFiles.push(nf);
+      }
+    });
+
+    if (inputDriveLink) inputDriveLink.value = '';
     renderResults();
   } catch (err) {
     await showCustomAlert('Erro ao escanear link: ' + err.message, 'Erro no Escaneamento');
-    scanEmptyState.style.display = 'flex';
+    if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
   } finally {
     btnScan.disabled = false;
     scanSpinner.style.display = 'none';
@@ -537,125 +742,449 @@ btnScan.addEventListener('click', async () => {
   }
 });
 
+const btnClearScanned = document.getElementById('btn-clear-scanned');
+if (btnClearScanned) {
+  btnClearScanned.addEventListener('click', () => {
+    scannedFiles = [];
+    if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
+    if (resultsList) resultsList.innerHTML = '';
+    resultsContainer.style.display = 'none';
+    if (btnStartDownloadMain) btnStartDownloadMain.style.display = 'none';
+    scanEmptyState.style.display = 'flex';
+  });
+}
+
+const resultsGroupsContainer = document.getElementById('results-groups-container');
+const resultsTableWrapperSingle = document.getElementById('results-table-wrapper-single');
+
+function updateGroupCheckboxState(groupCb, tbody) {
+  const itemCbs = tbody.querySelectorAll('.file-checkbox');
+  let checkedCount = 0;
+  itemCbs.forEach(c => { if (c.checked) checkedCount++; });
+
+  if (checkedCount === 0) {
+    groupCb.checked = false;
+    groupCb.indeterminate = false;
+  } else if (checkedCount === itemCbs.length) {
+    groupCb.checked = true;
+    groupCb.indeterminate = false;
+  } else {
+    groupCb.checked = false;
+    groupCb.indeterminate = true;
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function renderResults() {
-  resultsList.innerHTML = '';
+  if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
+  if (resultsList) resultsList.innerHTML = '';
   resultsContainer.style.display = 'flex';
   scanEmptyState.style.display = 'none';
   
   selectAllFiles.checked = true;
 
-  scannedFiles.forEach((file, index) => {
-    const row = document.createElement('tr');
-    
-    // Checkbox
-    const tdCheck = document.createElement('td');
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = true;
-    checkbox.dataset.index = index;
-    checkbox.addEventListener('change', updateSelectionSummary);
-    tdCheck.appendChild(checkbox);
-    
-    // Nome do arquivo
-    const tdName = document.createElement('td');
-    tdName.className = 'text-truncate';
-    tdName.textContent = file.name;
-    tdName.title = file.name;
+  if (!scannedFiles || scannedFiles.length === 0) {
+    updateSelectionSummary();
+    return;
+  }
 
-    // Caminho relativo
-    const tdPath = document.createElement('td');
-    tdPath.className = 'text-truncate';
-    tdPath.textContent = file.relativePath || file.name;
-    tdPath.title = file.relativePath || file.name;
-    
-    // Tamanho do arquivo
-    const tdSize = document.createElement('td');
-    tdSize.textContent = formatBytes(file.size);
-    
-    row.appendChild(tdCheck);
-    row.appendChild(tdName);
-    row.appendChild(tdPath);
-    row.appendChild(tdSize);
-    
-    resultsList.appendChild(row);
+  // Agrupa arquivos por caminho de subpasta/diretório
+  const groupsMap = new Map();
+  scannedFiles.forEach((file, index) => {
+    let groupKey = file.folderName || 'Downloads';
+    if (!file.folderName && file.relativePath && file.relativePath.includes('/')) {
+      const parts = file.relativePath.split('/').filter(Boolean);
+      const cleanParts = parts.filter((part, idx) => idx === 0 || part !== parts[idx - 1]);
+      groupKey = cleanParts.length > 1 ? cleanParts.slice(0, -1).join(' / ') : cleanParts[0];
+    }
+
+    if (!groupsMap.has(groupKey)) {
+      groupsMap.set(groupKey, []);
+    }
+    groupsMap.get(groupKey).push({ file, index });
   });
-  
+
+  const isMultiGroup = groupsMap.size >= 1;
+
+  if (isMultiGroup && resultsGroupsContainer) {
+    if (resultsTableWrapperSingle) resultsTableWrapperSingle.style.display = 'none';
+    resultsGroupsContainer.style.display = 'flex';
+
+    groupsMap.forEach((groupItems, groupName) => {
+      const totalGroupSize = groupItems.reduce((acc, item) => acc + item.file.size, 0);
+
+      const card = document.createElement('div');
+      card.className = 'folder-group-card collapsed';
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'folder-group-header';
+
+      const titleGroup = document.createElement('div');
+      titleGroup.className = 'folder-group-title-group';
+
+      const groupCb = document.createElement('input');
+      groupCb.type = 'checkbox';
+      groupCb.className = 'folder-group-checkbox';
+      groupCb.checked = true;
+
+      const folderIcon = document.createElement('div');
+      folderIcon.className = 'queue-folder-icon';
+      folderIcon.style.marginRight = '2px';
+      folderIcon.innerHTML = `
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      `;
+
+      const sampleFile = groupItems[0].file;
+      const serviceTag = getServiceTag(sampleFile);
+      const folderTag = getFolderTypeTag(groupItems.map(gi => gi.file), groupName);
+
+      const serviceSpan = document.createElement('span');
+      serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;`;
+      serviceSpan.textContent = serviceTag.text;
+
+      const folderTypeSpan = document.createElement('span');
+      folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
+      folderTypeSpan.textContent = folderTag.text;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'folder-group-name';
+      nameSpan.textContent = groupName;
+
+      titleGroup.appendChild(groupCb);
+      titleGroup.appendChild(folderIcon);
+      titleGroup.appendChild(serviceSpan);
+      titleGroup.appendChild(folderTypeSpan);
+      titleGroup.appendChild(nameSpan);
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'folder-group-meta';
+
+      const badge = document.createElement('span');
+      badge.className = 'badge-cyan folder-group-badge';
+      badge.textContent = `${groupItems.length} arquivo(s) • ${formatBytes(totalGroupSize)}`;
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'folder-group-toggle';
+      toggleBtn.title = 'Expandir / Recolher';
+      toggleBtn.innerHTML = `
+        <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      `;
+
+      metaDiv.appendChild(badge);
+      metaDiv.appendChild(toggleBtn);
+
+      header.appendChild(titleGroup);
+      header.appendChild(metaDiv);
+
+      // Body (Tabela)
+      const body = document.createElement('div');
+      body.className = 'folder-group-body';
+
+      const tableWrapper = document.createElement('div');
+      tableWrapper.className = 'results-table-wrapper';
+
+      const table = document.createElement('table');
+      table.className = 'results-table';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th width="40"></th>
+            <th>Nome do Arquivo</th>
+            <th>Caminho Relativo</th>
+            <th width="120">Tamanho</th>
+          </tr>
+        </thead>
+      `;
+
+      const tbody = document.createElement('tbody');
+
+      groupItems.forEach(({ file, index }) => {
+        const row = document.createElement('tr');
+
+        const tdCheck = document.createElement('td');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.index = index;
+        cb.className = 'file-checkbox';
+        cb.addEventListener('change', () => {
+          updateGroupCheckboxState(groupCb, tbody);
+          updateSelectionSummary();
+        });
+        tdCheck.appendChild(cb);
+
+        const tdName = document.createElement('td');
+        tdName.className = 'text-truncate';
+        const sTag = getServiceTag(file);
+        const fTag = getFileTypeTag(file);
+        tdName.innerHTML = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${sTag.text}</span><span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+        tdName.title = file.name;
+
+        const tdPath = document.createElement('td');
+        tdPath.className = 'text-truncate';
+        tdPath.textContent = file.relativePath || file.name;
+        tdPath.title = file.relativePath || file.name;
+
+        const tdSize = document.createElement('td');
+        tdSize.textContent = formatBytes(file.size);
+
+        row.appendChild(tdCheck);
+        row.appendChild(tdName);
+        row.appendChild(tdPath);
+        row.appendChild(tdSize);
+
+        tbody.appendChild(row);
+      });
+
+      table.appendChild(tbody);
+      tableWrapper.appendChild(table);
+      body.appendChild(tableWrapper);
+
+      card.appendChild(header);
+      card.appendChild(body);
+
+      // Eventos
+      header.addEventListener('click', (e) => {
+        if (e.target === groupCb || e.target.type === 'checkbox') return;
+        card.classList.toggle('collapsed');
+      });
+
+      groupCb.addEventListener('change', () => {
+        const itemCbs = tbody.querySelectorAll('.file-checkbox');
+        itemCbs.forEach(c => c.checked = groupCb.checked);
+        groupCb.indeterminate = false;
+        updateSelectionSummary();
+      });
+
+      resultsGroupsContainer.appendChild(card);
+    });
+  } else {
+    // Exibição simples
+    if (resultsGroupsContainer) resultsGroupsContainer.style.display = 'none';
+    if (resultsTableWrapperSingle) resultsTableWrapperSingle.style.display = 'block';
+
+    scannedFiles.forEach((file, index) => {
+      const row = document.createElement('tr');
+      
+      const tdCheck = document.createElement('td');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      checkbox.dataset.index = index;
+      checkbox.className = 'file-checkbox';
+      checkbox.addEventListener('change', updateSelectionSummary);
+      tdCheck.appendChild(checkbox);
+      
+      const tdName = document.createElement('td');
+      tdName.className = 'text-truncate';
+      const sTag = getServiceTag(file);
+      const fTag = getFileTypeTag(file);
+      tdName.innerHTML = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${sTag.text}</span><span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+      tdName.title = file.name;
+      
+      const tdPath = document.createElement('td');
+      tdPath.className = 'text-truncate';
+      tdPath.textContent = file.relativePath || file.name;
+      tdPath.title = file.relativePath || file.name;
+      
+      const tdSize = document.createElement('td');
+      tdSize.textContent = formatBytes(file.size);
+      
+      row.appendChild(tdCheck);
+      row.appendChild(tdName);
+      row.appendChild(tdPath);
+      row.appendChild(tdSize);
+      
+      resultsList.appendChild(row);
+    });
+  }
+
   updateSelectionSummary();
+  if (scannedFiles.length > 0) {
+    btnAddSelected.style.display = 'inline-flex';
+  }
 }
 
 selectAllFiles.addEventListener('change', () => {
-  const checkboxes = resultsList.querySelectorAll('input[type="checkbox"]');
-  checkboxes.forEach(cb => {
+  const allFileCbs = document.querySelectorAll('.file-checkbox');
+  const allGroupCbs = document.querySelectorAll('.folder-group-checkbox');
+  
+  allFileCbs.forEach(cb => cb.checked = selectAllFiles.checked);
+  allGroupCbs.forEach(cb => {
     cb.checked = selectAllFiles.checked;
+    cb.indeterminate = false;
   });
+
   updateSelectionSummary();
 });
 
 function updateSelectionSummary() {
-  const checkboxes = resultsList.querySelectorAll('input[type="checkbox"]');
+  const allFileCbs = document.querySelectorAll('.file-checkbox');
   let selectedCount = 0;
   let selectedSize = 0;
   
-  checkboxes.forEach(cb => {
+  allFileCbs.forEach(cb => {
     if (cb.checked) {
       selectedCount++;
       const index = parseInt(cb.dataset.index);
-      selectedSize += scannedFiles[index].size;
+      if (scannedFiles[index]) {
+        selectedSize += scannedFiles[index].size;
+      }
     }
   });
 
   selectedCountText.textContent = `${selectedCount} arquivos selecionados (${formatBytes(selectedSize)})`;
   btnAddSelected.disabled = selectedCount === 0;
 
-  // Atualiza checkbox mestre
-  if (selectedCount === 0) {
-    selectAllFiles.checked = false;
-    selectAllFiles.indeterminate = false;
-  } else if (selectedCount === checkboxes.length) {
-    selectAllFiles.checked = true;
-    selectAllFiles.indeterminate = false;
-  } else {
-    selectAllFiles.checked = false;
-    selectAllFiles.indeterminate = true;
+  if (allFileCbs.length > 0) {
+    if (selectedCount === 0) {
+      selectAllFiles.checked = false;
+      selectAllFiles.indeterminate = false;
+    } else if (selectedCount === allFileCbs.length) {
+      selectAllFiles.checked = true;
+      selectAllFiles.indeterminate = false;
+    } else {
+      selectAllFiles.checked = false;
+      selectAllFiles.indeterminate = true;
+    }
   }
 }
 
 btnAddSelected.addEventListener('click', async () => {
-  const checkboxes = resultsList.querySelectorAll('input[type="checkbox"]');
+  const allFileCbs = document.querySelectorAll('.file-checkbox');
   const selectedFiles = [];
   
-  checkboxes.forEach(cb => {
+  allFileCbs.forEach(cb => {
     if (cb.checked) {
       const index = parseInt(cb.dataset.index);
-      selectedFiles.push(scannedFiles[index]);
+      if (scannedFiles[index]) {
+        selectedFiles.push(scannedFiles[index]);
+      }
     }
   });
 
   if (selectedFiles.length > 0) {
     const queueLength = await window.api.addToQueue(selectedFiles);
     
+    // Alterna automaticamente para a aba Fila de Downloads sem aviso na tela
+    switchTab('queue');
+    
     // Reset scanner
     inputDriveLink.value = '';
     resultsContainer.style.display = 'none';
     scanEmptyState.style.display = 'flex';
-    resultsList.innerHTML = '';
+    btnAddSelected.style.display = 'none';
+    if (resultsList) resultsList.innerHTML = '';
+    if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
     scannedFiles = [];
-    
-    // Redireciona para fila
-    switchTab('queue');
   }
 });
 
 // ==========================================
 // Monitor e Gerenciador da Fila
 // ==========================================
-window.api.onQueueUpdated((queue) => {
-  renderQueue(queue);
-});
+if (window.api && window.api.onQueueUpdated) {
+  window.api.onQueueUpdated((queue) => {
+    renderQueue(queue);
+  });
+}
 
 // Estado local de pastas recolhidas/expandidas no accordion da fila
 const collapsedFolders = new Set();
 const expandedFolders = new Set();
+const selectedQueueItemIds = new Set();
+
+function getFileTypeTag(item) {
+  const name = (item && item.name ? item.name : '').toLowerCase();
+
+  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp'];
+  if (videoExts.some(ext => name.endsWith(ext))) {
+    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
+
+  if (name.endsWith('.zip') || name.endsWith('.7z') || name.endsWith('.tar') || name.endsWith('.gz') || name.endsWith('.bz2')) {
+    return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
+  }
+
+  if (name.endsWith('.rar')) {
+    return { text: '.Rar', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+  }
+
+  if (name.endsWith('.torrent') || (item && item.torboxType === 'torrent' && !name.includes('.'))) {
+    return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+  }
+
+  return { text: 'Outros', bg: 'rgba(100, 116, 139, 0.18)', color: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' };
+}
+
+function getFolderTypeTag(folderItems, folderName) {
+  if (folderItems.some(i => i.torboxType === 'torrent' || (i.id && i.id.startsWith('torbox_torrent_')))) {
+    return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+  }
+  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts'];
+  if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext)))) {
+    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
+  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.zip') || (i.name || '').toLowerCase().endsWith('.7z'))) {
+    return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
+  }
+  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.rar'))) {
+    return { text: '.Rar', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+  }
+  return { text: 'Outros', bg: 'rgba(100, 116, 139, 0.18)', color: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' };
+}
+
+function getServiceTag(file) {
+  const id = (file && file.id) || '';
+  const url = (file && (file.downloadUrl || file.directUrl || '')) || '';
+
+  if (id.startsWith('torbox_') || id.startsWith('gofile_') || id.startsWith('megaup_') || id.startsWith('turbocr_') || id.startsWith('generic_') || id.startsWith('scraper_') || (file && file.torboxType) || url.includes('gofile') || url.includes('megaup') || url.includes('turbo.cr') || url.includes('tb-cdn')) {
+    return { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+  }
+  if (id.startsWith('terabox_')) {
+    return { text: 'TeraBox', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+  }
+  if (id.startsWith('onedrive_') || (file && file.oneDriveUrl && file.oneDriveUrl.includes('sharepoint'))) {
+    return { text: 'Microsoft OneDrive', bg: 'rgba(255, 255, 255, 0.18)', color: '#ffffff', border: 'rgba(255, 255, 255, 0.4)' };
+  }
+  if (id.startsWith('mediafire_')) {
+    return { text: 'MediaFire', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
+  if (id.startsWith('bunkr_')) {
+    return { text: 'Bunkr', bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.4)' };
+  }
+  return { text: 'Google Drive', bg: 'rgba(34, 197, 94, 0.18)', color: '#4ade80', border: 'rgba(34, 197, 94, 0.4)' };
+}
+
+function getItemSortRank(item) {
+  if (!item) return 4;
+  if (item.status === 'downloading') return 1;
+  if (item.status === 'pending') return 2;
+  if (item.status === 'paused') return 3;
+  return 4;
+}
+
+function getFolderSortRank(folderItems) {
+  if (!folderItems || folderItems.length === 0) return 4;
+  if (folderItems.some(i => i.status === 'downloading')) return 1;
+  if (folderItems.some(i => i.status === 'pending')) return 2;
+  if (folderItems.some(i => i.status === 'paused')) return 3;
+  return 4;
+}
 
 function renderQueue(queue) {
   // 1. Filtrar downloads ativos
@@ -679,13 +1208,21 @@ function renderQueue(queue) {
       activeDownloadPanel.style.display = 'flex';
     }
     
-    if (activeFilename.textContent !== active.name) {
-      activeFilename.textContent = active.name;
-      activeFilename.title = active.name;
+    if (activeDownloadPanel.dataset.activeItemName !== active.name) {
+      activeDownloadPanel.dataset.activeItemName = active.name;
+      const pureFileName = (active.name || '').includes('/') ? active.name.split('/').pop() : active.name;
+      const tag = getFileTypeTag(active);
+      const spanTag = `<span style="background: ${tag.bg}; color: ${tag.color}; border: 1px solid ${tag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${tag.text}</span>`;
+      activeFilename.innerHTML = `${spanTag}${escapeHtml(pureFileName)}`;
+      activeFilename.title = pureFileName;
     }
-    activeProgressText.textContent = `${active.progress}%`;
-    activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
-    activeEtaText.textContent = formatETA(active.eta);
+    if (active.cloudMessage) {
+      activeSpeedText.textContent = active.cloudMessage;
+      activeEtaText.textContent = 'Aguardando cache';
+    } else {
+      activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
+      activeEtaText.textContent = formatETA(active.eta);
+    }
     activeBytesText.textContent = `${formatBytes(active.downloadedBytes)} / ${formatBytes(active.size)}`;
     activeProgressBar.style.width = `${active.progress}%`;
 
@@ -738,8 +1275,17 @@ function renderQueue(queue) {
     }
   });
 
-  // Processa e atualiza in-place cada card de pasta
-  folderMap.forEach((folderItems, folderName) => {
+  // Ordena os grupos de pasta pela ordem de prioridade: 1º Baixando, 2º Aguardando Início (Pendente), 3º Pausado, 4º Concluído/Falhado
+  const sortedFolderEntries = Array.from(folderMap.entries()).sort((a, b) => {
+    const rankA = getFolderSortRank(a[1]);
+    const rankB = getFolderSortRank(b[1]);
+    if (rankA !== rankB) return rankA - rankB;
+    return a[0].localeCompare(b[0]);
+  });
+
+  // Processa e atualiza in-place cada card de pasta na ordem de prioridade
+  sortedFolderEntries.forEach(([folderName, folderItems]) => {
+    folderItems.sort((a, b) => getItemSortRank(a) - getItemSortRank(b));
     const totalFiles = folderItems.length;
     const completedFiles = folderItems.filter(f => f.status === 'completed').length;
     const folderTotalBytes = folderItems.reduce((sum, f) => sum + (f.size || 0), 0);
@@ -776,51 +1322,68 @@ function renderQueue(queue) {
 
       const titleRow = document.createElement('div');
       titleRow.className = 'queue-folder-title-row';
-
+      const sampleFile = folderItems[0];
+      const serviceTag = getServiceTag(sampleFile);
+      const folderTag = getFolderTypeTag(folderItems, folderName);
       const titleGroup = document.createElement('div');
       titleGroup.className = 'queue-folder-title-group';
       titleGroup.innerHTML = `
+        <input type="checkbox" class="queue-folder-checkbox" style="margin-right: 8px; cursor: pointer;" title="Selecionar todos da pasta">
         <div class="queue-folder-icon">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
         </div>
+        <span style="background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;">${serviceTag.text}</span>
+        <span style="background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${folderTag.text}</span>
         <span class="queue-folder-name" title="${folderName}">${folderName}</span>
       `;
+
+      const folderChk = titleGroup.querySelector('.queue-folder-checkbox');
+      if (folderChk) {
+        folderChk.onclick = (e) => {
+          e.stopPropagation();
+          const isChecked = folderChk.checked;
+          folderItems.forEach(f => {
+            if (isChecked) selectedQueueItemIds.add(f.id);
+            else selectedQueueItemIds.delete(f.id);
+          });
+          const itemCbs = folderCard.querySelectorAll('.queue-item-checkbox');
+          itemCbs.forEach(cb => cb.checked = isChecked);
+        };
+      }
 
       const badgeGroup = document.createElement('div');
       badgeGroup.className = 'queue-folder-badge-group';
       badgeGroup.innerHTML = `
-        <span class="queue-folder-badge"></span>
-        <span class="queue-folder-percent"></span>
-        <div class="queue-folder-toggle-icon">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
+        <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
+        <span class="queue-folder-percent">${folderPercent}%</span>
+        <svg class="queue-folder-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
       `;
 
       titleRow.appendChild(titleGroup);
       titleRow.appendChild(badgeGroup);
 
-      const progressBg = document.createElement('div');
-      progressBg.className = 'queue-folder-progress-bg';
-      const progressFill = document.createElement('div');
-      progressFill.className = 'queue-folder-progress-fill';
-      progressBg.appendChild(progressFill);
+      const progressTrack = document.createElement('div');
+      progressTrack.className = 'queue-folder-progress-track';
+      progressTrack.innerHTML = `<div class="queue-folder-progress-fill" style="width: ${folderPercent}%;"></div>`;
 
       folderHeader.appendChild(titleRow);
-      folderHeader.appendChild(progressBg);
+      folderHeader.appendChild(progressTrack);
 
-      folderHeader.onclick = () => {
-        if (folderCard.classList.contains('collapsed')) {
-          collapsedFolders.delete(folderName);
-          expandedFolders.add(folderName);
-          folderCard.classList.remove('collapsed');
-        } else {
+      folderHeader.onclick = (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+        const willBeCollapsed = !folderCard.classList.contains('collapsed');
+        if (willBeCollapsed) {
           expandedFolders.delete(folderName);
           collapsedFolders.add(folderName);
           folderCard.classList.add('collapsed');
+        } else {
+          collapsedFolders.delete(folderName);
+          expandedFolders.add(folderName);
+          folderCard.classList.remove('collapsed');
         }
       };
 
@@ -829,8 +1392,10 @@ function renderQueue(queue) {
 
       folderCard.appendChild(folderHeader);
       folderCard.appendChild(folderItemsContainer);
-      queueItemsList.appendChild(folderCard);
     }
+
+    // Reposiciona obrigatoriamente no DOM para manter a ordem estrita de prioridade
+    queueItemsList.appendChild(folderCard);
 
     // Atualiza textos e progresso do cabeçalho sem recriar o DOM (sem piscar)
     const badgeSpan = folderCard.querySelector('.queue-folder-badge');
@@ -853,20 +1418,21 @@ function renderQueue(queue) {
       }
     });
 
-    // Atualiza ou insere itens da pasta
+    // Atualiza ou insere itens da pasta na ordem exata de prioridade
+    const hasActiveDownloading = queue.some(i => i.status === 'downloading');
     folderItems.forEach(item => {
       let itemEl = folderItemsContainer.querySelector(`.queue-item[data-item-id="${CSS.escape(item.id)}"]`);
       if (!itemEl) {
-        itemEl = createQueueItemElement(item);
-        folderItemsContainer.appendChild(itemEl);
+        itemEl = createQueueItemElement(item, hasActiveDownloading);
       } else {
-        updateQueueItemElement(itemEl, item);
+        updateQueueItemElement(itemEl, item, hasActiveDownloading);
       }
+      folderItemsContainer.appendChild(itemEl);
     });
   });
 }
 
-function createQueueItemElement(item) {
+function createQueueItemElement(item, hasActiveDownloading = false) {
   const div = document.createElement('div');
   div.className = 'queue-item';
   div.dataset.itemId = item.id;
@@ -874,10 +1440,39 @@ function createQueueItemElement(item) {
   const divInfo = document.createElement('div');
   divInfo.className = 'queue-item-info';
 
+  const pureFileName = (item.name || '').includes('/') ? item.name.split('/').pop() : item.name;
+
   const divName = document.createElement('div');
-  divName.className = 'queue-item-name text-truncate';
-  divName.textContent = item.name;
-  divName.title = item.name;
+  divName.className = 'queue-item-name';
+  divName.title = pureFileName;
+
+  const chkItem = document.createElement('input');
+  chkItem.type = 'checkbox';
+  chkItem.className = 'queue-item-checkbox';
+  chkItem.checked = selectedQueueItemIds.has(item.id);
+  chkItem.style.marginRight = '8px';
+  chkItem.style.cursor = 'pointer';
+  chkItem.onclick = (e) => {
+    e.stopPropagation();
+    if (chkItem.checked) {
+      selectedQueueItemIds.add(item.id);
+    } else {
+      selectedQueueItemIds.delete(item.id);
+    }
+  };
+
+  const tagInfo = getFileTypeTag(item);
+  const tagSpan = document.createElement('span');
+  tagSpan.className = 'queue-file-tag';
+  tagSpan.textContent = tagInfo.text;
+  tagSpan.style.cssText = `background: ${tagInfo.bg}; color: ${tagInfo.color}; border: 1px solid ${tagInfo.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
+
+  const spanNameText = document.createElement('span');
+  spanNameText.textContent = pureFileName;
+
+  divName.appendChild(chkItem);
+  divName.appendChild(tagSpan);
+  divName.appendChild(spanNameText);
 
   const divMeta = document.createElement('div');
   divMeta.className = 'queue-item-meta';
@@ -887,11 +1482,36 @@ function createQueueItemElement(item) {
   spanSize.textContent = formatBytes(item.size);
 
   const spanStatus = document.createElement('span');
-  spanStatus.className = `queue-item-status-badge ${item.status}`;
-  spanStatus.textContent = getStatusLabel(item.status);
+  let statusClass = `queue-item-status-badge ${item.status}`;
+  if (item.status === 'pending' && hasActiveDownloading) {
+    statusClass += ' waiting';
+  }
+  spanStatus.className = statusClass;
+  spanStatus.textContent = getStatusLabel(item.status, hasActiveDownloading);
+
+  // Barra de progresso individual + Porcentagem no estilo Nexus
+  const divProgressGroup = document.createElement('div');
+  divProgressGroup.className = 'queue-item-progress-group';
+
+  const spanPercent = document.createElement('span');
+  spanPercent.className = 'queue-item-percent-text';
+  const progressVal = item.progress || (item.status === 'completed' ? 100 : 0);
+  spanPercent.textContent = `${progressVal}%`;
+
+  const barContainer = document.createElement('div');
+  barContainer.className = 'queue-item-progress-bar-container';
+
+  const barFill = document.createElement('div');
+  barFill.className = `queue-item-progress-bar-fill ${item.status}`;
+  barFill.style.width = `${progressVal}%`;
+
+  barContainer.appendChild(barFill);
+  divProgressGroup.appendChild(spanPercent);
+  divProgressGroup.appendChild(barContainer);
 
   divMeta.appendChild(spanSize);
   divMeta.appendChild(spanStatus);
+  divMeta.appendChild(divProgressGroup);
 
   const spanError = document.createElement('span');
   spanError.className = 'queue-item-error-text';
@@ -914,13 +1534,17 @@ function createQueueItemElement(item) {
   return div;
 }
 
-function updateQueueItemElement(itemEl, item) {
+function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
   const spanStatus = itemEl.querySelector('.queue-item-status-badge');
   if (spanStatus) {
-    if (spanStatus.className !== `queue-item-status-badge ${item.status}`) {
-      spanStatus.className = `queue-item-status-badge ${item.status}`;
+    let statusClass = `queue-item-status-badge ${item.status}`;
+    if (item.status === 'pending' && hasActiveDownloading) {
+      statusClass += ' waiting';
     }
-    const label = getStatusLabel(item.status);
+    if (spanStatus.className !== statusClass) {
+      spanStatus.className = statusClass;
+    }
+    const label = item.cloudMessage ? 'Nuvem Torbox' : getStatusLabel(item.status, hasActiveDownloading);
     if (spanStatus.textContent !== label) {
       spanStatus.textContent = label;
     }
@@ -932,6 +1556,20 @@ function updateQueueItemElement(itemEl, item) {
     if (spanSize.textContent !== formatted) {
       spanSize.textContent = formatted;
     }
+  }
+
+  const spanPercent = itemEl.querySelector('.queue-item-percent-text');
+  const barFill = itemEl.querySelector('.queue-item-progress-bar-fill');
+  const progressVal = item.progress || (item.status === 'completed' ? 100 : 0);
+
+  if (spanPercent && spanPercent.textContent !== `${progressVal}%`) {
+    spanPercent.textContent = `${progressVal}%`;
+  }
+  if (barFill) {
+    if (barFill.className !== `queue-item-progress-bar-fill ${item.status}`) {
+      barFill.className = `queue-item-progress-bar-fill ${item.status}`;
+    }
+    barFill.style.width = `${progressVal}%`;
   }
 
   const spanError = itemEl.querySelector('.queue-item-error-text');
@@ -1023,8 +1661,19 @@ btnClearCompleted.addEventListener('click', () => {
 });
 
 btnClearAll.addEventListener('click', async () => {
-  if (await showCustomConfirm('Deseja realmente limpar toda a fila de downloads? Todos os processos ativos serão cancelados.', 'Limpar Fila')) {
-    window.api.clearQueue();
+  if (selectedQueueItemIds.size > 0) {
+    const count = selectedQueueItemIds.size;
+    if (await showCustomConfirm(`Deseja remover os ${count} item(ns) selecionado(s) da fila de downloads?`, 'Remover Selecionados')) {
+      for (const id of selectedQueueItemIds) {
+        window.api.cancelDownload(id);
+      }
+      selectedQueueItemIds.clear();
+    }
+  } else {
+    if (await showCustomConfirm('Deseja realmente limpar toda a fila de downloads? Todos os processos ativos serão cancelados.', 'Limpar Fila')) {
+      selectedQueueItemIds.clear();
+      window.api.clearQueue();
+    }
   }
 });
 
@@ -1049,9 +1698,440 @@ if (btnRestartAll) {
 }
 
 // ==========================================
+// Torbox Cloud Page Engine
+// ==========================================
+let torboxCloudFiles = [];
+let selectedTorboxFileIds = new Set();
+
+async function loadTorboxDownloads() {
+  const torboxResultsContainer = document.getElementById('torbox-results-container');
+  const torboxEmptyState = document.getElementById('torbox-empty-state');
+  const torboxEmptyTitle = document.getElementById('torbox-empty-title');
+  const torboxEmptyDesc = document.getElementById('torbox-empty-desc');
+  const torboxBadge = document.getElementById('torbox-badge');
+
+  if (!torboxResultsContainer || !torboxEmptyState) return;
+
+  try {
+    const res = await window.api.getTorboxUserDownloads();
+    if (!res.success) {
+      torboxResultsContainer.style.display = 'none';
+      torboxEmptyState.style.display = 'flex';
+      if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'API Key do Torbox Desconectada';
+      if (torboxEmptyDesc) torboxEmptyDesc.textContent = res.error || 'Por favor acesse os Ajustes para informar sua API Key do Torbox.';
+      if (torboxBadge) torboxBadge.style.display = 'none';
+      return;
+    }
+
+    torboxCloudFiles = res.files || [];
+
+    const groupsMap = new Map();
+    torboxCloudFiles.forEach(file => {
+      const key = file.folderName || 'Downloads Torbox';
+      if (!groupsMap.has(key)) groupsMap.set(key, []);
+      groupsMap.get(key).push(file);
+    });
+
+    if (torboxBadge) {
+      if (groupsMap.size > 0) {
+        torboxBadge.textContent = groupsMap.size;
+        torboxBadge.style.display = 'inline-block';
+      } else {
+        torboxBadge.style.display = 'none';
+      }
+    }
+
+    if (torboxCloudFiles.length === 0) {
+      torboxResultsContainer.style.display = 'none';
+      torboxEmptyState.style.display = 'flex';
+      if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'Nenhum download encontrado na sua conta Torbox';
+      if (torboxEmptyDesc) torboxEmptyDesc.textContent = 'Adicione torrents ou links diretos à sua conta Torbox para visualizá-los aqui.';
+      return;
+    }
+
+    torboxEmptyState.style.display = 'none';
+    torboxResultsContainer.style.display = 'block';
+
+    selectedTorboxFileIds.clear();
+    torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
+
+    renderTorboxDownloads(torboxCloudFiles);
+  } catch (err) {
+    console.error('Erro ao carregar downloads do Torbox:', err);
+    torboxResultsContainer.style.display = 'none';
+    torboxEmptyState.style.display = 'flex';
+  }
+}
+
+let torboxRenderLimit = 30;
+
+function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
+  const groupsContainer = document.getElementById('torbox-groups-container');
+  if (!groupsContainer) return;
+
+  groupsContainer.innerHTML = '';
+
+  const groupsMap = new Map();
+  filesToRender.forEach(file => {
+    const key = file.folderName || 'Downloads Torbox';
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key).push(file);
+  });
+
+  const entries = Array.from(groupsMap.entries());
+  const visibleEntries = entries.slice(0, limit);
+
+  visibleEntries.forEach(([groupName, groupItems]) => {
+    const totalSize = groupItems.reduce((a, b) => a + b.size, 0);
+
+    const card = document.createElement('div');
+    card.className = 'folder-group-card collapsed';
+
+    const header = document.createElement('div');
+    header.className = 'folder-group-header';
+
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'folder-group-title-group';
+
+    const groupCb = document.createElement('input');
+    groupCb.type = 'checkbox';
+    groupCb.className = 'folder-group-checkbox';
+    groupCb.checked = groupItems.every(f => selectedTorboxFileIds.has(f.id));
+
+    const folderIcon = document.createElement('div');
+    folderIcon.className = 'queue-folder-icon';
+    folderIcon.style.marginRight = '2px';
+    folderIcon.innerHTML = `
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+      </svg>
+    `;
+
+    const serviceTag = { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+    const folderTag = getFolderTypeTag(groupItems, groupName);
+
+    const serviceSpan = document.createElement('span');
+    serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;`;
+    serviceSpan.textContent = serviceTag.text;
+
+    const folderTypeSpan = document.createElement('span');
+    folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
+    folderTypeSpan.textContent = folderTag.text;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'folder-group-name';
+    nameSpan.textContent = groupName;
+
+    titleGroup.appendChild(groupCb);
+    titleGroup.appendChild(folderIcon);
+    titleGroup.appendChild(serviceSpan);
+    titleGroup.appendChild(folderTypeSpan);
+    titleGroup.appendChild(nameSpan);
+
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'folder-group-meta';
+
+    const badge = document.createElement('span');
+    badge.className = 'badge-cyan folder-group-badge';
+    badge.textContent = `${groupItems.length} arquivo(s) • ${formatBytes(totalSize)}`;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'folder-group-toggle';
+    toggleBtn.title = 'Expandir / Recolher';
+    toggleBtn.innerHTML = `
+      <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    `;
+
+    metaDiv.appendChild(badge);
+    metaDiv.appendChild(toggleBtn);
+
+    header.appendChild(titleGroup);
+    header.appendChild(metaDiv);
+
+    const body = document.createElement('div');
+    body.className = 'folder-group-body';
+
+    const tableWrapper = document.createElement('div');
+    tableWrapper.className = 'results-table-wrapper';
+
+    const table = document.createElement('table');
+    table.className = 'results-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th width="40"></th>
+          <th>Nome do Arquivo</th>
+          <th>Status Nuvem</th>
+          <th width="120">Tamanho</th>
+          <th width="90">Ação</th>
+        </tr>
+      </thead>
+    `;
+
+    const tbody = document.createElement('tbody');
+    let isPopulated = false;
+
+    function populateRows() {
+      if (isPopulated) return;
+      isPopulated = true;
+      groupItems.forEach(file => {
+        const row = document.createElement('tr');
+
+        const tdCheck = document.createElement('td');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = selectedTorboxFileIds.has(file.id);
+        cb.className = 'file-checkbox';
+        cb.addEventListener('change', () => {
+          if (cb.checked) selectedTorboxFileIds.add(file.id);
+          else selectedTorboxFileIds.delete(file.id);
+          updateTorboxSelectionSummary();
+        });
+        tdCheck.appendChild(cb);
+
+        const tdName = document.createElement('td');
+        tdName.className = 'text-truncate';
+        const fTag = getFileTypeTag(file);
+        tdName.innerHTML = `<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+        tdName.title = file.name;
+
+        const tdStatus = document.createElement('td');
+        tdStatus.innerHTML = `<span style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600;">${file.cloudStatus || 'Nuvem'}</span>`;
+
+        const tdSize = document.createElement('td');
+        tdSize.textContent = formatBytes(file.size);
+
+        const tdAction = document.createElement('td');
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'btn btn-sm btn-success';
+        dlBtn.style.padding = '3px 8px';
+        dlBtn.style.fontSize = '0.75rem';
+        dlBtn.innerHTML = '⬇️ Baixar';
+        dlBtn.onclick = async (e) => {
+          e.stopPropagation();
+          await window.api.addToQueue([file]);
+          switchTab('queue');
+        };
+        tdAction.appendChild(dlBtn);
+
+        row.appendChild(tdCheck);
+        row.appendChild(tdName);
+        row.appendChild(tdStatus);
+        row.appendChild(tdSize);
+        row.appendChild(tdAction);
+        tbody.appendChild(row);
+      });
+    }
+
+    table.appendChild(tbody);
+    tableWrapper.appendChild(table);
+    body.appendChild(tableWrapper);
+
+    card.appendChild(header);
+    card.appendChild(body);
+
+    header.addEventListener('click', (e) => {
+      if (e.target.type === 'checkbox' || e.target.closest('button')) return;
+      card.classList.toggle('collapsed');
+      if (!card.classList.contains('collapsed')) {
+        populateRows();
+      }
+    });
+
+    groupCb.addEventListener('change', () => {
+      populateRows();
+      const isChecked = groupCb.checked;
+      groupItems.forEach(f => {
+        if (isChecked) selectedTorboxFileIds.add(f.id);
+        else selectedTorboxFileIds.delete(f.id);
+      });
+      tbody.querySelectorAll('.file-checkbox').forEach(c => c.checked = isChecked);
+      updateTorboxSelectionSummary();
+    });
+
+    groupsContainer.appendChild(card);
+  });
+
+  if (entries.length > limit) {
+    const loadMoreContainer = document.createElement('div');
+    loadMoreContainer.style.cssText = 'display: flex; justify-content: center; margin: 16px 0;';
+    const loadMoreBtn = document.createElement('button');
+    loadMoreBtn.className = 'btn btn-outline';
+    loadMoreBtn.innerHTML = `Carregar mais downloads (${entries.length - limit} restantes)...`;
+    loadMoreBtn.onclick = () => {
+      torboxRenderLimit += 30;
+      renderTorboxDownloads(filesToRender, torboxRenderLimit);
+    };
+    loadMoreContainer.appendChild(loadMoreBtn);
+    groupsContainer.appendChild(loadMoreContainer);
+  }
+
+  updateTorboxSelectionSummary();
+}
+
+function updateTorboxSelectionSummary() {
+  const selectedCountText = document.getElementById('selected-torbox-count');
+  const selectAllCb = document.getElementById('select-all-torbox-files');
+
+  if (!selectedCountText) return;
+
+  const total = torboxCloudFiles.length;
+  const count = selectedTorboxFileIds.size;
+  let totalBytes = 0;
+
+  torboxCloudFiles.forEach(f => {
+    if (selectedTorboxFileIds.has(f.id)) totalBytes += f.size;
+  });
+
+  selectedCountText.textContent = `${count} arquivo(s) selecionado(s) (${formatBytes(totalBytes)})`;
+
+  if (selectAllCb) {
+    if (count === 0) {
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = false;
+    } else if (count === total) {
+      selectAllCb.checked = true;
+      selectAllCb.indeterminate = false;
+    } else {
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = true;
+    }
+  }
+}
+
+const btnRefreshTorbox = document.getElementById('btn-refresh-torbox');
+if (btnRefreshTorbox) {
+  btnRefreshTorbox.addEventListener('click', () => {
+    loadTorboxDownloads();
+  });
+}
+
+const inputSearchTorbox = document.getElementById('input-search-torbox');
+if (inputSearchTorbox) {
+  inputSearchTorbox.addEventListener('input', () => {
+    const term = inputSearchTorbox.value.toLowerCase().trim();
+    if (!term) {
+      renderTorboxDownloads(torboxCloudFiles);
+    } else {
+      const filtered = torboxCloudFiles.filter(f =>
+        (f.name || '').toLowerCase().includes(term) ||
+        (f.folderName || '').toLowerCase().includes(term)
+      );
+      renderTorboxDownloads(filtered);
+    }
+  });
+}
+
+const btnAddTorboxSelected = document.getElementById('btn-add-torbox-selected');
+if (btnAddTorboxSelected) {
+  btnAddTorboxSelected.addEventListener('click', async () => {
+    const selected = torboxCloudFiles.filter(f => selectedTorboxFileIds.has(f.id));
+    if (selected.length === 0) {
+      await showCustomAlert('Por favor, selecione pelo menos um arquivo da sua nuvem Torbox para baixar.', 'Torbox Cloud');
+      return;
+    }
+    await window.api.addToQueue(selected);
+    switchTab('queue');
+  });
+}
+
+const selectAllTorboxFiles = document.getElementById('select-all-torbox-files');
+if (selectAllTorboxFiles) {
+  selectAllTorboxFiles.addEventListener('change', () => {
+    const isChecked = selectAllTorboxFiles.checked;
+    selectedTorboxFileIds.clear();
+    if (isChecked) {
+      torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
+    }
+    renderTorboxDownloads(torboxCloudFiles);
+  });
+}
+
+let savedFooterOffsetX = parseFloat(localStorage.getItem('footer_status_offset_x')) || 0;
+
+function applyFooterStatusPosition() {
+  const container = document.querySelector('.auth-status-container');
+  if (container) {
+    container.style.position = 'relative';
+    container.style.zIndex = '30';
+    container.style.transform = `translateX(${savedFooterOffsetX}px)`;
+  }
+}
+
+function initFooterStatusDraggable() {
+  const container = document.querySelector('.auth-status-container');
+  const bottomBar = document.querySelector('.app-bottom-bar');
+  if (!container || !bottomBar) return;
+
+  container.style.position = 'relative';
+  container.style.zIndex = '30';
+  container.style.cursor = 'grab';
+
+  let isDragging = false;
+  let hasMoved = false;
+  let startX = 0;
+  let initialOffsetX = 0;
+
+  applyFooterStatusPosition();
+
+  container.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    hasMoved = false;
+    startX = e.clientX;
+    initialOffsetX = savedFooterOffsetX;
+    container.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.clientX - startX;
+    if (Math.abs(deltaX) > 3) hasMoved = true;
+
+    let targetX = initialOffsetX + deltaX;
+
+    const barRect = bottomBar.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // Limites de segurança
+    if (containerRect.left + deltaX < 255 && deltaX < 0) {
+      return;
+    }
+    if (containerRect.right + deltaX > barRect.right - 10 && deltaX > 0) {
+      return;
+    }
+
+    savedFooterOffsetX = targetX;
+    container.style.transform = `translateX(${savedFooterOffsetX}px)`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      container.style.cursor = 'grab';
+      document.body.style.userSelect = '';
+      localStorage.setItem('footer_status_offset_x', savedFooterOffsetX);
+      console.log(`[Footer Drag] Posição do indicador fixada permanentemente em offset: ${savedFooterOffsetX}px`);
+    }
+  });
+
+  container.addEventListener('click', (e) => {
+    if (hasMoved) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+}
+
+// ==========================================
 // Inicialização do App
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
   checkAuthStatus();
   loadConfig();
+  startFooterStatusCycle();
+  initFooterStatusDraggable();
+  loadTorboxDownloads();
 });

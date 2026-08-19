@@ -9,11 +9,23 @@ const { google } = require('googleapis');
 const { isBunkrUrl, scanBunkrLink, resolveBunkrDirectUrl } = require('./bunkr-scanner');
 const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
 const { isTeraBoxUrl, scanTeraBoxLink, resolveTeraBoxDirectUrl } = require('./terabox-scanner');
+const { isOneDriveUrl, scanOneDriveLink, resolveOneDriveDirectUrl } = require('./onedrive-scanner');
+const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, fetchTorboxUserDownloads } = require('./torbox-scanner');
+const { scanGenericLink } = require('./generic-scanner');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
+// Captura exceções não tratadas (ex: socket drops como ECONNRESET) para evitar janelas de erro nativas do sistema
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception Intercepted]:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection Intercepted]:', reason);
+});
 
 // Agente HTTPS customizado com Keep-Alive ativado para reutilização extrema de conexões TCP/TLS
 const httpsAgent = new https.Agent({
@@ -61,10 +73,22 @@ let config = {
   maxConcurrent: 1,
   notificationsEnabled: true,
   downloadMode: 'single', // Legado
+  torboxApiKey: '',
+  torboxEnabled: false,
+  windowState: {
+    width: 1080,
+    height: 720,
+    x: undefined,
+    y: undefined,
+    isMaximized: false
+  },
   downloadModes: {
     gdrive: 'single',
     bunkr: 'multi',
-    mediafire: 'multi'
+    mediafire: 'multi',
+    terabox: 'multi',
+    onedrive: 'single',
+    torbox: 'multi'
   }
 };
 
@@ -164,9 +188,11 @@ loadQueue();
 
 // Criação da janela do Electron
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1080,
-    height: 720,
+  const winState = config.windowState || { width: 1080, height: 720, isMaximized: false };
+
+  const winOptions = {
+    width: winState.width || 1080,
+    height: winState.height || 720,
     minWidth: 980,
     minHeight: 680,
     frame: true,
@@ -178,16 +204,50 @@ function createWindow() {
       backgroundThrottling: false // Impede redução de velocidade da rede/timers quando o monitor apaga
     },
     icon: path.join(__dirname, 'renderer', 'icon.png') // Opcional
-  });
+  };
+
+  if (typeof winState.x === 'number' && typeof winState.y === 'number') {
+    winOptions.x = winState.x;
+    winOptions.y = winState.y;
+  }
+
+  mainWindow = new BrowserWindow(winOptions);
+
+  if (winState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  let saveStateTimeout = null;
+  const saveWindowState = () => {
+    if (!mainWindow) return;
+    clearTimeout(saveStateTimeout);
+    saveStateTimeout = setTimeout(() => {
+      if (!mainWindow) return;
+      const isMaximized = mainWindow.isMaximized();
+      const bounds = mainWindow.getNormalBounds ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+      config.windowState = {
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y,
+        isMaximized: isMaximized
+      };
+      try {
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+      } catch (e) {}
+    }, 500);
+  };
+
+  mainWindow.on('resize', saveWindowState);
+  mainWindow.on('move', saveWindowState);
+  mainWindow.on('maximize', saveWindowState);
+  mainWindow.on('unmaximize', saveWindowState);
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   mainWindow.webContents.on('did-finish-load', () => {
     updateQueueUI();
   });
-
-  // Abre o console de desenvolvedor para ajudar no debug dos logs de rede/erros
-  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -520,6 +580,22 @@ function downloadBunkrFile(queueItem) {
   return new Promise(async (resolve, reject) => {
     let isAborted = false;
     const abortController = new AbortController();
+    let currentReqs = [];
+    let progressInterval = null;
+
+    const cleanupAndAbort = () => {
+      isAborted = true;
+      if (progressInterval) clearInterval(progressInterval);
+      queueItem.speed = 0;
+      queueItem.eta = 0;
+      currentReqs.forEach(req => {
+        try { req.destroy(); } catch (e) {}
+      });
+      currentReqs = [];
+      updateQueueUI();
+    };
+
+    abortController.signal.addEventListener('abort', cleanupAndAbort, { once: true });
 
     activeDownloads.set(queueItem.id, {
       abortController,
@@ -534,13 +610,25 @@ function downloadBunkrFile(queueItem) {
     }
 
     try {
+      if (isAborted || abortController.signal.aborted) {
+        cleanupAndAbort();
+        return reject(new Error('Download pausado/cancelado pelo usuário'));
+      }
       let directUrl = '';
       let referer = 'https://bunkr.cr/';
       let cookieHeader = '';
 
       if (queueItem.id && queueItem.id.startsWith('terabox_')) {
         console.log(`[TeraBox Worker] Resolvendo link direto de alta velocidade para "${queueItem.name}"...`);
-        const tbInfo = await resolveTeraBoxDirectUrl(queueItem.numericId, queueItem.teraboxUrl, queueItem.teraboxDlink, queueItem.teraboxCookie);
+        const tbInfo = await resolveTeraBoxDirectUrl(
+          queueItem.numericId,
+          queueItem.teraboxUrl,
+          queueItem.teraboxDlink,
+          queueItem.teraboxPath,
+          queueItem.teraboxShareId,
+          queueItem.teraboxUk,
+          queueItem.teraboxThumbs
+        );
         directUrl = tbInfo.directUrl;
         referer = tbInfo.referer || 'https://www.terabox.com/';
         cookieHeader = tbInfo.cookie || '';
@@ -549,6 +637,29 @@ function downloadBunkrFile(queueItem) {
         const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, queueItem.mediafireUrl);
         directUrl = mfInfo.directUrl;
         referer = mfInfo.referer || 'https://www.mediafire.com/';
+      } else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) {
+        console.log(`[OneDrive Worker] Resolvendo link direto para "${queueItem.name}"...`);
+        const odInfo = await resolveOneDriveDirectUrl(queueItem.numericId, queueItem.oneDriveUrl, queueItem.oneDriveDirectUrl);
+        directUrl = odInfo.directUrl;
+        referer = odInfo.referer || 'https://sharepoint.com/';
+        cookieHeader = odInfo.cookie || queueItem.oneDriveCookie || '';
+      } else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) {
+        console.log(`[Torbox Worker] Resolvendo link direto para "${queueItem.name}"...`);
+        const tbInfo = await resolveTorboxDirectUrl(
+          queueItem.numericId,
+          config.torboxApiKey,
+          queueItem.torboxType || 'webdl',
+          queueItem.torboxId || 0,
+          queueItem.torboxFileId || 0,
+          (statusMsg, percent) => {
+            queueItem.cloudProgress = percent;
+            queueItem.cloudMessage = statusMsg;
+            updateQueueUI();
+          }
+        );
+        delete queueItem.cloudMessage;
+        directUrl = tbInfo.directUrl;
+        referer = tbInfo.referer || 'https://torbox.app/';
       } else {
         console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
         const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
@@ -578,14 +689,16 @@ function downloadBunkrFile(queueItem) {
       let service = 'bunkr';
       if (queueItem.id && queueItem.id.startsWith('terabox_')) service = 'terabox';
       else if (queueItem.id && queueItem.id.startsWith('mediafire_')) service = 'mediafire';
+      else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) service = 'onedrive';
+      else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) service = 'torbox';
 
       const mode = getDownloadMode(service);
-      const isMultiMode = mode === 'multi' && (queueItem.size > 5 * 1024 * 1024);
+      const isMultiMode = (service !== 'terabox' && service !== 'onedrive') && mode === 'multi' && (queueItem.size > 5 * 1024 * 1024);
 
       let lastTime = Date.now();
       let lastBytes = 0;
 
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         if (isAborted) return;
         const now = Date.now();
         const timeDiff = (now - lastTime) / 1000;
@@ -679,47 +792,105 @@ function downloadBunkrFile(queueItem) {
       console.log(`[HTTP Direct Worker] Iniciando conexão única para ${service}: "${queueItem.name}"`);
       const writeStream = fs.createWriteStream(localFilePath, { highWaterMark: 1024 * 1024 });
 
-      const req = transport.get(directUrl, reqOptions, res => {
-        if (res.statusCode !== 200 && res.statusCode !== 206) {
+      function startSingleDownload(targetUrl, currentReqOptions, redirectCount = 0) {
+        if (redirectCount > 10) {
           clearInterval(progressInterval);
           writeStream.destroy();
-          return reject(new Error(`Servidor retornou HTTP ${res.statusCode}`));
+          return reject(new Error('Muitos redirecionamentos HTTP no download'));
         }
 
-        if (res.headers['content-type'] && res.headers['content-type'].includes('text/html')) {
-          clearInterval(progressInterval);
-          writeStream.destroy();
-          return reject(new Error('Servidor retornou HTML (desafio não resolvido)'));
-        }
+        const targetParsed = new URL(targetUrl);
+        const targetTransport = targetParsed.protocol === 'https:' ? https : http;
 
-        const totalLength = parseInt(res.headers['content-length'], 10);
-        if (totalLength && totalLength > 0 && (!queueItem.size || queueItem.size === 0)) {
-          queueItem.size = totalLength;
-          queueItem.sizeFormatted = formatBytes(totalLength);
-        }
+        const req = targetTransport.get(targetUrl, currentReqOptions, res => {
+          // Trata redirecionamentos HTTP 301, 302, 303, 307, 308
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            let nextUrl = res.headers.location;
+            if (nextUrl.startsWith('/')) {
+              nextUrl = `${targetParsed.protocol}//${targetParsed.host}${nextUrl}`;
+            }
+            console.log(`[HTTP Direct Worker] Redirecionando (${res.statusCode}) para: ${nextUrl}`);
 
-        res.on('data', chunk => {
-          if (isAborted) return;
-          queueItem.downloadedBytes += chunk.length;
-        });
+            let updatedCookie = currentReqOptions.headers['Cookie'] || '';
+            if (res.headers['set-cookie']) {
+              const newCookies = res.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
+              updatedCookie = updatedCookie ? `${updatedCookie}; ${newCookies}` : newCookies;
+            }
 
-        res.pipe(writeStream);
+            const nextOptions = {
+              ...currentReqOptions,
+              headers: {
+                ...currentReqOptions.headers,
+                'Cookie': updatedCookie,
+                'Referer': targetUrl
+              }
+            };
 
-        writeStream.on('finish', () => {
-          clearInterval(progressInterval);
-          if (isAborted) {
-            reject(new Error('Download cancelado'));
-          } else {
-            resolve();
+            return startSingleDownload(nextUrl, nextOptions, redirectCount + 1);
           }
+
+          if (res.statusCode !== 200 && res.statusCode !== 206) {
+            clearInterval(progressInterval);
+            writeStream.destroy();
+            return reject(new Error(`Servidor retornou HTTP ${res.statusCode}`));
+          }
+
+          if (res.headers['content-type'] && res.headers['content-type'].includes('text/html')) {
+            clearInterval(progressInterval);
+            writeStream.destroy();
+            return reject(new Error('Servidor retornou HTML (desafio não resolvido)'));
+          }
+
+          const totalLength = parseInt(res.headers['content-length'], 10);
+          if (totalLength && totalLength > 0 && (!queueItem.size || queueItem.size === 0)) {
+            queueItem.size = totalLength;
+            queueItem.sizeFormatted = formatBytes(totalLength);
+          }
+
+          res.on('data', chunk => {
+            if (isAborted) return;
+            queueItem.downloadedBytes += chunk.length;
+          });
+
+          res.pipe(writeStream);
+
+          writeStream.on('finish', () => {
+            clearInterval(progressInterval);
+            if (isAborted) {
+              reject(new Error('Download cancelado'));
+            } else if (queueItem.size > 0 && queueItem.downloadedBytes < Math.floor(queueItem.size * 0.98)) {
+              reject(new Error(`Download truncado/incompleto: baixou apenas ${formatBytes(queueItem.downloadedBytes)} de ${formatBytes(queueItem.size)}`));
+            } else {
+              resolve();
+            }
+          });
+
+          writeStream.on('error', err => {
+            clearInterval(progressInterval);
+            reject(err);
+          });
         });
 
-        writeStream.on('error', err => {
+        const onAbort = () => {
+          try { req.destroy(); } catch (e) {}
+          try { writeStream.destroy(); } catch (e) {}
+        };
+        abortController.signal.addEventListener('abort', onAbort, { once: true });
+
+        req.on('socket', socket => {
+          socket.on('error', err => {
+            console.warn('[Socket Warning]: Network socket error:', err.message);
+          });
+        });
+
+        req.on('error', err => {
           clearInterval(progressInterval);
+          writeStream.destroy();
           reject(err);
         });
+      }
 
-      });
+      startSingleDownload(directUrl, reqOptions, 0);
     } catch (err) {
       reject(err);
     }
@@ -727,7 +898,10 @@ function downloadBunkrFile(queueItem) {
 }
 
 function downloadFile(queueItem) {
-  if (queueItem.isHttpDirect || (queueItem.id && (queueItem.id.startsWith('terabox_') || queueItem.id.startsWith('mediafire_') || queueItem.id.startsWith('bunkr_')))) {
+  const id = (queueItem && queueItem.id) || '';
+  const isGoogleDrive = !queueItem.isHttpDirect && !queueItem.downloadUrl && (id.length === 33 || id.length === 19 || (!id.includes('_') && !id.startsWith('torbox') && !id.startsWith('gofile') && !id.startsWith('onedrive') && !id.startsWith('terabox') && !id.startsWith('mediafire') && !id.startsWith('bunkr') && !id.startsWith('megaup') && !id.startsWith('turbocr') && !id.startsWith('generic') && !id.startsWith('scraper')));
+
+  if (!isGoogleDrive || queueItem.downloadUrl || queueItem.isHttpDirect) {
     return downloadBunkrFile(queueItem);
   }
 
@@ -1151,14 +1325,44 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
     throw new Error('Por favor, forneça pelo menos um link válido.');
   }
 
-  const normalizedInput = inputLinks.replace(/(https?:\/\/[^\s"'<>]+?)(https?:\/\/)/gi, '$1\n$2');
-  const extractedUrls = normalizedInput.match(/(https?:\/\/[^\s"'<>]+)/gi) || [];
-  const lines = extractedUrls
-    .map(l => l.trim().replace(/[,;]+$/, ''))
-    .filter(l => l.length > 0);
+  const rawSegments = inputLinks.split(/(?=https?:\/\/|magnet:\?)/gi);
+  const inputLines = [];
+  rawSegments.forEach(seg => {
+    seg.split(/\r?\n/).forEach(l => {
+      const trimmed = l.trim();
+      if (trimmed) inputLines.push(trimmed);
+    });
+  });
+  const lines = [];
+
+  for (let rawLine of inputLines) {
+    rawLine = rawLine.trim();
+    if (rawLine.toLowerCase().startsWith('magnet:?')) {
+      lines.push(rawLine);
+      continue;
+    }
+
+    const magnetMatch = rawLine.match(/(magnet:\?[^\r\n"<>]+)/i);
+    if (magnetMatch) {
+      lines.push(magnetMatch[1].trim());
+      continue;
+    }
+
+    const httpMatch = rawLine.match(/(https?:\/\/[^\s"'<>]+)/i);
+    if (httpMatch) {
+      lines.push(httpMatch[1]);
+      continue;
+    }
+
+    const cleanHash = rawLine.replace(/[^a-zA-Z0-9]/g, '');
+    if (/^[a-fA-F0-9]{40}$/.test(cleanHash) || /^[a-zA-Z2-7]{32}$/.test(cleanHash)) {
+      lines.push(`magnet:?xt=urn:btih:${cleanHash}`);
+      continue;
+    }
+  }
 
   if (lines.length === 0) {
-    throw new Error('Nenhum link válido encontrado no texto colado.');
+    throw new Error('Nenhum link válido (URL ou Magnet Link) encontrado no texto colado.');
   }
 
   let aggregatedFiles = [];
@@ -1197,6 +1401,41 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
       }
       continue;
     }
+
+    // 0.2. Links do Microsoft OneDrive / SharePoint
+    if (isOneDriveUrl(link)) {
+      try {
+        console.log('[main.js] Link do Microsoft OneDrive / SharePoint detectado! Escaneando:', link);
+        const odFiles = await scanOneDriveLink(link);
+        if (odFiles && odFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(odFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do OneDrive/SharePoint para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link OneDrive/SharePoint:', link, err.message);
+        throw new Error(`Erro ao escanear OneDrive/SharePoint: ${err.message}`);
+      }
+      continue;
+    }
+
+    // 0.3. Tenta sempre o Torbox PRIMEIRO se a API do Torbox estiver configurada
+    if (config.torboxEnabled && config.torboxApiKey) {
+      try {
+        console.log('[main.js] Tentando escaneamento no Torbox primeiro:', link);
+        const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
+        if (tbFiles && tbFiles.length > 0) {
+          console.log(`[main.js] Torbox resolveu com sucesso! (${tbFiles.length} arquivos)`);
+          aggregatedFiles = aggregatedFiles.concat(tbFiles);
+          continue;
+        } else {
+          console.warn('[main.js] Torbox retornou 0 arquivos, passando para Motor Genérico...');
+        }
+      } catch (err) {
+        console.warn('[main.js] Torbox não resolveu este link, passando para Motor Genérico:', link, err.message);
+      }
+    }
+
     // 1. Verifica se é um link do Bunkr
     if (isBunkrUrl(link)) {
       try {
@@ -1209,37 +1448,49 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
     }
 
     // 2. Links do Google Drive
-    if (!driveService) {
-      throw new Error('Para escanear links do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+    const driveInfo = extractDriveId(link);
+    if (driveInfo) {
+      if (!driveService) {
+        throw new Error('Para escanear links do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+      }
+      if (driveInfo.isFolder) {
+        let folderName = '';
+        try {
+          const metadata = await driveService.files.get(
+            {
+              fileId: driveInfo.id,
+              fields: 'name',
+              supportsAllDrives: true
+            },
+            {
+              httpsAgent: httpsAgent
+            }
+          );
+          folderName = metadata.data.name || 'Pasta_Google_Drive';
+        } catch (err) {
+          console.warn('Nao foi possivel obter o nome da pasta pai, usando padrao:', err.message);
+          folderName = 'Pasta_Google_Drive';
+        }
+        const files = await scanGoogleDriveFolder(driveInfo.id, folderName);
+        aggregatedFiles = aggregatedFiles.concat(files);
+      } else {
+        const file = await getFileInfo(driveInfo.id);
+        file.folderName = 'Arquivos Avulsos';
+        aggregatedFiles.push(file);
+      }
+      continue;
     }
 
-    const driveInfo = extractDriveId(link);
-    if (!driveInfo) continue;
-
-    if (driveInfo.isFolder) {
-      let folderName = '';
-      try {
-        const metadata = await driveService.files.get(
-          {
-            fileId: driveInfo.id,
-            fields: 'name',
-            supportsAllDrives: true
-          },
-          {
-            httpsAgent: httpsAgent
-          }
-        );
-        folderName = metadata.data.name || 'Pasta_Google_Drive';
-      } catch (err) {
-        console.warn('Nao foi possivel obter o nome da pasta pai, usando padrao:', err.message);
-        folderName = 'Pasta_Google_Drive';
+    // 3. Fallback Universal: Motor Genérico de 4 Etapas (GoFile, MegaUp, Turbo.cr, FileDitch, Vik1ngFile, Direct HTTP)
+    try {
+      console.log('[main.js] Invocando Motor Universal de Links Genéricos:', link);
+      const genericFiles = await scanGenericLink(link, config.torboxApiKey);
+      if (genericFiles && genericFiles.length > 0) {
+        aggregatedFiles = aggregatedFiles.concat(genericFiles);
+        continue;
       }
-      const files = await scanGoogleDriveFolder(driveInfo.id, folderName);
-      aggregatedFiles = aggregatedFiles.concat(files);
-    } else {
-      const file = await getFileInfo(driveInfo.id);
-      file.folderName = 'Arquivos Avulsos';
-      aggregatedFiles.push(file);
+    } catch (gErr) {
+      console.warn('[main.js] Motor Genérico não encontrou arquivos para:', link, gErr.message);
     }
   }
 
@@ -1256,16 +1507,25 @@ ipcMain.handle('add-to-queue', (event, files) => {
     // Evita duplicatas na fila se já existir o mesmo ID com status pendente ou baixando
     const exists = downloadQueue.some(item => item.id === file.id && (item.status === 'pending' || item.status === 'downloading'));
     if (!exists) {
-      const folderName = file.folderName || (file.relativePath ? file.relativePath.split(path.sep)[0] : 'Downloads');
+      let folderName = file.folderName || (file.relativePath ? file.relativePath.split(/[/\\]/)[0] : file.name);
+      if (!folderName || folderName === 'Downloads' || folderName === 'Arquivos Avulsos') {
+        folderName = file.name || 'Downloads';
+      }
       downloadQueue.push({
         id: file.id,
         fileId: file.fileId,
         numericId: file.numericId,
-        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_'))),
+        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
         mediafireUrl: file.mediafireUrl || null,
         teraboxUrl: file.teraboxUrl || null,
         teraboxDlink: file.teraboxDlink || null,
         teraboxCookie: file.teraboxCookie || null,
+        oneDriveUrl: file.oneDriveUrl || null,
+        oneDriveDirectUrl: file.oneDriveDirectUrl || null,
+        torboxType: file.torboxType || null,
+        torboxId: file.torboxId || 0,
+        torboxFileId: file.torboxFileId || 0,
+        torboxDownloadUrl: file.torboxDownloadUrl || null,
         name: file.name,
         size: file.size,
         relativePath: file.relativePath,
@@ -1283,6 +1543,27 @@ ipcMain.handle('add-to-queue', (event, files) => {
   updateQueueUI();
   processQueue();
   return downloadQueue.length;
+});
+
+ipcMain.handle('test-torbox-api-key', async (event, apiKey) => {
+  try {
+    const result = await testTorboxApiKey(apiKey);
+    return result;
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-torbox-user-downloads', async () => {
+  try {
+    if (!config.torboxApiKey) {
+      throw new Error('API Key do Torbox não configurada. Por favor acesse os Ajustes para informar sua chave.');
+    }
+    const files = await fetchTorboxUserDownloads(config.torboxApiKey);
+    return { success: true, files };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('pause-download', (event, fileId) => {

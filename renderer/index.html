@@ -48,6 +48,17 @@
             Fila de Downloads
             <span class="badge" id="queue-badge" style="display: none;">0</span>
           </button>
+          <button class="nav-item" data-tab="torbox">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z"></path>
+              <path d="M12 12V22"></path>
+              <path d="M12 12L21 7"></path>
+              <path d="M12 12L3 7"></path>
+              <path d="M17 8.5L14.5 13.5H16.5L14 18.5L18.5 12.5H16.5Z" fill="currentColor" stroke="none"></path>
+            </svg>
+            Torbox
+            <span class="badge" id="torbox-badge" style="display: none; background: rgba(139, 92, 246, 0.3); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.5);">0</span>
+          </button>
           <button class="nav-item" data-tab="settings">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
@@ -64,7 +75,7 @@
         <div class="top-tab-content active" id="scanner-top-content">
           <div class="content-header">
             <h1>Scanner de Links</h1>
-            <p>Cole links do Google Drive, Bunkr e Mediafire para listar os arquivos e baixar sequencialmente.</p>
+            <p>Cole links do Google Drive, Bunkr, MediaFire, TeraBox, Microsoft OneDrive e Torbox (Torrents/Debrid) para listar os arquivos e baixar sequencialmente.</p>
           </div>
 
           <div class="card scan-input-container">
@@ -74,7 +85,7 @@
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                 </svg>
-                Links do Google Drive, Bunkr ou Mediafire para Escanear
+                Links do Google Drive, Bunkr, MediaFire, TeraBox, Microsoft OneDrive ou Torbox (Torrents/Debrid) para Escanear
               </label>
               <button class="btn btn-sm btn-outline" id="btn-paste" title="Colar links da área de transferência">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -86,21 +97,29 @@
             </div>
 
             <div class="scan-textarea-wrapper">
-              <textarea id="drive-link" rows="1" placeholder="Insira ou cole múltiplos links do Google Drive, Bunkr ou Mediafire aqui." autocomplete="off"></textarea>
+              <textarea id="drive-link" rows="1" placeholder="Insira ou cole múltiplos links do Google Drive, Bunkr, MediaFire, TeraBox, Microsoft OneDrive ou Torbox (Torrents/Debrid) aqui." autocomplete="off"></textarea>
             </div>
 
             <div class="scan-actions-row">
               <span class="scan-hint">Suporta links de pastas completas e arquivos individuais.</span>
-              <button class="btn btn-primary btn-scan-main" id="btn-scan">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  <line x1="11" y1="8" x2="11" y2="14"></line>
-                  <line x1="8" y1="11" x2="14" y2="11"></line>
-                </svg>
-                <span class="btn-text">Escanear Links</span>
-                <div class="spinner" id="scan-spinner" style="display: none;"></div>
-              </button>
+              <div class="scan-buttons-group" style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-success btn-start-download-main" id="btn-add-selected" style="display: none;" title="Adicionar itens selecionados à fila e iniciar o download">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  <span>Iniciar Download</span>
+                </button>
+                <button class="btn btn-primary btn-scan-main" id="btn-scan">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    <line x1="11" y1="8" x2="11" y2="14"></line>
+                    <line x1="8" y1="11" x2="14" y2="11"></line>
+                  </svg>
+                  <span class="btn-text">Escanear Links</span>
+                  <div class="spinner" id="scan-spinner" style="display: none;"></div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -125,17 +144,17 @@
                 </svg>
                 <span>Limpar Concluídos</span>
               </button>
-              <button class="btn btn-outline-danger" id="btn-clear-all" title="Limpar toda a fila de downloads">
+              <button class="btn btn-outline-danger" id="btn-clear-all" title="Limpar toda a fila de downloads ou itens selecionados">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 6h18"></path>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                 </svg>
-                <span>Limpar Tudo</span>
+                <span>Limpar Tudo / Selecionados</span>
               </button>
             </div>
             <div class="queue-actions-row">
               <button class="btn btn-primary" id="btn-resume-all" title="Retomar / Iniciar Todos os Downloads">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="5 3 19 12 5 21 5 3"></polygon>
                 </svg>
                 <span>Retomar Tudo</span>
@@ -153,6 +172,35 @@
                   <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                 </svg>
                 <span>Reiniciar Pendentes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TORBOX TOP -->
+        <div class="top-tab-content" id="torbox-top-content" style="display: none;">
+          <div class="content-header">
+            <h1>Torbox Cloud</h1>
+            <p>Acesse a lista completa de arquivos armazenados no seu servidor em nuvem do Torbox e envie-os diretamente para a fila de downloads.</p>
+          </div>
+
+          <div class="card scan-input-container">
+            <div class="scan-actions-row" style="margin-top: 0;">
+              <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                <button class="btn btn-outline" id="btn-refresh-torbox" title="Atualizar lista da nuvem Torbox">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  </svg>
+                  <span>Atualizar Lista</span>
+                </button>
+                <input type="text" id="input-search-torbox" placeholder="Buscar nos meus downloads Torbox..." style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 12px; color: var(--text-main); font-size: 0.85rem; width: 260px;">
+              </div>
+              <button class="btn btn-primary" id="btn-add-torbox-selected">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Baixar Selecionados para a Fila</span>
               </button>
             </div>
           </div>
@@ -191,15 +239,24 @@
       <section class="tab-content active" id="scanner-tab">
         <!-- RESULTADOS DO SCAN -->
         <div class="card results-card" id="results-container" style="display: none;">
-          <div class="results-header">
+          <div class="results-header" style="display: flex; align-items: center; justify-content: space-between; padding-right: 12px;">
             <div class="selection-info">
               <input type="checkbox" id="select-all-files" checked>
               <span id="selected-count">0 arquivos selecionados (0 B)</span>
             </div>
-            <button class="btn btn-primary" id="btn-add-selected">Adicionar à Fila</button>
+            <button class="btn btn-outline-danger" id="btn-clear-scanned" title="Limpar todos os cards escaneados" style="padding: 6px 10px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
           </div>
 
-          <div class="results-table-wrapper">
+          <div id="results-groups-container" class="results-groups-container">
+            <!-- Grupos de pastas gerados dinamicamente via JS -->
+          </div>
+
+          <div class="results-table-wrapper" id="results-table-wrapper-single" style="display: none;">
             <table class="results-table">
               <thead>
                 <tr>
@@ -210,7 +267,7 @@
                 </tr>
               </thead>
               <tbody id="results-list">
-                <!-- Inserido dinamicamente via JS -->
+                <!-- Inserido dinamicamente via JS se for lista simples -->
               </tbody>
             </table>
           </div>
@@ -237,25 +294,30 @@
             <div class="active-title-group">
               <span class="active-badge">Baixando Agora</span>
               <h3 id="active-filename">carregando...</h3>
-            </div>
-            <div class="active-controls">
-              <button class="btn-icon" id="btn-active-pause" title="Pausar">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="6" y="4" width="4" height="16"></rect>
-                  <rect x="14" y="4" width="4" height="16"></rect>
-                </svg>
-              </button>
-              <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
+              <div class="active-controls">
+                <button class="btn-icon" id="btn-active-pause" title="Pausar">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="4" width="4" height="16"></rect>
+                    <rect x="14" y="4" width="4" height="16"></rect>
+                  </svg>
+                </button>
+                <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <div class="active-stats">
-            <span class="stat-main" id="active-progress-text">0%</span>
+            <div class="active-progress-row">
+              <span class="stat-main" id="active-progress-text">0%</span>
+              <div class="progress-bar-container active-progress-bar-wrap">
+                <div class="progress-bar-fill" id="active-progress-bar" style="width: 0%;"></div>
+              </div>
+            </div>
             <div class="stat-sub-group">
               <span id="active-speed-text">0 MB/s</span>
               <span class="dot">•</span>
@@ -263,10 +325,6 @@
               <span class="dot">•</span>
               <span id="active-bytes-text">0 B / 0 B</span>
             </div>
-          </div>
-
-          <div class="progress-bar-container">
-            <div class="progress-bar-fill" id="active-progress-bar" style="width: 0%;"></div>
           </div>
         </div>
 
@@ -288,6 +346,38 @@
               </svg>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- TORBOX TAB BOTTOM CONTENT -->
+      <section class="tab-content" id="torbox-tab">
+        <!-- RESULTADOS DO TORBOX CLOUD -->
+        <div class="card results-card" id="torbox-results-container" style="display: none;">
+          <div class="results-header" style="display: flex; align-items: center; justify-content: space-between; padding-right: 12px;">
+            <div class="selection-info">
+              <input type="checkbox" id="select-all-torbox-files" checked>
+              <span id="selected-torbox-count">0 arquivos selecionados (0 B)</span>
+            </div>
+          </div>
+
+          <div id="torbox-groups-container" class="results-groups-container" style="margin-top: 12px;">
+            <!-- Grupos de pastas e torrents renderizados dinamicamente -->
+          </div>
+        </div>
+
+        <!-- ESTADO VAZIO / SEM CONEXÃO TORBOX -->
+        <div class="empty-state" id="torbox-empty-state">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z"></path>
+              <path d="M12 12V22"></path>
+              <path d="M12 12L21 7"></path>
+              <path d="M12 12L3 7"></path>
+              <path d="M17 8.5L14.5 13.5H16.5L14 18.5L18.5 12.5H16.5Z" fill="currentColor" stroke="none"></path>
+            </svg>
+          </div>
+          <h3 id="torbox-empty-title">Nenhum download encontrado na sua conta Torbox</h3>
+          <p id="torbox-empty-desc">Conecte sua API Key nas Configurações ou adicione torrents/links ao seu servidor Torbox.</p>
         </div>
       </section>
 
@@ -323,6 +413,7 @@
               <div class="mode-settings-grid">
                 <div class="setting-service-card">
                   <div class="service-card-header">
+                    <span style="background: rgba(34, 197, 94, 0.18); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Google Drive</span>
                     <strong>Google Drive</strong>
                   </div>
                   <select id="setting-mode-gdrive" class="service-select">
@@ -333,6 +424,7 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Bunkr</span>
                     <strong>Bunkr</strong>
                   </div>
                   <select id="setting-mode-bunkr" class="service-select">
@@ -343,9 +435,43 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
+                    <span style="background: rgba(6, 182, 212, 0.18); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">MediaFire</span>
                     <strong>MediaFire</strong>
                   </div>
                   <select id="setting-mode-mediafire" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(251, 191, 36, 0.18); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">TeraBox</span>
+                    <strong>TeraBox</strong>
+                  </div>
+                  <select id="setting-mode-terabox" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(255, 255, 255, 0.18); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">OneDrive</span>
+                    <strong>Microsoft OneDrive</strong>
+                  </div>
+                  <select id="setting-mode-onedrive" class="service-select">
+                    <option value="single" selected>Conexão Única (Estável)</option>
+                    <option value="multi">Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(167, 139, 250, 0.18); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Torbox</span>
+                    <strong>Torbox (Debrid & Torrents)</strong>
+                  </div>
+                  <select id="setting-mode-torbox" class="service-select">
                     <option value="single">Conexão Única (Estável)</option>
                     <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
                   </select>
@@ -368,8 +494,53 @@
 
           </div>
 
+          <!-- CONEXÃO TORBOX (DEBRID & TORRENTS API) -->
+          <div class="card setting-card" id="card-torbox-settings">
+            <h2 class="setting-title">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+              Conexão Torbox (Debrid Hosters & Torrents API)
+            </h2>
+            <p class="setting-desc">Insira sua API Key do Torbox (disponível em torbox.app/settings) para desproteger links de mais de 100 servidores e baixar Torrents / Magnet Links em altíssima velocidade.</p>
+
+            <div class="setting-item">
+              <div class="setting-row-toggle">
+                <div>
+                  <label class="setting-label">Ativar Integração Torbox</label>
+                  <span class="setting-hint">Usa a API do Torbox para acelerar e desbloquear links de servidores e magnet links.</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-torbox-enabled">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <label class="setting-label" for="setting-torbox-api-key">Chave de API do Torbox (API Key)</label>
+              <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <input type="password" id="setting-torbox-api-key" class="form-control" placeholder="Cole sua API Key do Torbox aqui..." style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-color);">
+                <button class="btn btn-outline" id="btn-toggle-torbox-key" title="Mostrar / Ocultar Token API" style="padding: 0 12px; display: flex; align-items: center; justify-content: center;">
+                  <svg id="icon-eye-show" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <svg id="icon-eye-hide" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                </button>
+                <button class="btn btn-outline" id="btn-test-torbox-key" title="Validar chave de API com os servidores do Torbox">Validar Conexão</button>
+              </div>
+              <div id="torbox-key-status" style="margin-top: 8px; font-size: 13px; display: none;"></div>
+            </div>
+          </div>
+
           <!-- 3. CONEXÃO GOOGLE DRIVE (OAUTH API) (ABAIXO DE PREFERÊNCIAS DE DESEMPENHO) -->
-          <div class="card setting-card">
+          <div class="card setting-card" id="card-gdrive-settings">
             <h2 class="setting-title">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
