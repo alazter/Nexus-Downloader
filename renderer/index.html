@@ -46,7 +46,7 @@
               <line x1="3" y1="18" x2="3.01" y2="18"></line>
             </svg>
             Fila de Downloads
-            <span class="badge" id="queue-badge" style="display: none;">0</span>
+            <span class="badge" id="queue-badge" style="display: none; background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5);">0</span>
           </button>
           <button class="nav-item" data-tab="torbox">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -179,14 +179,24 @@
 
         <!-- TORBOX TOP -->
         <div class="top-tab-content" id="torbox-top-content" style="display: none;">
-          <div class="content-header">
-            <h1>Torbox Cloud</h1>
-            <p>Acesse a lista completa de arquivos armazenados no seu servidor em nuvem do Torbox e envie-os diretamente para a fila de downloads.</p>
+          <div class="content-header" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div>
+              <h1>Torbox Cloud</h1>
+              <p>Acesse a lista completa de arquivos armazenados no seu servidor em nuvem do Torbox e envie-os diretamente para a fila de downloads.</p>
+            </div>
+
+            <!-- STATS BAR (TORBOX DASHBOARD STYLE) -->
+            <div class="torbox-stats-bar" id="torbox-stats-bar">
+              <button class="torbox-stat-chip chip-total" id="btn-filter-total" title="Clique para exibir todos os downloads">0 DOWNLOADS</button>
+              <button class="torbox-stat-chip chip-active" id="btn-filter-active" title="Clique para filtrar downloads ativos (em andamento)">0 active downloads</button>
+              <button class="torbox-stat-chip chip-ready" id="btn-filter-ready" title="Clique para filtrar downloads 100% concluídos">0 downloads ready</button>
+              <button class="torbox-stat-chip chip-inactive" id="btn-filter-inactive" title="Clique para filtrar downloads inativos">0 inactive downloads</button>
+            </div>
           </div>
 
           <div class="card scan-input-container">
             <div class="scan-actions-row" style="margin-top: 0;">
-              <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+              <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
                 <button class="btn btn-outline" id="btn-refresh-torbox" title="Atualizar lista da nuvem Torbox">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -194,13 +204,59 @@
                   </svg>
                   <span>Atualizar Lista</span>
                 </button>
-                <input type="text" id="input-search-torbox" placeholder="Buscar nos meus downloads Torbox..." style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 12px; color: var(--text-main); font-size: 0.85rem; width: 260px;">
+                <input type="text" id="input-search-torbox" placeholder="Buscar nos meus downloads Torbox..." style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 12px; color: var(--text-main); font-size: 0.85rem; width: 240px;">
+
+                <!-- FILTRO DROPDOWN TORBOX DASHBOARD -->
+                <div class="torbox-filter-wrapper" style="position: relative;">
+                  <button class="btn btn-outline" id="btn-torbox-filter" title="Filtrar downloads por tipo e status">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                    </svg>
+                    <span id="torbox-filter-label">Filtros</span>
+                  </button>
+
+                  <div class="torbox-filter-dropdown" id="torbox-filter-dropdown" style="display: none;">
+                    <div class="filter-group-title">Filtrar por Status</div>
+                    <button class="filter-option active" data-filter-status="all">Todos os Status</button>
+                    <button class="filter-option" data-filter-status="ready">Concluídos (Ready)</button>
+                    <button class="filter-option" data-filter-status="active">Ativos (Downloading)</button>
+                    <button class="filter-option" data-filter-status="inactive">Inativos (Inactive)</button>
+
+                    <div class="filter-group-title" style="margin-top: 10px;">Filtrar por Tipo</div>
+                    <button class="filter-option active" data-filter-type="all">Todos os Tipos</button>
+                    <button class="filter-option" data-filter-type="torrent">Torrents (.torrent)</button>
+                    <button class="filter-option" data-filter-type="webdl">WebDL / Hosters</button>
+                    <button class="filter-option" data-filter-type="video">Vídeos (.video)</button>
+
+                    <div class="filter-group-title" style="margin-top: 10px;">Visibilidade</div>
+                    <button class="filter-option" id="btn-toggle-show-hidden">👁️ Exibir Itens Ocultados</button>
+
+                    <div class="filter-group-title" style="margin-top: 10px;">Ordenar Por</div>
+                    <button class="filter-option active" data-filter-sort="default">Padrão</button>
+                    <button class="filter-option" data-filter-sort="name">Nome (A-Z)</button>
+                    <button class="filter-option" data-filter-sort="size">Tamanho (Size)</button>
+                    <button class="filter-option" data-filter-sort="added">Data de Adição (Added Date)</button>
+                    <button class="filter-option" data-filter-sort="cached">Data de Cache (Cached Date)</button>
+                    <button class="filter-option" data-filter-sort="updated">Última Atualização (Last Updated)</button>
+                    <button class="filter-option" data-filter-sort="progress">Progresso (%)</button>
+                    <button class="filter-option" data-filter-sort="ratio">Ratio</button>
+                    <button class="filter-option" data-filter-sort="speed_dl">Velocidade de Download</button>
+                    <button class="filter-option" data-filter-sort="speed_ul">Velocidade de Upload</button>
+                  </div>
+                </div>
               </div>
+              <button class="btn btn-outline-danger" id="btn-hide-torbox-selected" style="margin-right: 8px;" title="Ocultar cartões selecionados">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+                <span>Ocultar Selecionados</span>
+              </button>
               <button class="btn btn-primary" id="btn-add-torbox-selected">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="5 3 19 12 5 21 5 3"></polygon>
                 </svg>
-                <span>Baixar Selecionados para a Fila</span>
+                <span>Adicionar selecionados à fila</span>
               </button>
             </div>
           </div>
@@ -310,6 +366,9 @@
               </div>
             </div>
           </div>
+
+          <!-- PAINEL DE AVISO DE DOWNLOAD NA NUVEM TORBOX -->
+          <div id="active-cloud-notice-container" style="display: none; margin: 10px 0 12px 0;"></div>
 
           <div class="active-stats">
             <div class="active-progress-row">
@@ -622,6 +681,12 @@
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
           </svg>
         </div>
+        <a class="github-link-badge" id="btn-github-link" title="Abrir projeto no GitHub (Alazter)" style="cursor: pointer; text-decoration: none;">
+          <svg class="github-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span class="github-text">Alazter</span>
+        </a>
         <div class="update-notice-text glow-pulse" id="update-notice" style="display: none;">Nova versão disponível</div>
       </div>
 

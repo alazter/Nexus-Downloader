@@ -674,8 +674,8 @@ function downloadBunkrFile(queueItem) {
         return reject(new Error('Download cancelado'));
       }
 
-      const parsedUrl = new URL(directUrl);
-      const transport = parsedUrl.protocol === 'https:' ? https : http;
+      let parsedUrl = new URL(directUrl);
+      let transport = parsedUrl.protocol === 'https:' ? https : http;
 
       const reqOptions = {
         rejectUnauthorized: false,
@@ -692,8 +692,58 @@ function downloadBunkrFile(queueItem) {
       else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) service = 'onedrive';
       else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) service = 'torbox';
 
+      // Pré-Flight para obter URL CDN final real e tamanho autoritativo dos cabeçalhos
+      let supportsRangeHeader = true;
+
+      try {
+        await new Promise((resPf) => {
+          const pfReq = transport.request(directUrl, {
+            method: 'GET',
+            headers: {
+              ...reqOptions.headers,
+              'Range': 'bytes=0-0'
+            },
+            rejectUnauthorized: false
+          }, res => {
+            if (res.headers.location) {
+              let nextUrl = res.headers.location;
+              if (nextUrl.startsWith('/')) {
+                nextUrl = `${parsedUrl.protocol}//${parsedUrl.host}${nextUrl}`;
+              }
+              directUrl = nextUrl;
+              parsedUrl = new URL(directUrl);
+              transport = parsedUrl.protocol === 'https:' ? https : http;
+            }
+
+            let realSize = 0;
+            if (res.headers['content-range']) {
+              const match = res.headers['content-range'].match(/\/(\d+)$/);
+              if (match) realSize = parseInt(match[1], 10);
+            }
+            if (!realSize && res.headers['content-length'] && res.statusCode === 200) {
+              realSize = parseInt(res.headers['content-length'], 10);
+            }
+
+            if (realSize && realSize > 0) {
+              console.log(`[HTTP Direct Worker] Tamanho autoritativo retornado pelo CDN: ${realSize} bytes (anterior: ${queueItem.size})`);
+              queueItem.size = realSize;
+              queueItem.sizeFormatted = formatBytes(realSize);
+            }
+
+            supportsRangeHeader = (res.statusCode === 206 || res.headers['accept-ranges'] === 'bytes');
+            pfReq.destroy();
+            resPf();
+          });
+
+          pfReq.on('error', () => resPf());
+          pfReq.end();
+        });
+      } catch (e) {
+        console.warn('[HTTP Direct Worker] Erro no pré-flight de cabeçalhos:', e.message);
+      }
+
       const mode = getDownloadMode(service);
-      const isMultiMode = (service !== 'terabox' && service !== 'onedrive') && mode === 'multi' && (queueItem.size > 5 * 1024 * 1024);
+      const isMultiMode = (service !== 'terabox' && service !== 'onedrive') && mode === 'multi' && (queueItem.size > 5 * 1024 * 1024) && supportsRangeHeader;
 
       let lastTime = Date.now();
       let lastBytes = 0;
@@ -783,8 +833,10 @@ function downloadBunkrFile(queueItem) {
           clearInterval(progressInterval);
           return resolve();
         } catch (err) {
-          clearInterval(progressInterval);
-          return reject(err);
+          console.warn(`[HTTP Direct Worker] Multiconexão falhou (${err.message}). Migrando para conexão única de segurança...`);
+          try { fs.writeFileSync(localFilePath, ''); } catch (e) {}
+          queueItem.downloadedBytes = 0;
+          return startSingleDownload(directUrl, reqOptions);
         }
       }
 
@@ -1566,6 +1618,12 @@ ipcMain.handle('get-torbox-user-downloads', async () => {
   }
 });
 
+ipcMain.handle('open-external-url', async (event, url) => {
+  if (url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url);
+  }
+});
+
 ipcMain.handle('pause-download', (event, fileId) => {
   const item = downloadQueue.find(i => i.id === fileId);
   if (item && item.status === 'downloading') {
@@ -1585,7 +1643,7 @@ ipcMain.handle('resume-download', (event, fileId) => {
   if (item && (item.status === 'paused' || item.status === 'failed')) {
     item.status = 'pending';
     item.error = null;
-    item.progress = 0;
+    item.progress = (item.size > 0 && item.downloadedBytes) ? Math.min(100, Math.floor((item.downloadedBytes / item.size) * 100)) : 0;
     updateQueueUI();
     processQueue();
   }

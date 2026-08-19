@@ -4,44 +4,39 @@
 
 ---
 
-## 3. Sessão de 19/08/2026 - Suporte Multiprovedores (TeraBox, OneDrive, TorBox, URLs Genéricas) e Engine de Stream
+## 3. Sessão de 19/08/2026 - Multiprovedores, Motor de Download net.request e Correção de Bugs de Interface & HTTP 416
 
 ### Alterações e Implementações do Dia
 
-#### 1. Suporte Avançado ao TeraBox (`terabox-scanner.js` e `terabox.md`)
-- **Problema:** Usuários precisavam baixar arquivos hospedados no TeraBox (e seus múltiplos domínios encurtados) que exigiam tratamento de cookies e tokens de sessão.
-- **Solução:** Desenvolvido scanner dedicado para TeraBox:
-  - Resolução de domínios alternativos (`terabox.app`, `1024tera.com`, `freeterabox.com`, `teraboxlink.com`, etc.).
-  - Mapeamento e navegação recursiva em pastas e arquivos.
-  - Resolução de links de streaming direto com suporte a requisições com Range e retentativas automáticas em servidores redundantes.
-
-#### 2. Suporte ao Microsoft OneDrive & SharePoint (`onedrive-scanner.js`)
-- **Problema:** Impossibilidade de capturar pastas e arquivos compartilhados publicamente no OneDrive (pessoal/corporativo) e SharePoint.
-- **Solução:** Criado o módulo `onedrive-scanner.js`:
-  - Varredura de links compartilhados de arquivos e pastas do OneDrive/SharePoint.
-  - Extração de cookies e tokens de sessão de visitante para obter URLs diretas de download da CDN da Microsoft.
-
-#### 3. Integração com o TorBox (`torbox-scanner.js`)
-- **Problema:** Ausência de suporte para links Magnet e arquivos Torrent na fila do aplicativo.
-- **Solução:** Módulo `torbox-scanner.js` integrado com a API do TorBox para resolução instantânea de torrents e streaming direto via CDN ultrarrápida.
-
-#### 4. Engine de Captura Genérica de URLs Web (`generic-scanner.js`)
-- **Problema:** Links diretos de mídia (vídeos `.mp4`, `.mkv`, arquivos `.zip`) ou servidores de hospedagem como MegaUp falhavam por falta de identificação dos cabeçalhos.
-- **Solução:** Implementado o `generic-scanner.js`, que realiza requisição HEAD/GET para inspecionar `Content-Type`, `Content-Length` e `Content-Disposition`, adicionando qualquer link de arquivo direto à fila.
-
-#### 5. Worker de Download `net.request` com Auto-Resume e Estabilidade no Main Process (`main.js`)
-- **Problema:** Fechamentos inesperados e crashes no processo principal caso conexões de segundo plano sofressem falhas de socket, além de perda do estado da janela ao reiniciar o app.
+#### 1. Correção Estrutural da Aba de Ajustes e Interface (`renderer/index.html` e `renderer/css/style.css`)
+- **Problema:** Ao navegar para a página de Ajustes ou TorBox, o conteúdo dos cartões ficava oculto ou com renderização quebrada.
 - **Solução:** 
-  - Atualizado o worker de download para usar `net.request` nativo do Chromium com suporte a cabeçalhos `Range` para retomar downloads de onde pararam.
-  - Adicionado tratamento global contra exceções não capturadas (`uncaughtException` / `unhandledRejection`).
-  - Implementada persistência de geometria e estado da janela (tamanho, posição, maximizado).
+  - Corrigido aninhamento HTML em `index.html` inserindo a tag de fechamento `</section>` na Fila de Downloads (`#queue-tab`), isolando as abas de Ajustes e TorBox.
+  - Reorganizada a grade de cartões de Ajustes em `style.css`, garantindo opacidade total (`opacity: 1 !important;`) e exibição limpa em telas de qualquer resolução.
 
-#### 6. Identificação de Provedores e Rodapé de Estatísticas na UI (`renderer/`)
-- **Problema:** A fila de downloads não diferenciava a origem dos links e não apresentava visão consolidada de consumo de banda.
+#### 2. Correção de Sobreposição e Transparência no Dropdown do TorBox (`renderer/css/style.css`)
+- **Problema:** O menu suspenso de filtros do TorBox aparecia por trás dos cartões de arquivo e possuía fundo transparente, dificultando a leitura.
 - **Solução:** 
-  - Adicionadas badges visuais com cores distintas para cada provedor (Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox, Genérico).
-  - Criado rodapé com exibição dinâmica do número de downloads ativos, velocidade global acumulada e versão do sistema.
-  - Registro interno das falhas e correções no arquivo `bug_corrigidos.md`.
+  - Elevada a hierarquia de camadas (`z-index: 20` no `.app-top-section` e `z-index: 9999` no `.torbox-filter-dropdown`).
+  - Aplicado fundo escuro 100% opaco (`#0f172a`), eliminando qualquer sobreposição do conteúdo ao fundo.
+
+#### 3. Eliminação do Erro HTTP 416 em Downloads TorBox WebDL/Hoster (`main.js` e `torbox-scanner.js`)
+- **Problema:** Downloads de arquivos via TorBox apontando para provedores externos (ex: Gofile) falhavam com erro HTTP 416 (Range Not Satisfiable) devido à divergência entre o tamanho estimado pelo serviço e o tamanho real entregue pelo CDN.
+- **Solução:** 
+  - Desenvolvida sondagem prévia de cabeçalhos (`HEAD`/`GET` `Range: bytes=0-0`) antes do início do download para extrair o tamanho exato autoritativo via `Content-Range`.
+  - Atualização dinâmica de `queueItem.size` com o valor real do CDN antes da segmentação paralela, eliminando requisições fora dos limites e garantindo downloads 100% integrais.
+
+#### 4. Suporte Avançado ao TeraBox (`terabox-scanner.js` e `terabox.md`)
+- **Problema:** Links de arquivos e pastas no TeraBox (e domínios encurtados) exigiam tratamento de cookies e tokens de sessão.
+- **Solução:** Criado o scanner dedicado para TeraBox com suporte a domínios alternativos (`terabox.app`, `1024tera.com`, `freeterabox.com`, etc.), varredura recursiva e streaming resiliente.
+
+#### 5. Integração Microsoft OneDrive, SharePoint, TorBox e URLs Genéricas (`onedrive-scanner.js`, `torbox-scanner.js`, `generic-scanner.js`)
+- **Problema:** Ausência de suporte para OneDrive, SharePoint, torrents via TorBox e arquivos HTTP diretos da web.
+- **Solução:** Desenvolvidos módulos específicos para varredura e resolução automática de URLs diretas nesses serviços.
+
+#### 6. Worker `net.request` com Auto-Resume e Proteção contra Crashes (`main.js`)
+- **Problema:** Quedas de socket causavam travamento/crash no Electron e downloads interrompidos eram perdidos.
+- **Solução:** Implementado worker com `net.request` nativo do Chromium com suporte a `Range` para auto-resume, além de escudos contra `uncaughtException`/`unhandledRejection`.
 
 ---
 
@@ -50,21 +45,12 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Refatoração In-Place da Fila de Downloads (Zero Flickering)
-- **Problema:** A função `renderQueue` recriava toda a estrutura DOM da fila a cada atualização de progresso ou mudança de estado dos downloads, resultando em oscilações visuais (flickering), perda momentânea de foco e desorganização dos toggles de pastas expandidas/recolhidas.
-- **Solução:** Implementado sistema de renderização diferencial in-place em `renderer/js/app.js`:
-  - Reutilização dos elementos HTML existentes da pasta e dos itens individuais.
-  - Funções especializadas `updateQueueItemElement` e `updateQueueItemActions` para alterar pontualmente apenas textos, larguras de barra de progresso e badges.
-  - Preservação intacta dos estados de expansão/recolhimento das pastas (`expandedFolders` e `collapsedFolders`).
+- **Problema:** A função `renderQueue` recriava toda a estrutura DOM da fila a cada atualização de progresso, causando oscilações visuais (flickering).
+- **Solução:** Implementado sistema de renderização diferencial in-place em `renderer/js/app.js` reutilizando elementos HTML e atualizando textos/barras pontualmente.
 
 #### 2. Modais Customizados de Confirmação (`showCustomConfirm`)
-- **Problema:** O uso do `window.confirm()` nativo síncrono congelava a interface do Electron e destoava do design dark moderno do Nexus Downloader.
-- **Solução:** 
-  - Desenvolvido modal customizado assíncrono totalmente integrado à UI da aplicação (`showCustomConfirm`).
-  - Aplicado às operações críticas: remoção de item individual, reinício de downloads pendentes e limpeza total da fila.
-
-#### 3. Refinamento Estético e Atualização dos Ícones
-- **Problema:** Necessidade de alinhamento visual dos badges de estado, botões de ação e ícones de identidade visual da aplicação.
-- **Solução:** Atualizados estilos em `renderer/css/style.css`, `renderer/index.html` e renovados os artefatos de ícones em `renderer/icon.png` e `renderer/icon.svg`.
+- **Problema:** `window.confirm()` nativo síncrono congelava a interface do Electron.
+- **Solução:** Modal assíncrono customizado integrado à UI (`showCustomConfirm`).
 
 ---
 
@@ -73,35 +59,20 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Suporte Nativo a Links e Pastas do MediaFire
-- **Problema:** O Nexus Downloader suportava links do Google Drive e Bunkr, mas não possuía suporte ao MediaFire para varredura de arquivos ou download direto.
-- **Solução:** Criado o módulo `mediafire-scanner.js`, que adiciona suporte completo a links de arquivos e pastas do MediaFire.
-
-#### 2. Generalização do Worker HTTP Direct e Persistência na Fila
-- **Problema:** A estrutura de downloads HTTP diretos estava engessada no módulo Bunkr e a fila de downloads (`queue.json`) não persistia propriedades do MediaFire.
-- **Solução:** Atualizado `main.js` para estender o worker HTTP Direct para Bunkr e MediaFire, salvando estado na fila.
-
-#### 3. Tratamento Automático de Expiração do Token Google (`invalid_grant`)
-- **Problema:** Em caso de token de autenticação revogado ou expirado do Google Drive (`invalid_grant`), o aplicativo gerava erros contínuos.
-- **Solução:** Implementada captura específica de exceções `invalid_grant` em `main.js`, removendo o `token.json` e solicitando reconexão.
-
-#### 4. Otimização do Resolver Bunkr
-- **Problema:** Requisições de validação de desafio no Bunkr podiam consumir buffers grandes desnecessariamente.
-- **Solução:** Ajustado o leitor de buffers em `bunkr-scanner.js` para interromper o carregamento após obter os primeiros 64KB.
+- **Solução:** Criado o módulo `mediafire-scanner.js` para varredura e resolução de URLs do MediaFire.
 
 ---
 
 ## Arquivos Criados / Modificados (Acumulado)
 
-- **`terabox-scanner.js`** (Modificado/Criado): Scanner de links e pastas do TeraBox com suporte a domínios encurtados.
-- **`onedrive-scanner.js`** (Criado): Scanner de links compartilhados do Microsoft OneDrive e SharePoint.
-- **`torbox-scanner.js`** (Criado): Resolução de links Magnet e Torrents via API do TorBox.
-- **`generic-scanner.js`** (Criado): Capturador genérico de URLs diretas e servidores de mídia (ex: MegaUp).
-- **`terabox.md`** (Criado): Documentação técnica sobre o funcionamento e endpoints do TeraBox.
-- **`bug_corrigidos.md`** (Criado): Registro detalhado de bugs corrigidos e exceções tratadas.
-- **`main.js`** (Modificado): Worker de streaming `net.request`, auto-resume, resiliência contra crashes e novos IPC handlers.
-- **`preload.js`** (Modificado): Exposição de novas APIs IPC para a camada renderer.
-- **`renderer/js/app.js`** (Modificado): Badges por provedor, rodapé de estatísticas globais e refatoração in-place da fila.
-- **`renderer/index.html`** (Modificado): Novos elementos da UI, rodapé e modais.
-- **`renderer/css/style.css`** (Modificado): Estilização dos novos provedores, badges e rodapé.
-- **`.gitignore`** (Modificado): Inclusão da pasta `scratch/` para ignorar scripts temporários de teste.
-- **`review.md`** (Atualizado): Documentação oficial do projeto.
+- **`bug_corrigidos.md`** (Criado/Atualizado): Documentação técnica completa das causas raízes e soluções para os Bugs 01, 02 e 03.
+- **`renderer/index.html`** (Modificado): Correção do aninhamento HTML das seções de abas (`</section>`).
+- **`renderer/css/style.css`** (Modificado): Ajustes de opacidade dos Ajustes e z-index/fundo do menu do TorBox.
+- **`main.js`** (Modificado): Probe prévio de tamanho real via cabeçalho CDN para prevenir erro HTTP 416, worker `net.request` e auto-resume.
+- **`torbox-scanner.js`** (Modificado): Ajuste na passagem de parâmetros e probes de WebDL.
+- **`preload.js`** (Modificado): Exposição de pontes IPC adicionais.
+- **`renderer/js/app.js`** (Modificado): Lógica de alternância de abas sem interferência e atualização in-place da fila.
+- **`terabox-scanner.js`** (Criado/Modificado): Scanner e resolver do TeraBox.
+- **`onedrive-scanner.js`** (Criado): Scanner de links do OneDrive e SharePoint.
+- **`generic-scanner.js`** (Criado): Capturador genérico de links diretos de mídia.
+- **`review.md`** (Atualizado): Registro oficial de progresso do projeto.

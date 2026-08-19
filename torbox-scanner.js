@@ -340,7 +340,7 @@ async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'webdl', torb
       const listEndpoint = torboxType === 'torrent' ? '/torrents/mylist?bypass_cache=true' : '/webdl/mylist?bypass_cache=true';
       const listRes = await callTorboxApi(listEndpoint, 'GET', apiKey);
       const items = (listRes.data && listRes.data.data) ? listRes.data.data : [];
-      const item = items.find(i => (i.id === torboxId || i.torrent_id === torboxId || i.webdownload_id === torboxId));
+      const item = items.find(i => (String(i.id) === String(torboxId) || String(i.torrent_id) === String(torboxId) || String(i.webdownload_id) === String(torboxId)));
 
       if (item) {
         const rawProg = item.progress !== undefined ? item.progress : 0;
@@ -384,14 +384,20 @@ async function fetchTorboxUserDownloads(apiKey) {
 
   // 1. Busca Torrents da conta
   try {
-    const torrentsRes = await callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey);
+    let torrentsRes = await callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey);
+    if (!torrentsRes.data || !torrentsRes.data.data) {
+      torrentsRes = await callTorboxApi('/torrents/mylist', 'GET', apiKey);
+    }
     const torrents = (torrentsRes.data && torrentsRes.data.data) ? torrentsRes.data.data : [];
 
     for (const t of torrents) {
       const folderName = t.name || `Torrent_${t.id}`;
       const rawProg = t.progress !== undefined ? t.progress : 0;
       const percent = Math.round(rawProg <= 1 ? rawProg * 100 : rawProg);
-      const statusText = t.download_finished ? 'Concluído' : `Baixando (${percent}%)`;
+      const isFinished = !!t.download_finished || t.download_state === 'completed';
+      const isInactive = !!t.inactive || (t.download_state && (t.download_state.toLowerCase().includes('inactive') || t.download_state.toLowerCase().includes('stalled') || t.download_state.toLowerCase().includes('error')));
+
+      let statusText = isFinished ? 'Concluído' : (isInactive ? 'Inativo' : `Baixando (${percent}%)`);
 
       if (t.files && Array.isArray(t.files) && t.files.length > 0) {
         t.files.forEach((f, fIdx) => {
@@ -411,7 +417,16 @@ async function fetchTorboxUserDownloads(apiKey) {
             torboxType: 'torrent',
             torboxId: t.id,
             torboxFileId: fileId,
-            cloudStatus: statusText
+            isFinished: isFinished,
+            isInactive: isInactive,
+            progress: percent,
+            cloudStatus: statusText,
+            createdAt: t.created_at || t.added_at || '',
+            updatedAt: t.updated_at || '',
+            cachedAt: t.cached_at || t.expires_at || '',
+            ratio: t.ratio !== undefined ? t.ratio : 0,
+            downloadSpeed: t.download_speed || 0,
+            uploadSpeed: t.upload_speed || 0
           });
         });
       } else {
@@ -428,7 +443,16 @@ async function fetchTorboxUserDownloads(apiKey) {
           torboxType: 'torrent',
           torboxId: t.id,
           torboxFileId: 0,
-          cloudStatus: statusText
+          isFinished: isFinished,
+          isInactive: isInactive,
+          progress: percent,
+          cloudStatus: statusText,
+          createdAt: t.created_at || t.added_at || '',
+          updatedAt: t.updated_at || '',
+          cachedAt: t.cached_at || t.expires_at || '',
+          ratio: t.ratio !== undefined ? t.ratio : 0,
+          downloadSpeed: t.download_speed || 0,
+          uploadSpeed: t.upload_speed || 0
         });
       }
     }
@@ -438,14 +462,20 @@ async function fetchTorboxUserDownloads(apiKey) {
 
   // 2. Busca WebDL / Hosters da conta
   try {
-    const webdlRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
+    let webdlRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
+    if (!webdlRes.data || !webdlRes.data.data) {
+      webdlRes = await callTorboxApi('/webdl/mylist', 'GET', apiKey);
+    }
     const webdls = (webdlRes.data && webdlRes.data.data) ? webdlRes.data.data : [];
 
     for (const w of webdls) {
       const folderName = w.name || `WebDL_${w.id}`;
       const rawProg = w.progress !== undefined ? w.progress : 0;
       const percent = Math.round(rawProg <= 1 ? rawProg * 100 : rawProg);
-      const statusText = w.download_finished ? 'Concluído' : `Baixando (${percent}%)`;
+      const isFinished = !!w.download_finished || w.download_state === 'completed';
+      const isInactive = !!w.inactive || (w.download_state && (w.download_state.toLowerCase().includes('inactive') || w.download_state.toLowerCase().includes('stalled') || w.download_state.toLowerCase().includes('error')));
+
+      let statusText = isFinished ? 'Concluído' : (isInactive ? 'Inativo' : `Baixando (${percent}%)`);
       const directUrl = `https://api.torbox.app/v1/api/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${w.id}&redirect=true`;
 
       allFiles.push({
@@ -459,7 +489,16 @@ async function fetchTorboxUserDownloads(apiKey) {
         isHttpDirect: true,
         torboxType: 'webdl',
         torboxId: w.id,
-        cloudStatus: statusText
+        isFinished: isFinished,
+        isInactive: isInactive,
+        progress: percent,
+        cloudStatus: statusText,
+        createdAt: w.created_at || w.added_at || '',
+        updatedAt: w.updated_at || '',
+        cachedAt: w.cached_at || '',
+        ratio: 0,
+        downloadSpeed: w.download_speed || 0,
+        uploadSpeed: 0
       });
     }
   } catch (err) {

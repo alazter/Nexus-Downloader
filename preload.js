@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   getTorboxUserDownloads: () => ipcRenderer.invoke('get-torbox-user-downloads'),
   selectDownloadDir: () => ipcRenderer.invoke('select-download-dir'),
   openDownloadsFolder: () => ipcRenderer.invoke('open-downloads-folder'),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
 
   // Autenticação
   checkAuth: () => ipcRenderer.invoke('check-auth'),

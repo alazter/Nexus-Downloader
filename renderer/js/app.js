@@ -198,6 +198,9 @@ navItems.forEach(item => {
 
     if (tabId === 'torbox') {
       loadTorboxDownloads();
+      if (typeof startTorboxLivePolling === 'function') startTorboxLivePolling();
+    } else {
+      if (typeof stopTorboxLivePolling === 'function') stopTorboxLivePolling();
     }
   });
 });
@@ -1111,9 +1114,9 @@ const selectedQueueItemIds = new Set();
 function getFileTypeTag(item) {
   const name = (item && item.name ? item.name : '').toLowerCase();
 
-  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp'];
+  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
   if (videoExts.some(ext => name.endsWith(ext))) {
-    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+    return { text: '.video', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
   }
 
   if (name.endsWith('.zip') || name.endsWith('.7z') || name.endsWith('.tar') || name.endsWith('.gz') || name.endsWith('.bz2')) {
@@ -1132,12 +1135,12 @@ function getFileTypeTag(item) {
 }
 
 function getFolderTypeTag(folderItems, folderName) {
+  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
+  if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext)))) {
+    return { text: '.video', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
   if (folderItems.some(i => i.torboxType === 'torrent' || (i.id && i.id.startsWith('torbox_torrent_')))) {
     return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
-  }
-  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts'];
-  if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext)))) {
-    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
   }
   if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.zip') || (i.name || '').toLowerCase().endsWith('.7z'))) {
     return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
@@ -1200,6 +1203,9 @@ function renderQueue(queue) {
   } else {
     queueBadge.style.display = 'none';
   }
+  window._updateQueueUIForTest = (q) => {
+    renderQueue(q);
+  };
 
   // Renderiza card ativo no topo
   if (activeDownloads.length > 0) {
@@ -1216,15 +1222,49 @@ function renderQueue(queue) {
       activeFilename.innerHTML = `${spanTag}${escapeHtml(pureFileName)}`;
       activeFilename.title = pureFileName;
     }
-    if (active.cloudMessage) {
-      activeSpeedText.textContent = active.cloudMessage;
-      activeEtaText.textContent = 'Aguardando cache';
+
+    if (active && torboxCloudFiles && torboxCloudFiles.length > 0) {
+      const matchingCloudItem = torboxCloudFiles.find(f => 
+        String(f.id) === String(active.id) ||
+        (f.torboxId && (String(f.torboxId) === String(active.torboxId) || String(f.torboxId) === String(active.numericId)))
+      );
+      if (matchingCloudItem && !matchingCloudItem.isFinished && matchingCloudItem.progress !== undefined && matchingCloudItem.progress < 100) {
+        active.cloudProgress = matchingCloudItem.progress;
+        active.cloudMessage = `☁️ Torbox baixando na nuvem (${matchingCloudItem.progress}%)...`;
+      }
+    }
+
+    const activeCloudNotice = document.getElementById('active-cloud-notice-container');
+    if (active.cloudMessage || active.cloudProgress !== undefined) {
+      const cProg = active.cloudProgress !== undefined ? active.cloudProgress : (active.progress || 0);
+      if (activeCloudNotice) {
+        activeCloudNotice.style.display = 'block';
+        activeCloudNotice.innerHTML = `
+          <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 1.4rem;">☁️</span>
+            <div style="flex: 1;">
+              <div style="color: #38bdf8; font-weight: 700; font-size: 0.85rem; margin-bottom: 2px;">
+                Torbox baixando na nuvem (${cProg}%) — Aguarde...
+              </div>
+              <div style="color: var(--text-secondary); font-size: 0.78rem;">
+                O Torbox está baixando este arquivo nos servidores em nuvem. O salvamento no seu PC iniciará automaticamente assim que for concluído!
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      activeProgressText.textContent = `☁️ Nuvem ${cProg}%`;
+      activeProgressBar.style.width = `${cProg}%`;
+      activeSpeedText.textContent = active.cloudMessage || `Baixando no Torbox (${cProg}%)`;
+      activeEtaText.textContent = 'Aguardando Torbox';
     } else {
+      if (activeCloudNotice) activeCloudNotice.style.display = 'none';
+      activeProgressText.textContent = `${active.progress || 0}%`;
+      activeProgressBar.style.width = `${active.progress || 0}%`;
       activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
       activeEtaText.textContent = formatETA(active.eta);
     }
     activeBytesText.textContent = `${formatBytes(active.downloadedBytes)} / ${formatBytes(active.size)}`;
-    activeProgressBar.style.width = `${active.progress}%`;
 
     // Atualiza botões do painel ativo se o ID mudou
     if (activeDownloadPanel.dataset.activeId !== active.id) {
@@ -1298,7 +1338,7 @@ function renderQueue(queue) {
       ? Math.min(100, Math.round((folderDownloadedBytes / folderTotalBytes) * 100))
       : (completedFiles === totalFiles ? 100 : 0);
 
-    const hasActiveItem = folderItems.some(f => f.status === 'downloading');
+    const hasActiveOrPausedItem = folderItems.some(f => f.status === 'downloading' || f.status === 'paused' || f.status === 'pending');
 
     let isCollapsed = false;
     if (collapsedFolders.has(folderName)) {
@@ -1306,7 +1346,7 @@ function renderQueue(queue) {
     } else if (expandedFolders.has(folderName)) {
       isCollapsed = false;
     } else {
-      isCollapsed = folderPercent === 100 || !hasActiveItem;
+      isCollapsed = folderPercent === 100 || !hasActiveOrPausedItem;
     }
 
     let folderCard = queueItemsList.querySelector(`.queue-folder-card[data-folder-name="${CSS.escape(folderName)}"]`);
@@ -1544,7 +1584,168 @@ function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
     if (spanStatus.className !== statusClass) {
       spanStatus.className = statusClass;
     }
-    const label = item.cloudMessage ? 'Nuvem Torbox' : getStatusLabel(item.status, hasActiveDownloading);
+    let label = getStatusLabel(item.status, hasActiveDownloading);
+    if (item.cloudMessage || item.cloudProgress !== undefined) {
+      const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
+      label = `☁️ Nuvem (${cProg}%)`;
+    }
+    if (spanStatus.textContent !== label) {
+      spanStatus.textContent = label;
+    }
+  }
+
+  const spanSize = itemEl.querySelector('.queue-item-size-text');
+  if (spanSize) {
+    const formatted = formatBytes(item.size);
+    if (spanSize.textContent !== formatted) {
+      spanSize.textContent = formatted;
+    }
+  }
+  const spanPercent = itemEl.querySelector('.queue-item-percent-text');
+  const barFill = itemEl.querySelector('.queue-item-progress-bar-fill');
+  const progressVal = item.progress || (item.status === 'completed' ? 100 : 0);
+
+  if (spanPercent && spanPercent.textContent !== `${progressVal}%`) {
+    spanPercent.textContent = `${progressVal}%`;
+  }
+  if (barFill) {
+    if (barFill.className !== `queue-item-progress-bar-fill ${item.status}`) {
+      barFill.className = `queue-item-progress-bar-fill ${item.status}`;
+    }
+    barFill.style.width = `${progressVal}%`;
+  }
+
+  const spanError = itemEl.querySelector('.queue-item-error-text');
+  if (spanError) {
+    const errText = item.error ? ` | Erro: ${item.error}` : '';
+    if (spanError.textContent !== errText) {
+      spanError.textContent = errText;
+    }
+  }
+
+  const divActions = itemEl.querySelector('.queue-item-actions');
+  if (divActions) {
+    updateQueueItemActions(divActions, item);
+  }
+}
+
+function createQueueItemElement(item, hasActiveDownloading = false) {
+  const div = document.createElement('div');
+  div.className = 'queue-item';
+  div.dataset.itemId = item.id;
+
+  const divInfo = document.createElement('div');
+  divInfo.className = 'queue-item-info';
+
+  const pureFileName = (item.name || '').includes('/') ? item.name.split('/').pop() : item.name;
+
+  const divName = document.createElement('div');
+  divName.className = 'queue-item-name';
+  divName.title = pureFileName;
+
+  const chkItem = document.createElement('input');
+  chkItem.type = 'checkbox';
+  chkItem.className = 'queue-item-checkbox';
+  chkItem.checked = selectedQueueItemIds.has(item.id);
+  chkItem.style.marginRight = '8px';
+  chkItem.style.cursor = 'pointer';
+  chkItem.onclick = (e) => {
+    e.stopPropagation();
+    if (chkItem.checked) {
+      selectedQueueItemIds.add(item.id);
+    } else {
+      selectedQueueItemIds.delete(item.id);
+    }
+  };
+
+  const tagInfo = getFileTypeTag(item);
+  const tagSpan = document.createElement('span');
+  tagSpan.className = 'queue-file-tag';
+  tagSpan.textContent = tagInfo.text;
+  tagSpan.style.cssText = `background: ${tagInfo.bg}; color: ${tagInfo.color}; border: 1px solid ${tagInfo.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
+
+  const spanNameText = document.createElement('span');
+  spanNameText.textContent = pureFileName;
+
+  divName.appendChild(chkItem);
+  divName.appendChild(tagSpan);
+  divName.appendChild(spanNameText);
+
+  const divMeta = document.createElement('div');
+  divMeta.className = 'queue-item-meta';
+
+  const spanSize = document.createElement('span');
+  spanSize.className = 'queue-item-size-text';
+  spanSize.textContent = formatBytes(item.size);
+
+  const spanStatus = document.createElement('span');
+  let statusClass = `queue-item-status-badge ${item.status}`;
+  if (item.status === 'pending' && hasActiveDownloading) {
+    statusClass += ' waiting';
+  }
+  spanStatus.className = statusClass;
+  spanStatus.textContent = getStatusLabel(item.status, hasActiveDownloading);
+
+  // Barra de progresso individual + Porcentagem no estilo Nexus
+  const divProgressGroup = document.createElement('div');
+  divProgressGroup.className = 'queue-item-progress-group';
+
+  const spanPercent = document.createElement('span');
+  spanPercent.className = 'queue-item-percent-text';
+  const progressVal = item.progress || (item.status === 'completed' ? 100 : 0);
+  spanPercent.textContent = `${progressVal}%`;
+
+  const barContainer = document.createElement('div');
+  barContainer.className = 'queue-item-progress-bar-container';
+
+  const barFill = document.createElement('div');
+  barFill.className = `queue-item-progress-bar-fill ${item.status}`;
+  barFill.style.width = `${progressVal}%`;
+
+  barContainer.appendChild(barFill);
+  divProgressGroup.appendChild(spanPercent);
+  divProgressGroup.appendChild(barContainer);
+
+  divMeta.appendChild(spanSize);
+  divMeta.appendChild(spanStatus);
+  divMeta.appendChild(divProgressGroup);
+
+  const spanError = document.createElement('span');
+  spanError.className = 'queue-item-error-text';
+  spanError.style.color = 'var(--danger)';
+  if (item.error) {
+    spanError.textContent = ` | Erro: ${item.error}`;
+  }
+  divMeta.appendChild(spanError);
+
+  divInfo.appendChild(divName);
+  divInfo.appendChild(divMeta);
+
+  const divActions = document.createElement('div');
+  divActions.className = 'queue-item-actions';
+
+  div.appendChild(divInfo);
+  div.appendChild(divActions);
+
+  updateQueueItemActions(divActions, item);
+  return div;
+}
+
+function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
+  const spanStatus = itemEl.querySelector('.queue-item-status-badge');
+  if (spanStatus) {
+    let statusClass = `queue-item-status-badge ${item.status}`;
+    if (item.status === 'pending' && hasActiveDownloading) {
+      statusClass += ' waiting';
+    }
+    if (spanStatus.className !== statusClass) {
+      spanStatus.className = statusClass;
+    }
+    let label = getStatusLabel(item.status, hasActiveDownloading);
+    if (item.cloudMessage || item.cloudProgress !== undefined) {
+      const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
+      label = `☁️ Nuvem (${cProg}%)`;
+    }
     if (spanStatus.textContent !== label) {
       spanStatus.textContent = label;
     }
@@ -1702,8 +1903,147 @@ if (btnRestartAll) {
 // ==========================================
 let torboxCloudFiles = [];
 let selectedTorboxFileIds = new Set();
+let currentTorboxStatusFilter = 'all';
+let currentTorboxTypeFilter = 'all';
+let currentTorboxSort = 'default';
+let torboxLivePollInterval = null;
 
-async function loadTorboxDownloads() {
+let hiddenTorboxFileIds = new Set();
+try {
+  const savedHidden = localStorage.getItem('nexus_hidden_torbox_ids');
+  if (savedHidden) {
+    JSON.parse(savedHidden).forEach(id => hiddenTorboxFileIds.add(id));
+  }
+} catch (e) {}
+
+let showHiddenTorboxFiles = false;
+
+window._setTorboxCloudFilesForTest = (files) => {
+  torboxCloudFiles = files;
+  updateTorboxStatsBar();
+  applyTorboxFilters();
+  if (torboxLivePollInterval) return;
+  console.log('[Torbox Live Polling] Iniciando monitoramento em tempo real (3s)...');
+  torboxLivePollInterval = setInterval(() => {
+    const torboxTab = document.getElementById('torbox-tab');
+    if (torboxTab && torboxTab.classList.contains('active')) {
+      loadTorboxDownloads(true);
+    }
+  }, 3000);
+}
+
+function stopTorboxLivePolling() {
+  if (torboxLivePollInterval) {
+    console.log('[Torbox Live Polling] Parando monitoramento em tempo real.');
+    clearInterval(torboxLivePollInterval);
+    torboxLivePollInterval = null;
+  }
+}
+
+window._setTorboxCloudFilesForTest = (files) => {
+  torboxCloudFiles = files;
+  updateTorboxStatsBar();
+  applyTorboxFilters();
+};
+
+function updateTorboxStatsBar() {
+  const btnTotal = document.getElementById('btn-filter-total');
+  const btnActive = document.getElementById('btn-filter-active');
+  const btnReady = document.getElementById('btn-filter-ready');
+  const btnInactive = document.getElementById('btn-filter-inactive');
+
+  const groupsMap = new Map();
+  torboxCloudFiles.forEach(f => {
+    const k = f.folderName || 'Downloads Torbox';
+    if (!groupsMap.has(k)) groupsMap.set(k, []);
+    groupsMap.get(k).push(f);
+  });
+
+  const totalGroups = groupsMap.size;
+
+  let activeCount = 0;
+  let readyCount = 0;
+  let inactiveCount = 0;
+
+  groupsMap.forEach(groupItems => {
+    if (groupItems.some(f => f.isInactive)) {
+      inactiveCount++;
+    } else if (groupItems.every(f => f.isFinished)) {
+      readyCount++;
+    } else {
+      activeCount++;
+    }
+  });
+
+  if (btnTotal) btnTotal.textContent = `${totalGroups} DOWNLOADS`;
+  if (btnActive) btnActive.textContent = `${activeCount} active downloads`;
+  if (btnReady) btnReady.textContent = `${readyCount} downloads ready`;
+  if (btnInactive) btnInactive.textContent = `${inactiveCount} inactive downloads`;
+
+  [btnTotal, btnActive, btnReady, btnInactive].forEach(b => b && b.classList.remove('active-filter'));
+  if (currentTorboxStatusFilter === 'all' && btnTotal) btnTotal.classList.add('active-filter');
+  if (currentTorboxStatusFilter === 'active' && btnActive) btnActive.classList.add('active-filter');
+  if (currentTorboxStatusFilter === 'ready' && btnReady) btnReady.classList.add('active-filter');
+  if (currentTorboxStatusFilter === 'inactive' && btnInactive) btnInactive.classList.add('active-filter');
+}
+
+function applyTorboxFilters() {
+  const searchInput = document.getElementById('input-search-torbox');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
+
+  let filtered = torboxCloudFiles.filter(file => {
+    const isHidden = hiddenTorboxFileIds.has(file.id);
+    if (isHidden && !showHiddenTorboxFiles) return false;
+
+    if (query) {
+      const matchName = (file.name || '').toLowerCase().includes(query);
+      const matchFolder = (file.folderName || '').toLowerCase().includes(query);
+      if (!matchName && !matchFolder) return false;
+    }
+
+    if (currentTorboxStatusFilter === 'ready' && !file.isFinished) return false;
+    if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive)) return false;
+    if (currentTorboxStatusFilter === 'inactive' && !file.isInactive) return false;
+
+    if (currentTorboxTypeFilter === 'torrent' && file.torboxType !== 'torrent') return false;
+    if (currentTorboxTypeFilter === 'webdl' && file.torboxType !== 'webdl') return false;
+    if (currentTorboxTypeFilter === 'video') {
+      const isVid = videoExts.some(ext => (file.name || '').toLowerCase().endsWith(ext));
+      if (!isVid) return false;
+    }
+
+    return true;
+  });
+
+  // Aplicação da Ordenação (Sort By)
+  if (currentTorboxSort === 'name') {
+    filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } else if (currentTorboxSort === 'size') {
+    filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
+  } else if (currentTorboxSort === 'added') {
+    filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  } else if (currentTorboxSort === 'cached') {
+    filtered.sort((a, b) => new Date(b.cachedAt || 0) - new Date(a.cachedAt || 0));
+  } else if (currentTorboxSort === 'updated') {
+    filtered.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+  } else if (currentTorboxSort === 'progress') {
+    filtered.sort((a, b) => (b.progress || 0) - (a.progress || 0));
+  } else if (currentTorboxSort === 'ratio') {
+    filtered.sort((a, b) => (b.ratio || 0) - (a.ratio || 0));
+  } else if (currentTorboxSort === 'speed_dl') {
+    filtered.sort((a, b) => (b.downloadSpeed || 0) - (a.downloadSpeed || 0));
+  } else if (currentTorboxSort === 'speed_ul') {
+    filtered.sort((a, b) => (b.uploadSpeed || 0) - (a.uploadSpeed || 0));
+  }
+
+  updateTorboxStatsBar();
+  renderTorboxDownloads(filtered);
+  return filtered;
+}
+
+async function loadTorboxDownloads(isSilent = false) {
   const torboxResultsContainer = document.getElementById('torbox-results-container');
   const torboxEmptyState = document.getElementById('torbox-empty-state');
   const torboxEmptyTitle = document.getElementById('torbox-empty-title');
@@ -1715,11 +2055,13 @@ async function loadTorboxDownloads() {
   try {
     const res = await window.api.getTorboxUserDownloads();
     if (!res.success) {
-      torboxResultsContainer.style.display = 'none';
-      torboxEmptyState.style.display = 'flex';
-      if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'API Key do Torbox Desconectada';
-      if (torboxEmptyDesc) torboxEmptyDesc.textContent = res.error || 'Por favor acesse os Ajustes para informar sua API Key do Torbox.';
-      if (torboxBadge) torboxBadge.style.display = 'none';
+      if (!isSilent) {
+        torboxResultsContainer.style.display = 'none';
+        torboxEmptyState.style.display = 'flex';
+        if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'API Key do Torbox Desconectada';
+        if (torboxEmptyDesc) torboxEmptyDesc.textContent = res.error || 'Por favor acesse os Ajustes para informar sua API Key do Torbox.';
+        if (torboxBadge) torboxBadge.style.display = 'none';
+      }
       return;
     }
 
@@ -1741,29 +2083,39 @@ async function loadTorboxDownloads() {
       }
     }
 
+    updateTorboxStatsBar();
+
     if (torboxCloudFiles.length === 0) {
-      torboxResultsContainer.style.display = 'none';
-      torboxEmptyState.style.display = 'flex';
-      if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'Nenhum download encontrado na sua conta Torbox';
-      if (torboxEmptyDesc) torboxEmptyDesc.textContent = 'Adicione torrents ou links diretos à sua conta Torbox para visualizá-los aqui.';
+      if (!isSilent) {
+        torboxResultsContainer.style.display = 'none';
+        torboxEmptyState.style.display = 'flex';
+        if (torboxEmptyTitle) torboxEmptyTitle.textContent = 'Nenhum download encontrado na sua conta Torbox';
+        if (torboxEmptyDesc) torboxEmptyDesc.textContent = 'Adicione torrents ou links diretos à sua conta Torbox para visualizá-los aqui.';
+      }
       return;
     }
 
     torboxEmptyState.style.display = 'none';
     torboxResultsContainer.style.display = 'block';
 
-    selectedTorboxFileIds.clear();
-    torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
+    if (!isSilent) {
+      selectedTorboxFileIds.clear();
+      torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
+    }
 
-    renderTorboxDownloads(torboxCloudFiles);
+    applyTorboxFilters();
   } catch (err) {
     console.error('Erro ao carregar downloads do Torbox:', err);
-    torboxResultsContainer.style.display = 'none';
-    torboxEmptyState.style.display = 'flex';
+    if (!isSilent) {
+      torboxResultsContainer.style.display = 'none';
+      torboxEmptyState.style.display = 'flex';
+    }
   }
 }
 
 let torboxRenderLimit = 30;
+let expandedTorboxGroups = new Set();
+let collapsedTorboxGroups = new Set();
 
 function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
   const groupsContainer = document.getElementById('torbox-groups-container');
@@ -1784,8 +2136,15 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
   visibleEntries.forEach(([groupName, groupItems]) => {
     const totalSize = groupItems.reduce((a, b) => a + b.size, 0);
 
+    let isCollapsed = false;
+    if (collapsedTorboxGroups.has(groupName)) {
+      isCollapsed = true;
+    } else if (expandedTorboxGroups.has(groupName)) {
+      isCollapsed = false;
+    }
+
     const card = document.createElement('div');
-    card.className = 'folder-group-card collapsed';
+    card.className = `folder-group-card ${isCollapsed ? 'collapsed' : ''}`;
 
     const header = document.createElement('div');
     header.className = 'folder-group-header';
@@ -1830,6 +2189,41 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
 
     const metaDiv = document.createElement('div');
     metaDiv.className = 'folder-group-meta';
+
+    // Status Badge para o Cabeçalho da Pasta (Item 2)
+    const headerStatusSpan = document.createElement('span');
+    headerStatusSpan.className = 'folder-group-status-badge';
+    if (groupItems.some(f => f.isInactive)) {
+      headerStatusSpan.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">Inativo</span>`;
+    } else if (groupItems.every(f => f.isFinished)) {
+      headerStatusSpan.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">Ready (100%)</span>`;
+    } else {
+      const activeItem = groupItems.find(f => !f.isFinished) || groupItems[0];
+      const activeProg = activeItem.progress || 0;
+      headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">☁️ Baixando (${activeProg}%)</span>`;
+    }
+    metaDiv.appendChild(headerStatusSpan);
+
+    const isGroupHidden = groupItems.some(f => hiddenTorboxFileIds.has(f.id));
+    if (isGroupHidden && showHiddenTorboxFiles) {
+      card.style.opacity = '0.7';
+      card.style.border = '1px dashed rgba(244, 63, 94, 0.5)';
+      const hiddenBadge = document.createElement('span');
+      hiddenBadge.innerHTML = `<span style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">Ocultado</span>`;
+      metaDiv.appendChild(hiddenBadge);
+
+      const unhideBtn = document.createElement('button');
+      unhideBtn.className = 'btn btn-sm btn-outline';
+      unhideBtn.style.cssText = 'padding: 2px 8px; font-size: 0.75rem; margin-right: 6px; color: #fb7185; border-color: rgba(244, 63, 94, 0.4);';
+      unhideBtn.innerHTML = '👁️ Desocultar';
+      unhideBtn.onclick = (e) => {
+        e.stopPropagation();
+        groupItems.forEach(f => hiddenTorboxFileIds.delete(f.id));
+        saveHiddenTorboxFileIds();
+        applyTorboxFilters();
+      };
+      metaDiv.appendChild(unhideBtn);
+    }
 
     const badge = document.createElement('span');
     badge.className = 'badge-cyan folder-group-badge';
@@ -1898,7 +2292,13 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         tdName.title = file.name;
 
         const tdStatus = document.createElement('td');
-        tdStatus.innerHTML = `<span style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600;">${file.cloudStatus || 'Nuvem'}</span>`;
+        if (file.isFinished) {
+          tdStatus.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Ready (100%)</span>`;
+        } else if (file.isInactive) {
+          tdStatus.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Inativo</span>`;
+        } else {
+          tdStatus.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">☁️ Baixando (${file.progress || 0}%)</span>`;
+        }
 
         const tdSize = document.createElement('td');
         tdSize.textContent = formatBytes(file.size);
@@ -1925,6 +2325,10 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
       });
     }
 
+    if (!isCollapsed) {
+      populateRows();
+    }
+
     table.appendChild(tbody);
     tableWrapper.appendChild(table);
     body.appendChild(tableWrapper);
@@ -1936,7 +2340,12 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
       if (e.target.type === 'checkbox' || e.target.closest('button')) return;
       card.classList.toggle('collapsed');
       if (!card.classList.contains('collapsed')) {
+        collapsedTorboxGroups.delete(groupName);
+        expandedTorboxGroups.add(groupName);
         populateRows();
+      } else {
+        expandedTorboxGroups.delete(groupName);
+        collapsedTorboxGroups.add(groupName);
       }
     });
 
@@ -2011,18 +2420,97 @@ if (btnRefreshTorbox) {
 const inputSearchTorbox = document.getElementById('input-search-torbox');
 if (inputSearchTorbox) {
   inputSearchTorbox.addEventListener('input', () => {
-    const term = inputSearchTorbox.value.toLowerCase().trim();
-    if (!term) {
-      renderTorboxDownloads(torboxCloudFiles);
-    } else {
-      const filtered = torboxCloudFiles.filter(f =>
-        (f.name || '').toLowerCase().includes(term) ||
-        (f.folderName || '').toLowerCase().includes(term)
-      );
-      renderTorboxDownloads(filtered);
-    }
+    applyTorboxFilters();
   });
 }
+
+function selectCategoryFilesAndFilter(statusFilter) {
+  currentTorboxStatusFilter = statusFilter;
+  selectedTorboxFileIds.clear();
+  const filtered = applyTorboxFilters();
+  filtered.forEach(f => selectedTorboxFileIds.add(f.id));
+  renderTorboxDownloads(filtered);
+}
+
+const btnFilterTotal = document.getElementById('btn-filter-total');
+if (btnFilterTotal) {
+  btnFilterTotal.addEventListener('click', () => {
+    selectCategoryFilesAndFilter('all');
+  });
+}
+
+const btnFilterActive = document.getElementById('btn-filter-active');
+if (btnFilterActive) {
+  btnFilterActive.addEventListener('click', () => {
+    const nextStatus = currentTorboxStatusFilter === 'active' ? 'all' : 'active';
+    selectCategoryFilesAndFilter(nextStatus);
+  });
+}
+
+const btnFilterReady = document.getElementById('btn-filter-ready');
+if (btnFilterReady) {
+  btnFilterReady.addEventListener('click', () => {
+    const nextStatus = currentTorboxStatusFilter === 'ready' ? 'all' : 'ready';
+    selectCategoryFilesAndFilter(nextStatus);
+  });
+}
+
+const btnFilterInactive = document.getElementById('btn-filter-inactive');
+if (btnFilterInactive) {
+  btnFilterInactive.addEventListener('click', () => {
+    const nextStatus = currentTorboxStatusFilter === 'inactive' ? 'all' : 'inactive';
+    selectCategoryFilesAndFilter(nextStatus);
+  });
+}
+
+const btnTorboxFilter = document.getElementById('btn-torbox-filter');
+const dropdownTorboxFilter = document.getElementById('torbox-filter-dropdown');
+if (btnTorboxFilter && dropdownTorboxFilter) {
+  btnTorboxFilter.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isVisible = dropdownTorboxFilter.style.display === 'flex';
+    dropdownTorboxFilter.style.display = isVisible ? 'none' : 'flex';
+  });
+
+  document.addEventListener('click', () => {
+    dropdownTorboxFilter.style.display = 'none';
+  });
+
+  dropdownTorboxFilter.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  const filterOptions = dropdownTorboxFilter.querySelectorAll('.filter-option');
+  filterOptions.forEach(opt => {
+    opt.addEventListener('click', () => {
+      const statusVal = opt.getAttribute('data-filter-status');
+      const typeVal = opt.getAttribute('data-filter-type');
+      const sortVal = opt.getAttribute('data-filter-sort');
+
+      if (statusVal) {
+        dropdownTorboxFilter.querySelectorAll('[data-filter-status]').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        selectCategoryFilesAndFilter(statusVal);
+      }
+
+      if (typeVal) {
+        currentTorboxTypeFilter = typeVal;
+        dropdownTorboxFilter.querySelectorAll('[data-filter-type]').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        applyTorboxFilters();
+      }
+
+      if (sortVal) {
+        currentTorboxSort = sortVal;
+        dropdownTorboxFilter.querySelectorAll('[data-filter-sort]').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        applyTorboxFilters();
+      }
+    });
+  });
+}
+
+
 
 const btnAddTorboxSelected = document.getElementById('btn-add-torbox-selected');
 if (btnAddTorboxSelected) {
@@ -2037,18 +2525,37 @@ if (btnAddTorboxSelected) {
   });
 }
 
-const selectAllTorboxFiles = document.getElementById('select-all-torbox-files');
-if (selectAllTorboxFiles) {
-  selectAllTorboxFiles.addEventListener('change', () => {
-    const isChecked = selectAllTorboxFiles.checked;
-    selectedTorboxFileIds.clear();
-    if (isChecked) {
-      torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
+const btnHideTorboxSelected = document.getElementById('btn-hide-torbox-selected');
+if (btnHideTorboxSelected) {
+  btnHideTorboxSelected.addEventListener('click', async () => {
+    if (selectedTorboxFileIds.size === 0) {
+      await showCustomAlert('Por favor, selecione pelo menos um arquivo/cartão do Torbox para ocultar.', 'Ocultar Selecionados');
+      return;
     }
-    renderTorboxDownloads(torboxCloudFiles);
+    const count = selectedTorboxFileIds.size;
+    if (await showCustomConfirm(`Deseja ocultar os ${count} item(ns) selecionado(s)? Você poderá exibi-los novamente através do menu de Filtros.`, 'Ocultar Selecionados')) {
+      selectedTorboxFileIds.forEach(id => hiddenTorboxFileIds.add(id));
+      saveHiddenTorboxFileIds();
+      selectedTorboxFileIds.clear();
+      applyTorboxFilters();
+      updateTorboxSelectionSummary();
+    }
   });
 }
 
+const btnToggleShowHidden = document.getElementById('btn-toggle-show-hidden');
+if (btnToggleShowHidden) {
+  btnToggleShowHidden.addEventListener('click', () => {
+    showHiddenTorboxFiles = !showHiddenTorboxFiles;
+    btnToggleShowHidden.classList.toggle('active', showHiddenTorboxFiles);
+    btnToggleShowHidden.textContent = showHiddenTorboxFiles ? '✓ Exibir Itens Ocultados' : '👁️ Exibir Itens Ocultados';
+    applyTorboxFilters();
+  });
+}
+
+// ==========================================
+// Rodapé Draggable & Posicionamento
+// ==========================================
 let savedFooterOffsetX = parseFloat(localStorage.getItem('footer_status_offset_x')) || 0;
 
 function applyFooterStatusPosition() {
@@ -2095,13 +2602,8 @@ function initFooterStatusDraggable() {
     const barRect = bottomBar.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
-    // Limites de segurança
-    if (containerRect.left + deltaX < 255 && deltaX < 0) {
-      return;
-    }
-    if (containerRect.right + deltaX > barRect.right - 10 && deltaX > 0) {
-      return;
-    }
+    if (containerRect.left + deltaX < 255 && deltaX < 0) return;
+    if (containerRect.right + deltaX > barRect.right - 10 && deltaX > 0) return;
 
     savedFooterOffsetX = targetX;
     container.style.transform = `translateX(${savedFooterOffsetX}px)`;
@@ -2113,7 +2615,6 @@ function initFooterStatusDraggable() {
       container.style.cursor = 'grab';
       document.body.style.userSelect = '';
       localStorage.setItem('footer_status_offset_x', savedFooterOffsetX);
-      console.log(`[Footer Drag] Posição do indicador fixada permanentemente em offset: ${savedFooterOffsetX}px`);
     }
   });
 
@@ -2121,6 +2622,81 @@ function initFooterStatusDraggable() {
     if (hasMoved) {
       e.preventDefault();
       e.stopPropagation();
+    }
+  }, true);
+}
+
+let savedGithubOffsetX = parseFloat(localStorage.getItem('github_button_offset_x')) || 0;
+
+function applyGithubButtonPosition() {
+  const btn = document.getElementById('btn-github-link');
+  if (btn) {
+    btn.style.position = 'relative';
+    btn.style.zIndex = '30';
+    btn.style.transform = `translateX(${savedGithubOffsetX}px)`;
+  }
+}
+
+function initGithubButtonDraggable() {
+  const btn = document.getElementById('btn-github-link');
+  const bottomBar = document.querySelector('.app-bottom-bar');
+  if (!btn || !bottomBar) return;
+
+  btn.style.position = 'relative';
+  btn.style.zIndex = '30';
+  btn.style.cursor = 'grab';
+
+  let isDragging = false;
+  let hasMoved = false;
+  let startX = 0;
+  let initialOffsetX = 0;
+
+  applyGithubButtonPosition();
+
+  btn.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    hasMoved = false;
+    startX = e.clientX;
+    initialOffsetX = savedGithubOffsetX;
+    btn.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.clientX - startX;
+    if (Math.abs(deltaX) > 3) hasMoved = true;
+
+    let targetX = initialOffsetX + deltaX;
+
+    const barRect = bottomBar.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+
+    if (btnRect.left + deltaX < 10 && deltaX < 0) return;
+    if (btnRect.right + deltaX > barRect.right - 10 && deltaX > 0) return;
+
+    savedGithubOffsetX = targetX;
+    btn.style.transform = `translateX(${savedGithubOffsetX}px)`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      btn.style.cursor = 'grab';
+      document.body.style.userSelect = '';
+      localStorage.setItem('github_button_offset_x', savedGithubOffsetX);
+    }
+  });
+
+  btn.addEventListener('click', (e) => {
+    if (hasMoved) {
+      e.preventDefault();
+      e.stopPropagation();
+    } else {
+      e.preventDefault();
+      if (window.api && window.api.openExternalUrl) {
+        window.api.openExternalUrl('https://github.com/alazt/Nexus-Downloader');
+      }
     }
   }, true);
 }
@@ -2133,5 +2709,6 @@ window.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   startFooterStatusCycle();
   initFooterStatusDraggable();
+  initGithubButtonDraggable();
   loadTorboxDownloads();
 });

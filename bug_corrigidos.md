@@ -25,3 +25,44 @@ Caso a interface volte a ocultar o conteúdo da página de Ajustes ou Torbox no 
 1. Verifique se todas as seções `<section class="tab-content" id="...">` no arquivo `renderer/index.html` estão devidamente fechadas com `</section>` antes da abertura da aba seguinte.
 2. Certifique-se de que `#torbox-top-content` e `#settings-top-content` possuem `style="display: none;"` por padrão no HTML.
 3. Garanta que a classe `.tab-content.active` no arquivo `renderer/css/style.css` possua `display: flex;` e `opacity: 1 !important;`.
+
+---
+
+## Bug 02: Sobreposição e Transparência do Menu de Filtros do Torbox
+
+### Causa Raiz Identificada e Corrigida
+- **Hierarquia de Camadas (`z-index`)**: O contêiner superior `.app-top-section` não possuía um contexto de empilhamento superior a `.app-bottom-content`. Como a lista de arquivos da nuvem ficava após a seção superior no código HTML, o menu suspenso `#torbox-filter-dropdown` acabava sendo renderizado **por trás** dos cartões de arquivo da lista.
+- **Transparência do Fundo**: O menu usava `background: rgba(15, 23, 42, 0.95)` com `backdrop-filter`, fazendo com que os textos dos cartões abaixo ficassem visíveis através do menu.
+
+### Solução Aplicada
+1. Ajustado o CSS em [`renderer/css/style.css`](file:///c:/Users/alazt/Documents/GitHub/Projetos/Google%20driver%20downloader/renderer/css/style.css#L81):
+   - `.app-top-section { position: relative; z-index: 20; }`
+   - `.top-main-area { position: relative; z-index: 25; }`
+   - `.app-bottom-content { position: relative; z-index: 1; }`
+   - `.torbox-filter-dropdown { z-index: 9999 !important; background: #0f172a !important; }`
+2. O fundo do dropdown agora é **100% opaco escuro** (`#0f172a`), eliminando o sangramento do texto abaixo e garantindo contraste nítido.
+
+---
+
+## Bug 03: Erro HTTP 416 e Interrupção no Download de Arquivos Torbox WebDL/Hoster (ex: Gofile)
+
+### Causa Raiz Identificada e Corrigida
+1. **Divergência entre Tamanho Declarado e Tamanho Real do CDN**:
+   - Links de WebDL (como Gofile, 1fichier, etc.) adicionados ao Torbox reportavam tamanhos estimados em `/webdl/mylist` que diferiam do tamanho real entregue pelo servidor CDN.
+   - Ao calcular os 4 segmentos de multiconexão baseados no tamanho estimado (ex: 18.7 GB em vez dos reais 10.2 GB do arquivo do Gofile), o 4º segmento enviava uma requisição `Range` além do fim real do arquivo. O servidor CDN do Torbox rejeitava o segmento com **HTTP 416 Range Not Satisfiable**.
+2. **Avaliação Falsa de Download Truncado**:
+   - Quando o download migrava para o modo de conexão única, o aplicativo mantinha o tamanho estimado incorreto. Ao concluir os 10.2 GB reais, o aplicativo achava que o arquivo estava incompleto e abortava a gravação.
+
+### Solução Aplicada
+1. **Pré-Flight Header Probe em `main.js`**:
+   - Antes de iniciar qualquer download do Torbox, o motor realiza uma rápida sondagem prévia (`HEAD`/`GET` `Range: bytes=0-0`) na URL final do CDN para ler os cabeçalhos autoritativos `Content-Range` e `Content-Length`.
+2. **Ajuste Dinâmico do Tamanho Real**:
+   - O aplicativo atualiza instantaneamente `queueItem.size` para o tamanho real exato retornado pelo servidor CDN antes de dividir os segmentos ou pré-alocar os arquivos.
+3. **Divisão de Segmentos Perfeita**:
+   - Com o tamanho real ajustado pelo pré-flight, os 4 segmentos paralelos são divididos com precisão cirúrgica sem gerar requisições fora dos limites e sem disparar erros HTTP 416.
+
+### Instruções de Restauração em Caso de Reincidência
+Caso algum download do Torbox volte a apresentar erro 416 ou interrompa no início:
+1. Certifique-se de que a função de pre-flight HTTP (`preflightCheck`) em `main.js` está sendo invocada antes do bloco `isMultiMode`.
+2. Verifique se `queueItem.size` é atualizado a partir do cabeçalho `content-range` (`bytes 0-0/TAMANHO_REAL`) retornado pelo servidor CDN.
+

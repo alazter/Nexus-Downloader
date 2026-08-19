@@ -81,6 +81,8 @@ body {
   width: 100%;
   flex-shrink: 0;
   align-items: stretch;
+  position: relative;
+  z-index: 20;
 }
 
 /* Sidebar (Termina verticalmente abaixo de Ajustes) */
@@ -109,6 +111,8 @@ body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  position: relative;
+  z-index: 25;
 }
 
 .top-tab-content {
@@ -126,6 +130,8 @@ body {
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+  z-index: 1;
 }
 
 /* Rodapé Fino e Enxuto (Reduzido estritamente ao tamanho dos elementos) */
@@ -352,6 +358,40 @@ body {
   color: var(--accent-primary);
   transition: transform var(--transition-fast);
   flex-shrink: 0;
+}
+
+.github-link-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 4px !important;
+  border-radius: 4px !important;
+  margin-left: 12px !important;
+  cursor: grab !important;
+  transition: color 0.2s ease !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  user-select: none !important;
+}
+
+.github-link-badge:hover {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #38bdf8 !important;
+}
+
+.github-link-badge svg {
+  color: currentColor;
+  transition: transform 0.2s ease;
+}
+
+.github-link-badge:hover svg {
+  transform: scale(1.18) rotate(8deg);
 }
 
 .version-refresh-icon.spinning {
@@ -2274,5 +2314,143 @@ input[type="checkbox"]:checked::after,
 .folder-group-body .results-table-wrapper {
   max-height: none;
   border-top: none;
+}
+
+/* Torbox Dashboard Stats Bar */
+.torbox-stats-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.torbox-stat-chip {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.2px;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  outline: none;
+  border: 1px solid transparent;
+}
+
+.torbox-stat-chip:hover {
+  transform: translateY(-1px);
+}
+
+.torbox-stat-chip.chip-total {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.torbox-stat-chip.chip-total:hover,
+.torbox-stat-chip.chip-total.active-filter {
+  background: rgba(148, 163, 184, 0.3);
+  border-color: #cbd5e1;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.4);
+}
+
+.torbox-stat-chip.chip-active {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.torbox-stat-chip.chip-active:hover,
+.torbox-stat-chip.chip-active.active-filter {
+  background: rgba(56, 189, 248, 0.35);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+}
+
+.torbox-stat-chip.chip-ready {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.torbox-stat-chip.chip-ready:hover,
+.torbox-stat-chip.chip-ready.active-filter {
+  background: rgba(52, 211, 153, 0.35);
+  border-color: #34d399;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+}
+
+.torbox-stat-chip.chip-inactive {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.45);
+}
+
+.torbox-stat-chip.chip-inactive:hover,
+.torbox-stat-chip.chip-inactive.active-filter {
+  background: rgba(244, 63, 94, 0.35);
+  border-color: #f43f5e;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(244, 63, 94, 0.6);
+}
+
+/* Torbox Filter Dropdown Menu */
+.torbox-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 220px;
+  background: #0f172a !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  border-radius: var(--border-radius-md);
+  padding: 10px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.9) !important;
+  z-index: 9999 !important;
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-group-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  padding: 4px 6px 2px 6px;
+}
+
+.filter-option {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  width: 100%;
+}
+
+.filter-option:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--text-main);
+}
+
+.filter-option.active {
+  background: rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+  font-weight: 700;
 }
 
