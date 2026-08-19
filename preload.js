@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   selectDownloadDir: () => ipcRenderer.invoke('select-download-dir'),
   openDownloadsFolder: () => ipcRenderer.invoke('open-downloads-folder'),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
   // Autenticação
   checkAuth: () => ipcRenderer.invoke('check-auth'),

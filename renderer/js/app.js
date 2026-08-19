@@ -324,6 +324,8 @@ if (btnCheckVersion) {
     const icon = btnCheckVersion.querySelector('.version-refresh-icon');
     if (icon) icon.classList.add('spinning');
 
+    const currentVer = (window.api && window.api.getAppVersion) ? (await window.api.getAppVersion()) : '1.2.0';
+
     try {
       const res = await window.api.checkForUpdates();
       if (icon) icon.classList.remove('spinning');
@@ -336,12 +338,12 @@ if (btnCheckVersion) {
         await showCustomAlert(`Uma nova versão (v${res.updateInfo.version}) foi encontrada e está sendo baixada automaticamente!`, 'Atualização Disponível');
       } else {
         if (updateNotice) updateNotice.style.display = 'none';
-        await showCustomAlert('Seu Nexus Downloader já está atualizado na versão mais recente (v1.0.1)!', 'Verificação de Atualização');
+        await showCustomAlert(`Seu Nexus Downloader já está atualizado na versão mais recente (v${currentVer})!`, 'Verificação de Atualização');
       }
     } catch (err) {
       if (icon) icon.classList.remove('spinning');
       if (updateNotice) updateNotice.style.display = 'none';
-      await showCustomAlert('Seu Nexus Downloader já está atualizado na versão mais recente (v1.0.1)!', 'Verificação de Atualização');
+      await showCustomAlert(`Seu Nexus Downloader já está atualizado na versão mais recente (v${currentVer})!`, 'Verificação de Atualização');
     }
   });
 }
@@ -352,6 +354,12 @@ if (window.api && window.api.onUpdaterStatus) {
 
   window.api.onUpdaterStatus(async (data) => {
     if (!data) return;
+
+    const updaterModal = document.getElementById('updater-modal-overlay');
+    const progressBar = document.getElementById('updater-progress-bar');
+    const percentText = document.getElementById('updater-progress-percent');
+    const sizeText = document.getElementById('updater-size-text');
+    const speedText = document.getElementById('updater-speed-text');
 
     if (data.status === 'available') {
       if (updateNotice) {
@@ -378,7 +386,14 @@ if (window.api && window.api.onUpdaterStatus) {
         updateNotice.textContent = `Baixando atualização: ${data.percent || 0}%...`;
         updateNotice.style.display = 'block';
       }
+
+      if (updaterModal) updaterModal.style.display = 'flex';
+      if (progressBar) progressBar.style.width = `${data.percent || 0}%`;
+      if (percentText) percentText.textContent = `${data.percent || 0}%`;
+      if (sizeText) sizeText.textContent = `${formatBytes(data.transferred || 0)} / ${formatBytes(data.total || 0)}`;
+      if (speedText) speedText.textContent = `${data.mbps || '0.00'} Mbps`;
     } else if (data.status === 'downloaded') {
+      if (updaterModal) updaterModal.style.display = 'none';
       if (updateNotice) {
         updateNotice.textContent = 'Versão pronta para instalar';
         updateNotice.style.display = 'block';
@@ -391,6 +406,8 @@ if (window.api && window.api.onUpdaterStatus) {
       if (wantInstall) {
         window.api.restartAndInstall();
       }
+    } else if (data.status === 'error') {
+      if (updaterModal) updaterModal.style.display = 'none';
     }
   });
 }
@@ -2735,11 +2752,26 @@ function initGithubButtonDraggable() {
 // ==========================================
 // Inicialização do App
 // ==========================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   checkAuthStatus();
   loadConfig();
   startFooterStatusCycle();
   initFooterStatusDraggable();
   initGithubButtonDraggable();
   loadTorboxDownloads();
+
+  if (window.api && window.api.getAppVersion) {
+    try {
+      const version = await window.api.getAppVersion();
+      const verSpan = document.querySelector('#btn-check-version .version-num');
+      if (verSpan && version) {
+        verSpan.textContent = `v${version}`;
+      }
+    } catch (e) {}
+  }
+});
+
+window.addEventListener('resize', () => {
+  if (typeof applyFooterStatusPosition === 'function') applyFooterStatusPosition();
+  if (typeof applyGithubButtonPosition === 'function') applyGithubButtonPosition();
 });

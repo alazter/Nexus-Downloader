@@ -1,6 +1,6 @@
 {
   "name": "nexus-downloader",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Downloader inteligente e ultrarrápido de mídias e pastas (Google Drive, Bunkr, etc.).",
   "main": "main.js",
   "scripts": {
@@ -36,8 +36,7 @@
     },
     "win": {
       "target": [
-        "portable",
-        "nsis"
+        "portable"
       ],
       "icon": "renderer/icon.png"
     },

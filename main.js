@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker, Menu } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -281,10 +281,15 @@ function setupAutoUpdater() {
 
   autoUpdater.on('download-progress', (progressObj) => {
     if (mainWindow) {
+      const bytesPerSecond = progressObj.bytesPerSecond || 0;
+      const mbps = ((bytesPerSecond * 8) / (1024 * 1024)).toFixed(2);
       mainWindow.webContents.send('updater-status', {
         status: 'downloading',
         percent: progressObj.percent.toFixed(1),
-        speed: progressObj.bytesPerSecond
+        transferred: progressObj.transferred || 0,
+        total: progressObj.total || 0,
+        bytesPerSecond: bytesPerSecond,
+        mbps: mbps
       });
     }
   });
@@ -303,6 +308,7 @@ function setupAutoUpdater() {
 
 // Inicializa a janela quando o app estiver pronto
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   createWindow();
 
   // Tenta inicializar o cliente do Google com credenciais existentes
@@ -1616,6 +1622,10 @@ ipcMain.handle('get-torbox-user-downloads', async () => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });
 
 ipcMain.handle('open-external-url', async (event, url) => {

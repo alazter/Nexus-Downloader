@@ -180,15 +180,15 @@ body {
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 0 4px;
   margin-bottom: 32px;
   flex-shrink: 0;
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   background: transparent;
   display: flex;
   align-items: center;
@@ -198,9 +198,10 @@ body {
   box-shadow: none;
 }
 
+.brand-logo-img,
 .brand-logo-svg {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.65)) drop-shadow(0 0 20px rgba(127, 0, 255, 0.4));
   animation: pulse-glow-svg 3s infinite alternate;
 }
@@ -217,7 +218,7 @@ body {
 }
 
 .brand-nexus {
-  font-size: 1.45rem;
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: 0.5px;
   background: var(--accent-gradient);
@@ -227,12 +228,12 @@ body {
 }
 
 .brand-downloader {
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .nav-menu {
@@ -2452,5 +2453,122 @@ input[type="checkbox"]:checked::after,
   background: rgba(56, 189, 248, 0.25);
   color: #38bdf8;
   font-weight: 700;
+}
+
+/* ==========================================
+   MODAL DE AUTO-UPDATER COM EFEITO GLASS
+   ========================================== */
+.updater-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(5, 9, 20, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  pointer-events: all;
+  animation: fadeInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.updater-modal-box {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(56, 189, 248, 0.2);
+  border-radius: var(--border-radius-lg);
+  width: 100%;
+  max-width: 480px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.updater-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.updater-modal-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.updater-modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.updater-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+  line-height: 1.4;
+}
+
+.updater-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.updater-progress-track {
+  flex: 1;
+  height: 12px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.updater-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.6);
+  border-radius: 6px;
+  transition: width 0.2s ease;
+}
+
+.updater-progress-percent {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #38bdf8;
+  min-width: 44px;
+  text-align: right;
+}
+
+.updater-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.updater-speed-badge {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.8rem;
 }
 
