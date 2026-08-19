@@ -1918,10 +1918,7 @@ try {
 
 let showHiddenTorboxFiles = false;
 
-window._setTorboxCloudFilesForTest = (files) => {
-  torboxCloudFiles = files;
-  updateTorboxStatsBar();
-  applyTorboxFilters();
+function startTorboxLivePolling() {
   if (torboxLivePollInterval) return;
   console.log('[Torbox Live Polling] Iniciando monitoramento em tempo real (3s)...');
   torboxLivePollInterval = setInterval(() => {
@@ -2136,11 +2133,11 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
   visibleEntries.forEach(([groupName, groupItems]) => {
     const totalSize = groupItems.reduce((a, b) => a + b.size, 0);
 
-    let isCollapsed = false;
-    if (collapsedTorboxGroups.has(groupName)) {
-      isCollapsed = true;
-    } else if (expandedTorboxGroups.has(groupName)) {
+    let isCollapsed = true;
+    if (expandedTorboxGroups.has(groupName)) {
       isCollapsed = false;
+    } else if (collapsedTorboxGroups.has(groupName)) {
+      isCollapsed = true;
     }
 
     const card = document.createElement('div');
@@ -2410,6 +2407,20 @@ function updateTorboxSelectionSummary() {
   }
 }
 
+const selectAllTorboxFiles = document.getElementById('select-all-torbox-files');
+if (selectAllTorboxFiles) {
+  selectAllTorboxFiles.addEventListener('change', () => {
+    const isChecked = selectAllTorboxFiles.checked;
+    selectedTorboxFileIds.clear();
+    if (isChecked) {
+      const filtered = applyTorboxFilters();
+      filtered.forEach(f => selectedTorboxFileIds.add(f.id));
+    }
+    const filtered = applyTorboxFilters();
+    renderTorboxDownloads(filtered);
+  });
+}
+
 const btnRefreshTorbox = document.getElementById('btn-refresh-torbox');
 if (btnRefreshTorbox) {
   btnRefreshTorbox.addEventListener('click', () => {
@@ -2549,6 +2560,26 @@ if (btnToggleShowHidden) {
     showHiddenTorboxFiles = !showHiddenTorboxFiles;
     btnToggleShowHidden.classList.toggle('active', showHiddenTorboxFiles);
     btnToggleShowHidden.textContent = showHiddenTorboxFiles ? '✓ Exibir Itens Ocultados' : '👁️ Exibir Itens Ocultados';
+    applyTorboxFilters();
+  });
+}
+
+const btnCollapseAllTorbox = document.getElementById('btn-collapse-all-torbox');
+if (btnCollapseAllTorbox) {
+  btnCollapseAllTorbox.addEventListener('click', () => {
+    if (expandedTorboxGroups.size > 0) {
+      expandedTorboxGroups.clear();
+      torboxCloudFiles.forEach(f => {
+        const key = f.folderName || 'Downloads Torbox';
+        collapsedTorboxGroups.add(key);
+      });
+    } else {
+      collapsedTorboxGroups.clear();
+      torboxCloudFiles.forEach(f => {
+        const key = f.folderName || 'Downloads Torbox';
+        expandedTorboxGroups.add(key);
+      });
+    }
     applyTorboxFilters();
   });
 }
