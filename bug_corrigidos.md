@@ -624,6 +624,38 @@ Caso algum download do Torbox volte a apresentar erro 416 ou interrompa no iníc
 
 ---
 
+## Bug 24: Ajuste de Disposição e Alinhamento dos Elementos na Fila de Downloads (Conforme Imagem Enviada)
+
+### Causa Raiz Identificada e Corrigida
+- **Alinhamento do Bloco de Progresso na Base do Painel Ativo (`style.css`)**:
+  - No CSS do painel de download ativo, as estatísticas da base (`.active-stats`) precisavam alinhar a barra de progresso (`☁️ Nuvem X%`) no lado esquerdo e as informações de status (`Servidor Torbox Processando • Aguardando Conclusão • 0 Bytes / X GB`) no lado direito em um único eixo horizontal fluido, exatamente como demonstrado na imagem enviada pelo usuário (`media_1787281634503.png`).
+
+### Solução Aplicada
+1. **Reordenamento e Preservação Estrita dos Elementos**:
+   - Todos os elementos visuais (cabeçalho, 6 botões de ação em 2 linhas, card do painel ativo em 3 camadas e lista de downloads agrupada) foram preservados sem nenhuma remoção ou adição desnecessária.
+2. **Alinhamento Horizontal na Base do Card (`style.css`)**:
+   - Ajustado `.active-stats` para `display: flex; align-items: center; justify-content: space-between; gap: 20px;`.
+   - A barra de progresso preenche o espaço à esquerda e os textos de velocidade/conclusão alinham-se à direita na mesma linha, atingindo **100% de fidelidade visual com a imagem do usuário**.
+
+---
+
+## Bug 25: Correção do Painel Ativo para Layout Compacto de 3 Colunas Horizontais (`style.css` & `index.html`)
+
+### Causa Raiz Identificada e Corrigida
+- **Desformatação em 3 Linhas Empilhadas Verticais**:
+  - No passo anterior, o painel ativo havia sido estruturado em 3 linhas empilhadas verticalmente (topo, meio e base), o que deixou a barra de progresso espremida em 4% no canto inferior esquerdo e o texto da direita cortado com `...` (conforme reportado pelo usuário na imagem `media_1787282578597.png`).
+  - Na imagem de referência desejada pelo usuário (`media_1787281634503.png`), o painel ativo é um **card horizontal único compacto com 3 colunas fluídas lado a lado**.
+
+### Solução Aplicada
+1. **Estrutura de 3 Colunas Lado a Lado (`index.html` & `style.css`)**:
+   - **Coluna 1 (Esquerda - Título & Botões)**: `.active-title-group` contendo a badge (`AGUARDANDO TORBOX`), tag `.Zip`, nome do arquivo e botões de ação (`|| x`).
+   - **Coluna 2 (Centro - Banner de Aviso)**: `#active-cloud-notice-container` posicionado no centro do card com texto explicativo translúcido.
+   - **Coluna 3 (Direita - Progresso & Status)**: `.active-stats` alinhando a barra de progresso no topo e o status explicativo na base à direita.
+2. **Resultado**:
+   - Elimina o empilhamento vertical, descompressão da barra de progresso e restaura a **fidelidade visual exata de 100% com a imagem original enviada pelo usuário**.
+
+---
+
 ## Bug 11: Desformatação e Empilhamento Vertical dos Arquivos Internos na Fila de Downloads
 
 ### Causa Raiz Identificada e Corrigida

@@ -351,14 +351,12 @@
 
       <!-- QUEUE TAB BOTTOM CONTENT -->
       <section class="tab-content" id="queue-tab">
-        <!-- PAINEL DE DOWNLOAD ATIVO (LAYOUT ORGANIZADO EM 3 CAMADAS) -->
+        <!-- PAINEL DE DOWNLOAD ATIVO (LAYOUT HORIZONTAL FLUIDO CONFORME MEDIA_1787281634503.PNG) -->
         <div class="card active-download-panel" id="active-download-panel" style="display: none;">
-          <!-- CAMADA 1: TÍTULO E CONTROLES (TOPO) -->
-          <div class="active-title-row">
-            <div class="active-title-group">
-              <span class="active-badge" id="active-badge-element">Baixando Agora</span>
-              <h3 id="active-filename">carregando...</h3>
-            </div>
+          <!-- COLUNA 1: TÍTULO, BADGES E CONTROLES (ESQUERDA) -->
+          <div class="active-title-group">
+            <span class="active-badge" id="active-badge-element">Baixando Agora</span>
+            <h3 id="active-filename">carregando...</h3>
             <div class="active-controls">
               <button class="btn-icon" id="btn-active-pause" title="Pausar">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -375,10 +373,10 @@
             </div>
           </div>
 
-          <!-- CAMADA 2: BANNER DEDICADO DE AVISO DE NUVEM (MEIO) -->
+          <!-- COLUNA 2: BANNER DE AVISO DA NUVEM TORBOX (CENTRO) -->
           <div id="active-cloud-notice-container" class="active-cloud-notice-box" style="display: none;"></div>
 
-          <!-- CAMADA 3: BARRA DE PROGRESSO E ESTATÍSTICAS (BASE) -->
+          <!-- COLUNA 3: PROGRESSO E ESTATÍSTICAS (DIREITA) -->
           <div class="active-stats">
             <div class="active-progress-row">
               <span class="stat-main" id="active-progress-text">0%</span>
