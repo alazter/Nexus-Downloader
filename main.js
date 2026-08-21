@@ -511,7 +511,12 @@ function updateQueueUI() {
       downloadedBytes: item.downloadedBytes,
       speed: item.speed,
       eta: item.eta,
-      error: item.error
+      error: item.error,
+      cloudMessage: item.cloudMessage,
+      cloudProgress: item.cloudProgress,
+      torboxType: item.torboxType,
+      torboxId: item.torboxId,
+      torboxFileId: item.torboxFileId
     }));
     mainWindow.webContents.send('queue-updated', serializedQueue);
   }
@@ -582,6 +587,13 @@ async function processQueue() {
   processQueue();
 }
 
+function sanitizeLocalPath(relPath) {
+  if (!relPath || typeof relPath !== 'string') return 'Download';
+  const parts = relPath.split(/[/\\]+/);
+  const cleanParts = parts.map(p => p.replace(/[\r\n\t]/g, ' ').replace(/[\\/:*?"<>|]/g, '_').trim()).filter(Boolean);
+  return cleanParts.join(path.sep) || 'Download';
+}
+
 function downloadBunkrFile(queueItem) {
   return new Promise(async (resolve, reject) => {
     let isAborted = false;
@@ -608,7 +620,7 @@ function downloadBunkrFile(queueItem) {
       queueItem
     });
 
-    const localFilePath = path.join(config.downloadPath, queueItem.relativePath);
+    const localFilePath = path.join(config.downloadPath, sanitizeLocalPath(queueItem.relativePath || queueItem.name));
     const localDir = path.dirname(localFilePath);
 
     if (!fs.existsSync(localDir)) {
@@ -650,20 +662,23 @@ function downloadBunkrFile(queueItem) {
         referer = odInfo.referer || 'https://sharepoint.com/';
         cookieHeader = odInfo.cookie || queueItem.oneDriveCookie || '';
       } else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) {
-        console.log(`[Torbox Worker] Resolvendo link direto para "${queueItem.name}"...`);
+        console.log(`[Torbox Worker] Verificando progresso na nuvem e resolvendo CDN para "${queueItem.name}"...`);
+        const tbType = queueItem.torboxType || ((queueItem.id && queueItem.id.includes('_webdl_')) ? 'webdl' : 'torrent');
+        const tbId = queueItem.torboxId || (queueItem.id ? (queueItem.id.match(/\d+/g) || [0])[0] : 0);
+        const tbFileId = queueItem.torboxFileId !== undefined ? queueItem.torboxFileId : 0;
+
         const tbInfo = await resolveTorboxDirectUrl(
-          queueItem.numericId,
+          queueItem.fileId || queueItem.id,
           config.torboxApiKey,
-          queueItem.torboxType || 'webdl',
-          queueItem.torboxId || 0,
-          queueItem.torboxFileId || 0,
+          tbType,
+          tbId,
+          tbFileId,
           (statusMsg, percent) => {
             queueItem.cloudProgress = percent;
             queueItem.cloudMessage = statusMsg;
             updateQueueUI();
           }
         );
-        delete queueItem.cloudMessage;
         directUrl = tbInfo.directUrl;
         referer = tbInfo.referer || 'https://torbox.app/';
       } else {
@@ -698,52 +713,69 @@ function downloadBunkrFile(queueItem) {
       else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) service = 'onedrive';
       else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) service = 'torbox';
 
-      // Pré-Flight para obter URL CDN final real e tamanho autoritativo dos cabeçalhos
+      // Pré-Flight para obter URL CDN final real e tamanho autoritativo dos cabeçalhos (suporta até 5 redirecionamentos HTTP 3xx)
       let supportsRangeHeader = true;
 
       try {
-        await new Promise((resPf) => {
-          const pfReq = transport.request(directUrl, {
-            method: 'GET',
-            headers: {
-              ...reqOptions.headers,
-              'Range': 'bytes=0-0'
-            },
-            rejectUnauthorized: false
-          }, res => {
-            if (res.headers.location) {
-              let nextUrl = res.headers.location;
-              if (nextUrl.startsWith('/')) {
-                nextUrl = `${parsedUrl.protocol}//${parsedUrl.host}${nextUrl}`;
+        let probeUrl = directUrl;
+        let probeRedirects = 0;
+
+        while (probeRedirects < 5) {
+          const probeParsed = new URL(probeUrl);
+          const probeTransport = probeParsed.protocol === 'https:' ? https : http;
+
+          const pfResult = await new Promise((resPf) => {
+            const pfReq = probeTransport.request(probeUrl, {
+              method: 'GET',
+              headers: {
+                ...reqOptions.headers,
+                'Range': 'bytes=0-0'
+              },
+              rejectUnauthorized: false
+            }, res => {
+              const statusCode = res.statusCode;
+              const location = res.headers.location;
+              let realSize = 0;
+
+              if (res.headers['content-range']) {
+                const match = res.headers['content-range'].match(/\/(\d+)$/);
+                if (match) realSize = parseInt(match[1], 10);
               }
-              directUrl = nextUrl;
-              parsedUrl = new URL(directUrl);
-              transport = parsedUrl.protocol === 'https:' ? https : http;
-            }
+              if (!realSize && res.headers['content-length'] && statusCode === 200) {
+                realSize = parseInt(res.headers['content-length'], 10);
+              }
 
-            let realSize = 0;
-            if (res.headers['content-range']) {
-              const match = res.headers['content-range'].match(/\/(\d+)$/);
-              if (match) realSize = parseInt(match[1], 10);
-            }
-            if (!realSize && res.headers['content-length'] && res.statusCode === 200) {
-              realSize = parseInt(res.headers['content-length'], 10);
-            }
+              const isRangeOk = (statusCode === 206 || res.headers['accept-ranges'] === 'bytes');
 
-            if (realSize && realSize > 0) {
-              console.log(`[HTTP Direct Worker] Tamanho autoritativo retornado pelo CDN: ${realSize} bytes (anterior: ${queueItem.size})`);
-              queueItem.size = realSize;
-              queueItem.sizeFormatted = formatBytes(realSize);
-            }
+              pfReq.destroy();
+              resPf({ statusCode, location, realSize, isRangeOk });
+            });
 
-            supportsRangeHeader = (res.statusCode === 206 || res.headers['accept-ranges'] === 'bytes');
-            pfReq.destroy();
-            resPf();
+            pfReq.on('error', () => resPf({ statusCode: 500 }));
+            pfReq.end();
           });
 
-          pfReq.on('error', () => resPf());
-          pfReq.end();
-        });
+          if (pfResult.location && pfResult.statusCode >= 300 && pfResult.statusCode < 400) {
+            let nextUrl = pfResult.location;
+            if (nextUrl.startsWith('/')) {
+              const u = new URL(probeUrl);
+              nextUrl = `${u.protocol}//${u.host}${nextUrl}`;
+            }
+            probeUrl = nextUrl;
+            directUrl = nextUrl;
+            parsedUrl = new URL(directUrl);
+            transport = parsedUrl.protocol === 'https:' ? https : http;
+            probeRedirects++;
+          } else {
+            if (pfResult.realSize > 0) {
+              console.log(`[HTTP Direct Worker] Tamanho autoritativo retornado pelo CDN: ${pfResult.realSize} bytes (anterior: ${queueItem.size})`);
+              queueItem.size = pfResult.realSize;
+              queueItem.sizeFormatted = formatBytes(pfResult.realSize);
+            }
+            supportsRangeHeader = pfResult.isRangeOk;
+            break;
+          }
+        }
       } catch (e) {
         console.warn('[HTTP Direct Worker] Erro no pré-flight de cabeçalhos:', e.message);
       }
@@ -763,6 +795,11 @@ function downloadBunkrFile(queueItem) {
           queueItem.speed = bytesDiff / timeDiff;
           lastTime = now;
           lastBytes = queueItem.downloadedBytes;
+
+          if (queueItem.downloadedBytes > 0) {
+            delete queueItem.cloudMessage;
+            delete queueItem.cloudProgress;
+          }
 
           if (queueItem.size > 0 && queueItem.speed > 0) {
             const remainingBytes = queueItem.size - queueItem.downloadedBytes;
@@ -1477,35 +1514,23 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
       continue;
     }
 
-    // 0.3. Tenta sempre o Torbox PRIMEIRO se a API do Torbox estiver configurada
-    if (config.torboxEnabled && config.torboxApiKey) {
-      try {
-        console.log('[main.js] Tentando escaneamento no Torbox primeiro:', link);
-        const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
-        if (tbFiles && tbFiles.length > 0) {
-          console.log(`[main.js] Torbox resolveu com sucesso! (${tbFiles.length} arquivos)`);
-          aggregatedFiles = aggregatedFiles.concat(tbFiles);
-          continue;
-        } else {
-          console.warn('[main.js] Torbox retornou 0 arquivos, passando para Motor Genérico...');
-        }
-      } catch (err) {
-        console.warn('[main.js] Torbox não resolveu este link, passando para Motor Genérico:', link, err.message);
-      }
-    }
-
-    // 1. Verifica se é um link do Bunkr
+    // 0.3. Links do Bunkr
     if (isBunkrUrl(link)) {
       try {
+        console.log('[main.js] Link do Bunkr detectado! Escaneando nativamente:', link);
         const bunkrFiles = await scanBunkrLink(link);
-        aggregatedFiles = aggregatedFiles.concat(bunkrFiles);
+        if (bunkrFiles && bunkrFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(bunkrFiles);
+          continue;
+        } else {
+          console.warn('[main.js] Bunkr nativo não retornou arquivos, passando para Motor Genérico...');
+        }
       } catch (err) {
-        console.error('Erro ao escanear link Bunkr:', link, err.message);
+        console.error('Erro ao escanear link Bunkr nativo:', link, err.message);
       }
-      continue;
     }
 
-    // 2. Links do Google Drive
+    // 0.4. Links do Google Drive
     const driveInfo = extractDriveId(link);
     if (driveInfo) {
       if (!driveService) {
@@ -1539,7 +1564,41 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
       continue;
     }
 
-    // 3. Fallback Universal: Motor Genérico de 4 Etapas (GoFile, MegaUp, Turbo.cr, FileDitch, Vik1ngFile, Direct HTTP)
+    // 0.5. Magnet Links, Arquivos .torrent e Links Torbox
+    const isMagnetOrTorrent = link.trim().toLowerCase().startsWith('magnet:?') || link.toLowerCase().endsWith('.torrent') || isTorboxUrl(link);
+    if (isMagnetOrTorrent) {
+      if (config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
+        try {
+          console.log('[main.js] Magnet Link / Torrent detectado! Escaneando via Torbox:', link);
+          const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
+          if (tbFiles && tbFiles.length > 0) {
+            aggregatedFiles = aggregatedFiles.concat(tbFiles);
+            continue;
+          }
+        } catch (err) {
+          throw new Error(`Falha ao adicionar torrent no Torbox: ${err.message}`);
+        }
+      } else {
+        throw new Error('Para escanear e baixar Magnet Links / Torrents, por favor insira sua API Key do Torbox em Ajustes.');
+      }
+    }
+
+    // 1. Fallback Hoster via Torbox (1fichier, Rapidgator, Mega, etc.) se API Key estiver configurada
+    if (config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
+      try {
+        console.log('[main.js] Tentando desproteger link de hoster via Torbox:', link);
+        const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
+        if (tbFiles && tbFiles.length > 0) {
+          console.log(`[main.js] Torbox resolveu hoster com sucesso! (${tbFiles.length} arquivos)`);
+          aggregatedFiles = aggregatedFiles.concat(tbFiles);
+          continue;
+        }
+      } catch (err) {
+        console.warn('[main.js] Torbox Hoster não resolveu este link, passando para Motor Genérico:', link, err.message);
+      }
+    }
+
+    // 2. Fallback Universal: Motor Genérico (GoFile, MegaUp, Turbo.cr, FileDitch, Pixeldrain, Direct HTTP)
     try {
       console.log('[main.js] Invocando Motor Universal de Links Genéricos:', link);
       const genericFiles = await scanGenericLink(link, config.torboxApiKey);
@@ -1583,7 +1642,8 @@ ipcMain.handle('add-to-queue', (event, files) => {
         torboxType: file.torboxType || null,
         torboxId: file.torboxId || 0,
         torboxFileId: file.torboxFileId || 0,
-        torboxDownloadUrl: file.torboxDownloadUrl || null,
+        torboxDownloadUrl: file.torboxDownloadUrl || file.directUrl || file.downloadUrl || null,
+        directUrl: file.directUrl || file.downloadUrl || file.torboxDownloadUrl || null,
         name: file.name,
         size: file.size,
         relativePath: file.relativePath,

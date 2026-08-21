@@ -361,12 +361,17 @@ async function scanBunkrLink(urlStr) {
       );
       files.push(...batchResults);
     }
-  } else {
-    // É um arquivo individual (/f/{id} ou /v/{id})
-    const fileMatch = urlStr.match(/\/(?:f|v|i)\/([a-zA-Z0-9]+)/);
-    const fileId = fileMatch ? fileMatch[1] : 'direct';
-    const singleFile = await getBunkrFileDetails(fileId, 'Bunkr_Downloads');
-    files.push(singleFile);
+    // É um arquivo individual (/f/{id}, /v/{id}, /i/{id}, /d/{id} ou final da URL)
+    const fileMatch = urlStr.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || urlStr.match(/bunkr\.[^/]+\/([a-zA-Z0-9_-]+)/i);
+    let fileId = fileMatch ? fileMatch[1] : null;
+    if (!fileId && urlStr.includes('/')) {
+      const parts = urlStr.split(/[/?#]/).filter(Boolean);
+      fileId = parts.pop();
+    }
+    if (fileId && fileId.length >= 3) {
+      const singleFile = await getBunkrFileDetails(fileId, 'Bunkr_Downloads');
+      if (singleFile) files.push(singleFile);
+    }
   }
 
   return files;

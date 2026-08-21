@@ -1,6 +1,33 @@
 # Nexus Downloader - Diário de Bordo & Registro de Alterações (review.md)
 
-**Última Atualização:** 19/08/2026
+**Última Atualização:** 20/08/2026
+
+---
+
+## 4. Sessão de 20/08/2026 - Correções no Torbox Cloud, Sanitização de Caminhos Windows, Polling de Nuvem e Refinamentos de UI
+
+### Alterações e Implementações do Dia
+
+#### 1. Sanitização Rigorosa de Caminhos no Windows (`sanitizePathSegment` em `torbox-scanner.js` e `main.js`)
+- **Problema:** Magnet links que continham caracteres de controle (`\n`, `%0A`) ou caracteres ilícitos no parâmetro `dn=` falhavam ao criar diretórios no Windows, cancelando o download antes da gravação.
+- **Solução:** Implementada a função `sanitizePathSegment` que remove quebras de linha (`\n`, `\r`, `\t`) e substitui caracteres não permitidos (`\`, `/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) por espaços seguros antes de criar pastas locais no SO.
+
+#### 2. Pré-Flight Recursivo de Redirecionamentos HTTP 3xx e Resolução de `numericId` (`main.js`)
+- **Problema:** Respostas HTTP `307 Temporary Redirect` vindas da API do Torbox faziam o pré-flight considerar o CDN incompatível com `Range`, forçando conexão simples e resultando em erro HTTP 307.
+- **Solução:** Pré-flight reformulado para seguir redirecionamentos HTTP 3xx (`301`, `302`, `303`, `307`, `308`) até o servidor CDN final (`tb-cdn.cx`), capturando o tamanho autoritativo via `Content-Range` e habilitando 4 conexões paralelas.
+
+#### 3. Injeção de Permalinks e Polling da Nuvem Torbox em Tempo Real (`torbox-scanner.js` e `main.js`)
+- **Problema:** Arquivos de magnet links caheados enviados pelo scanner entravam sem URL direta, e torrents ainda em progresso na nuvem Torbox travavam em 0%.
+- **Solução:** 
+  - A função `scanTorboxLink` passou a injetar permalinks diretos de download em todos os arquivos ao escanear.
+  - Implementado monitoramento em tempo real em `resolveTorboxDirectUrl` que exibe o progresso da nuvem (`☁️ Torbox baixando na nuvem X%`), identificando automaticamente o arquivo de vídeo principal assim que o torrent é concluído (100%).
+
+#### 4. Ajustes de Layout Visual, Badges e Fallback no Scanner (`renderer/js/app.js` e `renderer/css/style.css`)
+- **Problema:** Títulos extensos de torrents deformavam a tag `Ready (100%)` com quebra de linha interna, e os cartões de resultado do scanner eram exibidos recolhidos por padrão.
+- **Solução:** 
+  - Fixadas as badges de status com `flex-shrink: 0; white-space: nowrap !important;`, permitindo quebra de linha apenas no título.
+  - Cartões de resultado no Scanner exibidos expandidos por padrão.
+  - Adicionado fallback automático para Torbox Hoster e Motor Genérico quando extratores específicos (ex: Bunkr) falham.
 
 ---
 
@@ -10,33 +37,15 @@
 
 #### 1. Correção Estrutural da Aba de Ajustes e Interface (`renderer/index.html` e `renderer/css/style.css`)
 - **Problema:** Ao navegar para a página de Ajustes ou TorBox, o conteúdo dos cartões ficava oculto ou com renderização quebrada.
-- **Solução:** 
-  - Corrigido aninhamento HTML em `index.html` inserindo a tag de fechamento `</section>` na Fila de Downloads (`#queue-tab`), isolando as abas de Ajustes e TorBox.
-  - Reorganizada a grade de cartões de Ajustes em `style.css`, garantindo opacidade total (`opacity: 1 !important;`) e exibição limpa em telas de qualquer resolução.
+- **Solução:** Corrigido aninhamento HTML em `index.html` inserindo a tag de fechamento `</section>` na Fila de Downloads (`#queue-tab`), isolando as abas de Ajustes e TorBox.
 
 #### 2. Correção de Sobreposição e Transparência no Dropdown do TorBox (`renderer/css/style.css`)
-- **Problema:** O menu suspenso de filtros do TorBox aparecia por trás dos cartões de arquivo e possuía fundo transparente, dificultando a leitura.
-- **Solução:** 
-  - Elevada a hierarquia de camadas (`z-index: 20` no `.app-top-section` e `z-index: 9999` no `.torbox-filter-dropdown`).
-  - Aplicado fundo escuro 100% opaco (`#0f172a`), eliminando qualquer sobreposição do conteúdo ao fundo.
+- **Problema:** O menu suspenso de filtros do TorBox aparecia por trás dos cartões de arquivo e possuía fundo transparente.
+- **Solução:** Elevada a hierarquia de camadas (`z-index: 20` no `.app-top-section` e `z-index: 9999` no `.torbox-filter-dropdown`) com fundo escuro 100% opaco (`#0f172a`).
 
 #### 3. Eliminação do Erro HTTP 416 em Downloads TorBox WebDL/Hoster (`main.js` e `torbox-scanner.js`)
-- **Problema:** Downloads de arquivos via TorBox apontando para provedores externos (ex: Gofile) falhavam com erro HTTP 416 (Range Not Satisfiable) devido à divergência entre o tamanho estimado pelo serviço e o tamanho real entregue pelo CDN.
-- **Solução:** 
-  - Desenvolvida sondagem prévia de cabeçalhos (`HEAD`/`GET` `Range: bytes=0-0`) antes do início do download para extrair o tamanho exato autoritativo via `Content-Range`.
-  - Atualização dinâmica de `queueItem.size` com o valor real do CDN antes da segmentação paralela, eliminando requisições fora dos limites e garantindo downloads 100% integrais.
-
-#### 4. Suporte Avançado ao TeraBox (`terabox-scanner.js` e `terabox.md`)
-- **Problema:** Links de arquivos e pastas no TeraBox (e domínios encurtados) exigiam tratamento de cookies e tokens de sessão.
-- **Solução:** Criado o scanner dedicado para TeraBox com suporte a domínios alternativos (`terabox.app`, `1024tera.com`, `freeterabox.com`, etc.), varredura recursiva e streaming resiliente.
-
-#### 5. Integração Microsoft OneDrive, SharePoint, TorBox e URLs Genéricas (`onedrive-scanner.js`, `torbox-scanner.js`, `generic-scanner.js`)
-- **Problema:** Ausência de suporte para OneDrive, SharePoint, torrents via TorBox e arquivos HTTP diretos da web.
-- **Solução:** Desenvolvidos módulos específicos para varredura e resolução automática de URLs diretas nesses serviços.
-
-#### 6. Worker `net.request` com Auto-Resume e Proteção contra Crashes (`main.js`)
-- **Problema:** Quedas de socket causavam travamento/crash no Electron e downloads interrompidos eram perdidos.
-- **Solução:** Implementado worker com `net.request` nativo do Chromium com suporte a `Range` para auto-resume, além de escudos contra `uncaughtException`/`unhandledRejection`.
+- **Problema:** Downloads de arquivos via TorBox apontando para provedores externos (ex: Gofile) falhavam com erro HTTP 416 devido à divergência entre tamanho estimado e tamanho real no CDN.
+- **Solução:** Sondagem prévia de cabeçalhos (`HEAD`/`GET` `Range: bytes=0-0`) antes do início do download para extrair o tamanho exato via `Content-Range`.
 
 ---
 
@@ -45,12 +54,7 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Refatoração In-Place da Fila de Downloads (Zero Flickering)
-- **Problema:** A função `renderQueue` recriava toda a estrutura DOM da fila a cada atualização de progresso, causando oscilações visuais (flickering).
 - **Solução:** Implementado sistema de renderização diferencial in-place em `renderer/js/app.js` reutilizando elementos HTML e atualizando textos/barras pontualmente.
-
-#### 2. Modais Customizados de Confirmação (`showCustomConfirm`)
-- **Problema:** `window.confirm()` nativo síncrono congelava a interface do Electron.
-- **Solução:** Modal assíncrono customizado integrado à UI (`showCustomConfirm`).
 
 ---
 
@@ -65,14 +69,12 @@
 
 ## Arquivos Criados / Modificados (Acumulado)
 
-- **`bug_corrigidos.md`** (Criado/Atualizado): Documentação técnica completa das causas raízes e soluções para os Bugs 01, 02 e 03.
-- **`renderer/index.html`** (Modificado): Correção do aninhamento HTML das seções de abas (`</section>`).
-- **`renderer/css/style.css`** (Modificado): Ajustes de opacidade dos Ajustes e z-index/fundo do menu do TorBox.
-- **`main.js`** (Modificado): Probe prévio de tamanho real via cabeçalho CDN para prevenir erro HTTP 416, worker `net.request` e auto-resume.
-- **`torbox-scanner.js`** (Modificado): Ajuste na passagem de parâmetros e probes de WebDL.
-- **`preload.js`** (Modificado): Exposição de pontes IPC adicionais.
-- **`renderer/js/app.js`** (Modificado): Lógica de alternância de abas sem interferência e atualização in-place da fila.
-- **`terabox-scanner.js`** (Criado/Modificado): Scanner e resolver do TeraBox.
-- **`onedrive-scanner.js`** (Criado): Scanner de links do OneDrive e SharePoint.
-- **`generic-scanner.js`** (Criado): Capturador genérico de links diretos de mídia.
-- **`review.md`** (Atualizado): Registro oficial de progresso do projeto.
+- **`bug_corrigidos.md`** (Modificado): Documentação detalhada dos Bugs 04, 05, 06, 07, 08, 09 e 10.
+- **`torbox-scanner.js`** (Modificado): Injeção de permalinks no scanner, polling de nuvem em tempo real e sanitização de caminhos.
+- **`main.js`** (Modificado): Pré-flight recursivo para HTTP 3xx, resiliência no worker HTTP Direct e sanitização de diretórios.
+- **`renderer/js/app.js`** (Modificado): Exibição de resultados expandidos por padrão no scanner e refinamento do renderizador de pastas.
+- **`renderer/css/style.css`** (Modificado): Proteção das badges `Ready (100%)` contra quebra de linha e deformações de layout.
+- **`renderer/index.html`** (Modificado): Ajustes de elementos e modais.
+- **`bunkr-scanner.js`** (Modificado): Melhoria de regex e suporte a fallbacks.
+- **`terabox-scanner.js`** (Modificado): Ajuste de tratamento de streams.
+- **`review.md`** (Atualizado): Documentação oficial do projeto.

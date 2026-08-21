@@ -351,31 +351,34 @@
 
       <!-- QUEUE TAB BOTTOM CONTENT -->
       <section class="tab-content" id="queue-tab">
+        <!-- PAINEL DE DOWNLOAD ATIVO (LAYOUT ORGANIZADO EM 3 CAMADAS) -->
         <div class="card active-download-panel" id="active-download-panel" style="display: none;">
-          <div class="active-header">
+          <!-- CAMADA 1: TÍTULO E CONTROLES (TOPO) -->
+          <div class="active-title-row">
             <div class="active-title-group">
-              <span class="active-badge">Baixando Agora</span>
+              <span class="active-badge" id="active-badge-element">Baixando Agora</span>
               <h3 id="active-filename">carregando...</h3>
-              <div class="active-controls">
-                <button class="btn-icon" id="btn-active-pause" title="Pausar">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="6" y="4" width="4" height="16"></rect>
-                    <rect x="14" y="4" width="4" height="16"></rect>
-                  </svg>
-                </button>
-                <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
+            </div>
+            <div class="active-controls">
+              <button class="btn-icon" id="btn-active-pause" title="Pausar">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+              </button>
+              <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
           </div>
 
-          <!-- PAINEL DE AVISO DE DOWNLOAD NA NUVEM TORBOX -->
-          <div id="active-cloud-notice-container" style="display: none; margin: 10px 0 12px 0;"></div>
+          <!-- CAMADA 2: BANNER DEDICADO DE AVISO DE NUVEM (MEIO) -->
+          <div id="active-cloud-notice-container" class="active-cloud-notice-box" style="display: none;"></div>
 
+          <!-- CAMADA 3: BARRA DE PROGRESSO E ESTATÍSTICAS (BASE) -->
           <div class="active-stats">
             <div class="active-progress-row">
               <span class="stat-main" id="active-progress-text">0%</span>

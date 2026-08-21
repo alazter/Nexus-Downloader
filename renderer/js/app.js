@@ -843,7 +843,7 @@ function renderResults() {
       const totalGroupSize = groupItems.reduce((acc, item) => acc + item.file.size, 0);
 
       const card = document.createElement('div');
-      card.className = 'folder-group-card collapsed';
+      card.className = 'folder-group-card';
 
       // Header
       const header = document.createElement('div');
@@ -1251,30 +1251,42 @@ function renderQueue(queue) {
       }
     }
 
+    const isTorboxActive = active && (active.id.startsWith('torbox_') || active.torboxType || active.torboxId);
+    if (isTorboxActive && (active.downloadedBytes === 0 || active.downloadedBytes === undefined) && (active.cloudProgress === undefined && !active.cloudMessage)) {
+      active.cloudProgress = active.progress || 0;
+      active.cloudMessage = `Torbox baixando na nuvem (${active.cloudProgress}%)...`;
+    }
+
+    const activeBadgeEl = document.getElementById('active-badge-element');
     const activeCloudNotice = document.getElementById('active-cloud-notice-container');
+
     if (active.cloudMessage || active.cloudProgress !== undefined) {
       const cProg = active.cloudProgress !== undefined ? active.cloudProgress : (active.progress || 0);
+      
+      if (activeBadgeEl) {
+        activeBadgeEl.textContent = '☁️ AGUARDANDO TORBOX';
+        activeBadgeEl.classList.add('cloud-waiting');
+      }
+
       if (activeCloudNotice) {
-        activeCloudNotice.style.display = 'block';
+        activeCloudNotice.style.display = 'flex';
         activeCloudNotice.innerHTML = `
-          <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 1.4rem;">☁️</span>
-            <div style="flex: 1;">
-              <div style="color: #38bdf8; font-weight: 700; font-size: 0.85rem; margin-bottom: 2px;">
-                Torbox baixando na nuvem (${cProg}%) — Aguarde...
-              </div>
-              <div style="color: var(--text-secondary); font-size: 0.78rem;">
-                O Torbox está baixando este arquivo nos servidores em nuvem. O salvamento no seu PC iniciará automaticamente assim que for concluído!
-              </div>
-            </div>
+          <span class="notice-icon">☁️</span>
+          <div class="notice-body">
+            <div class="notice-title">Aguardando download na nuvem do Torbox (${cProg}%)</div>
+            <div class="notice-desc">O arquivo está sendo baixado no servidor Torbox. O download local no Nexus iniciará automaticamente assim que o Torbox finalizar.</div>
           </div>
         `;
       }
       activeProgressText.textContent = `☁️ Nuvem ${cProg}%`;
       activeProgressBar.style.width = `${cProg}%`;
-      activeSpeedText.textContent = active.cloudMessage || `Baixando no Torbox (${cProg}%)`;
-      activeEtaText.textContent = 'Aguardando Torbox';
+      activeSpeedText.textContent = 'Servidor Torbox Processando';
+      activeEtaText.textContent = 'Aguardando Conclusão';
     } else {
+      if (activeBadgeEl) {
+        activeBadgeEl.textContent = 'BAIXANDO AGORA';
+        activeBadgeEl.classList.remove('cloud-waiting');
+      }
       if (activeCloudNotice) activeCloudNotice.style.display = 'none';
       activeProgressText.textContent = `${active.progress || 0}%`;
       activeProgressBar.style.width = `${active.progress || 0}%`;
@@ -1323,170 +1335,370 @@ function renderQueue(queue) {
     folderMap.get(folder).push(item);
   });
 
-  // Remove pastas do DOM que não existem mais na fila atual
-  const existingFolderCards = Array.from(queueItemsList.querySelectorAll('.queue-folder-card'));
-  existingFolderCards.forEach(card => {
-    const folder = card.dataset.folderName;
-    if (!folderMap.has(folder)) {
-      card.remove();
+  // Garante a existência dos dois containers de seção na fila
+  let activeSection = queueItemsList.querySelector('#queue-active-section');
+  if (!activeSection) {
+    activeSection = document.createElement('div');
+    activeSection.id = 'queue-active-section';
+    activeSection.innerHTML = `
+      <div class="queue-section-header">
+        <div class="queue-section-title">
+          <span>⚡ Em Progresso e Fila Ativa</span>
+          <span class="queue-section-count" id="queue-active-count">0</span>
+        </div>
+      </div>
+      <div class="queue-section-body" id="queue-active-body"></div>
+    `;
+    queueItemsList.appendChild(activeSection);
+  }
+
+  let completedSection = queueItemsList.querySelector('#queue-completed-section');
+  if (!completedSection) {
+    completedSection = document.createElement('div');
+    completedSection.id = 'queue-completed-section';
+    completedSection.innerHTML = `
+      <div class="queue-section-header completed-header">
+        <div class="queue-section-title">
+          <span>✅ Downloads Concluídos</span>
+          <span class="queue-section-count" id="queue-completed-count">0</span>
+        </div>
+        <button class="btn btn-sm btn-outline-success" id="btn-clear-completed-sec" title="Limpar downloads concluídos">
+          <span>🧹 Limpar Concluídos</span>
+        </button>
+      </div>
+      <div class="queue-section-body" id="queue-completed-body"></div>
+    `;
+    queueItemsList.appendChild(completedSection);
+
+    const btnClearCompletedSec = completedSection.querySelector('#btn-clear-completed-sec');
+    if (btnClearCompletedSec) {
+      btnClearCompletedSec.onclick = () => window.api.clearCompleted();
+    }
+  }
+
+  const activeBody = activeSection.querySelector('#queue-active-body');
+  const completedBody = completedSection.querySelector('#queue-completed-body');
+
+  // Separa diretórios entre ativos e concluídos
+  const activeEntries = [];
+  const completedEntries = [];
+
+  folderMap.forEach((folderItems, folderName) => {
+    const isAllCompleted = folderItems.every(f => f.status === 'completed');
+    if (isAllCompleted) {
+      completedEntries.push([folderName, folderItems]);
+    } else {
+      activeEntries.push([folderName, folderItems]);
     }
   });
 
-  // Ordena os grupos de pasta pela ordem de prioridade: 1º Baixando, 2º Aguardando Início (Pendente), 3º Pausado, 4º Concluído/Falhado
-  const sortedFolderEntries = Array.from(folderMap.entries()).sort((a, b) => {
+  activeEntries.sort((a, b) => {
     const rankA = getFolderSortRank(a[1]);
     const rankB = getFolderSortRank(b[1]);
     if (rankA !== rankB) return rankA - rankB;
     return a[0].localeCompare(b[0]);
   });
 
-  // Processa e atualiza in-place cada card de pasta na ordem de prioridade
-  sortedFolderEntries.forEach(([folderName, folderItems]) => {
-    folderItems.sort((a, b) => getItemSortRank(a) - getItemSortRank(b));
-    const totalFiles = folderItems.length;
-    const completedFiles = folderItems.filter(f => f.status === 'completed').length;
-    const folderTotalBytes = folderItems.reduce((sum, f) => sum + (f.size || 0), 0);
-    const folderDownloadedBytes = folderItems.reduce((sum, f) => {
-      if (f.status === 'completed') return sum + (f.size || 0);
-      return sum + (f.downloadedBytes || 0);
-    }, 0);
+  completedEntries.sort((a, b) => a[0].localeCompare(b[0]));
 
-    const folderPercent = folderTotalBytes > 0 
-      ? Math.min(100, Math.round((folderDownloadedBytes / folderTotalBytes) * 100))
-      : (completedFiles === totalFiles ? 100 : 0);
+  // Atualiza visibilidade e contadores dos cabeçalhos de seção
+  if (activeEntries.length > 0) {
+    activeSection.style.display = 'block';
+    const activeCountSpan = activeSection.querySelector('#queue-active-count');
+    if (activeCountSpan) activeCountSpan.textContent = activeEntries.length.toString();
+  } else {
+    activeSection.style.display = 'none';
+  }
 
-    const hasActiveOrPausedItem = folderItems.some(f => f.status === 'downloading' || f.status === 'paused' || f.status === 'pending');
+  if (completedEntries.length > 0) {
+    completedSection.style.display = 'block';
+    const completedCountSpan = completedSection.querySelector('#queue-completed-count');
+    if (completedCountSpan) completedCountSpan.textContent = completedEntries.length.toString();
+  } else {
+    completedSection.style.display = 'none';
+  }
 
-    let isCollapsed = false;
-    if (collapsedFolders.has(folderName)) {
-      isCollapsed = true;
-    } else if (expandedFolders.has(folderName)) {
-      isCollapsed = false;
-    } else {
-      isCollapsed = folderPercent === 100 || !hasActiveOrPausedItem;
-    }
+  // Função interna auxiliar para renderizar os cartões em cada container de seção
+  const renderEntriesToContainer = (entries, container) => {
+    entries.forEach(([folderName, folderItems]) => {
+      folderItems.sort((a, b) => getItemSortRank(a) - getItemSortRank(b));
+      const totalFiles = folderItems.length;
+      const completedFiles = folderItems.filter(f => f.status === 'completed').length;
+      const folderTotalBytes = folderItems.reduce((sum, f) => sum + (f.size || 0), 0);
+      const folderDownloadedBytes = folderItems.reduce((sum, f) => {
+        if (f.status === 'completed') return sum + (f.size || 0);
+        return sum + (f.downloadedBytes || 0);
+      }, 0);
 
-    let folderCard = queueItemsList.querySelector(`.queue-folder-card[data-folder-name="${CSS.escape(folderName)}"]`);
+      const folderPercent = folderTotalBytes > 0 
+        ? Math.min(100, Math.round((folderDownloadedBytes / folderTotalBytes) * 100))
+        : (completedFiles === totalFiles ? 100 : 0);
 
-    if (!folderCard) {
-      // Cria novo Card da Pasta se não existir
-      folderCard = document.createElement('div');
-      folderCard.className = `queue-folder-card ${isCollapsed ? 'collapsed' : ''}`;
-      folderCard.dataset.folderName = folderName;
+      const hasActiveOrPausedItem = folderItems.some(f => f.status === 'downloading' || f.status === 'paused' || f.status === 'pending');
 
-      const folderHeader = document.createElement('div');
-      folderHeader.className = 'queue-folder-header';
-
-      const titleRow = document.createElement('div');
-      titleRow.className = 'queue-folder-title-row';
-      const sampleFile = folderItems[0];
-      const serviceTag = getServiceTag(sampleFile);
-      const folderTag = getFolderTypeTag(folderItems, folderName);
-      const titleGroup = document.createElement('div');
-      titleGroup.className = 'queue-folder-title-group';
-      titleGroup.innerHTML = `
-        <input type="checkbox" class="queue-folder-checkbox" style="margin-right: 8px; cursor: pointer;" title="Selecionar todos da pasta">
-        <div class="queue-folder-icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </div>
-        <span style="background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;">${serviceTag.text}</span>
-        <span style="background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${folderTag.text}</span>
-        <span class="queue-folder-name" title="${folderName}">${folderName}</span>
-      `;
-
-      const folderChk = titleGroup.querySelector('.queue-folder-checkbox');
-      if (folderChk) {
-        folderChk.onclick = (e) => {
-          e.stopPropagation();
-          const isChecked = folderChk.checked;
-          folderItems.forEach(f => {
-            if (isChecked) selectedQueueItemIds.add(f.id);
-            else selectedQueueItemIds.delete(f.id);
-          });
-          const itemCbs = folderCard.querySelectorAll('.queue-item-checkbox');
-          itemCbs.forEach(cb => cb.checked = isChecked);
-        };
-      }
-
-      const badgeGroup = document.createElement('div');
-      badgeGroup.className = 'queue-folder-badge-group';
-      badgeGroup.innerHTML = `
-        <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
-        <span class="queue-folder-percent">${folderPercent}%</span>
-        <svg class="queue-folder-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      `;
-
-      titleRow.appendChild(titleGroup);
-      titleRow.appendChild(badgeGroup);
-
-      const progressTrack = document.createElement('div');
-      progressTrack.className = 'queue-folder-progress-track';
-      progressTrack.innerHTML = `<div class="queue-folder-progress-fill" style="width: ${folderPercent}%;"></div>`;
-
-      folderHeader.appendChild(titleRow);
-      folderHeader.appendChild(progressTrack);
-
-      folderHeader.onclick = (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
-        const willBeCollapsed = !folderCard.classList.contains('collapsed');
-        if (willBeCollapsed) {
-          expandedFolders.delete(folderName);
-          collapsedFolders.add(folderName);
-          folderCard.classList.add('collapsed');
-        } else {
-          collapsedFolders.delete(folderName);
-          expandedFolders.add(folderName);
-          folderCard.classList.remove('collapsed');
-        }
-      };
-
-      const folderItemsContainer = document.createElement('div');
-      folderItemsContainer.className = 'queue-folder-items';
-
-      folderCard.appendChild(folderHeader);
-      folderCard.appendChild(folderItemsContainer);
-    }
-
-    // Reposiciona obrigatoriamente no DOM para manter a ordem estrita de prioridade
-    queueItemsList.appendChild(folderCard);
-
-    // Atualiza textos e progresso do cabeçalho sem recriar o DOM (sem piscar)
-    const badgeSpan = folderCard.querySelector('.queue-folder-badge');
-    const percentSpan = folderCard.querySelector('.queue-folder-percent');
-    const progressFill = folderCard.querySelector('.queue-folder-progress-fill');
-
-    if (badgeSpan) badgeSpan.textContent = `${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})`;
-    if (percentSpan) percentSpan.textContent = `${folderPercent}%`;
-    if (progressFill) progressFill.style.width = `${folderPercent}%`;
-
-    // Atualiza itens de arquivo da pasta in-place
-    const folderItemsContainer = folderCard.querySelector('.queue-folder-items');
-    const currentItemIds = new Set(folderItems.map(f => f.id));
-
-    // Remove itens do DOM que não estão mais nesta pasta
-    const existingItemEls = Array.from(folderItemsContainer.querySelectorAll('.queue-item'));
-    existingItemEls.forEach(el => {
-      if (!currentItemIds.has(el.dataset.itemId)) {
-        el.remove();
-      }
-    });
-
-    // Atualiza ou insere itens da pasta na ordem exata de prioridade
-    const hasActiveDownloading = queue.some(i => i.status === 'downloading');
-    folderItems.forEach(item => {
-      let itemEl = folderItemsContainer.querySelector(`.queue-item[data-item-id="${CSS.escape(item.id)}"]`);
-      if (!itemEl) {
-        itemEl = createQueueItemElement(item, hasActiveDownloading);
+      let isCollapsed = false;
+      if (collapsedFolders.has(folderName)) {
+        isCollapsed = true;
+      } else if (expandedFolders.has(folderName)) {
+        isCollapsed = false;
       } else {
-        updateQueueItemElement(itemEl, item, hasActiveDownloading);
+        isCollapsed = folderPercent === 100 || !hasActiveOrPausedItem;
       }
-      folderItemsContainer.appendChild(itemEl);
+
+      let folderCard = container.querySelector(`.queue-folder-card[data-folder-name="${CSS.escape(folderName)}"]`);
+
+      if (!folderCard) {
+        folderCard = document.createElement('div');
+        folderCard.className = `queue-folder-card ${isCollapsed ? 'collapsed' : ''}`;
+        folderCard.dataset.folderName = folderName;
+
+        const folderHeader = document.createElement('div');
+        folderHeader.className = 'queue-folder-header';
+
+        const titleRow = document.createElement('div');
+        titleRow.className = 'queue-folder-title-row';
+        const sampleFile = folderItems[0];
+        const serviceTag = getServiceTag(sampleFile);
+        const folderTag = getFolderTypeTag(folderItems, folderName);
+        const titleGroup = document.createElement('div');
+        titleGroup.className = 'queue-folder-title-group';
+        titleGroup.innerHTML = `
+          <input type="checkbox" class="queue-folder-checkbox" style="margin-right: 8px; cursor: pointer;" title="Selecionar todos da pasta">
+          <div class="queue-folder-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <span style="background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${serviceTag.text}</span>
+          <span style="background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${folderTag.text}</span>
+          <span class="queue-folder-name" title="${folderName}">${folderName}</span>
+        `;
+
+        const folderChk = titleGroup.querySelector('.queue-folder-checkbox');
+        if (folderChk) {
+          folderChk.onclick = (e) => {
+            e.stopPropagation();
+            const isChecked = folderChk.checked;
+            folderItems.forEach(f => {
+              if (isChecked) selectedQueueItemIds.add(f.id);
+              else selectedQueueItemIds.delete(f.id);
+            });
+            const itemCbs = folderCard.querySelectorAll('.queue-item-checkbox');
+            itemCbs.forEach(cb => cb.checked = isChecked);
+          };
+        }
+
+        const badgeGroup = document.createElement('div');
+        badgeGroup.className = 'queue-folder-badge-group';
+        badgeGroup.innerHTML = `
+          <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
+          <span class="queue-folder-percent">${folderPercent}%</span>
+          <svg class="queue-folder-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        `;
+
+        titleRow.appendChild(titleGroup);
+        titleRow.appendChild(badgeGroup);
+
+        const progressTrack = document.createElement('div');
+        progressTrack.className = 'queue-folder-progress-track';
+        progressTrack.innerHTML = `<div class="queue-folder-progress-fill" style="width: ${folderPercent}%;"></div>`;
+
+        folderHeader.appendChild(titleRow);
+        folderHeader.appendChild(progressTrack);
+
+        folderHeader.onclick = (e) => {
+          if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+          const willBeCollapsed = !folderCard.classList.contains('collapsed');
+          if (willBeCollapsed) {
+            expandedFolders.delete(folderName);
+            collapsedFolders.add(folderName);
+            folderCard.classList.add('collapsed');
+          } else {
+            collapsedFolders.delete(folderName);
+            expandedFolders.add(folderName);
+            folderCard.classList.remove('collapsed');
+          }
+        };
+
+        const folderItemsContainer = document.createElement('div');
+        folderItemsContainer.className = 'queue-folder-items';
+
+        folderCard.appendChild(folderHeader);
+        folderCard.appendChild(folderItemsContainer);
+      }
+
+      // Reposiciona no container correto da seção
+      container.appendChild(folderCard);
+
+      // Atualiza textos e progresso do cabeçalho sem recriar o DOM (sem piscar)
+      const badgeSpan = folderCard.querySelector('.queue-folder-badge');
+      const percentSpan = folderCard.querySelector('.queue-folder-percent');
+      const progressFill = folderCard.querySelector('.queue-folder-progress-fill');
+
+      // Garante que itens do Torbox em fase de aguardo contenham cloudMessage/cloudProgress para sinalização nos cartões
+      folderItems.forEach(f => {
+        const isTb = f && (f.id.startsWith('torbox_') || f.torboxType || f.torboxId);
+        if (isTb && f.status === 'downloading' && (f.downloadedBytes === 0 || f.downloadedBytes === undefined)) {
+          if (f.cloudProgress === undefined) f.cloudProgress = f.progress || 0;
+          if (!f.cloudMessage) f.cloudMessage = `☁️ Torbox baixando na nuvem (${f.cloudProgress}%)...`;
+        }
+      });
+
+      const cloudDownloadingItem = folderItems.find(f => f.status === 'downloading' && (f.cloudMessage || f.cloudProgress !== undefined));
+      if (cloudDownloadingItem) {
+        const cProg = cloudDownloadingItem.cloudProgress !== undefined ? cloudDownloadingItem.cloudProgress : (cloudDownloadingItem.progress || 0);
+        if (badgeSpan) {
+          badgeSpan.textContent = `☁️ Nuvem Torbox (${cProg}%) • Aguardando término no servidor`;
+          badgeSpan.style.background = 'rgba(245, 158, 11, 0.18)';
+          badgeSpan.style.color = '#fbbf24';
+          badgeSpan.style.border = '1px solid rgba(245, 158, 11, 0.5)';
+          badgeSpan.style.padding = '3px 10px';
+          badgeSpan.style.borderRadius = '20px';
+          badgeSpan.style.fontWeight = '700';
+        }
+      } else {
+        if (badgeSpan) {
+          badgeSpan.textContent = `${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})`;
+          badgeSpan.style.background = '';
+          badgeSpan.style.color = '';
+          badgeSpan.style.border = '';
+          badgeSpan.style.padding = '';
+          badgeSpan.style.borderRadius = '';
+          badgeSpan.style.fontWeight = '';
+        }
+      }
+      if (percentSpan) percentSpan.textContent = `${folderPercent}%`;
+      if (progressFill) progressFill.style.width = `${folderPercent}%`;
+
+      // Reconcilia e atualiza a lista de itens/arquivos dentro do card da pasta
+      const itemsContainer = folderCard.querySelector('.queue-folder-items');
+      const existingItemRows = Array.from(itemsContainer.querySelectorAll('.queue-item-row'));
+      const activeItemIds = new Set(folderItems.map(f => f.id));
+
+      existingItemRows.forEach(row => {
+        if (!activeItemIds.has(row.dataset.itemId)) {
+          row.remove();
+        }
+      });
+
+      folderItems.forEach(item => {
+        let itemRow = itemsContainer.querySelector(`.queue-item-row[data-item-id="${CSS.escape(item.id)}"]`);
+        const itemTag = getFileTypeTag(item);
+        const pureFileName = (item.name || '').includes('/') ? item.name.split('/').pop() : item.name;
+
+        if (!itemRow) {
+          itemRow = document.createElement('div');
+          itemRow.className = 'queue-item-row';
+          itemRow.dataset.itemId = item.id;
+        }
+
+        let statusText = '';
+        let statusClass = '';
+        let showProgress = false;
+
+        if (item.status === 'downloading') {
+          const isTbItem = item && (item.id.startsWith('torbox_') || item.torboxType || item.torboxId);
+          if (item.cloudMessage || item.cloudProgress !== undefined || (isTbItem && (item.downloadedBytes === 0 || item.downloadedBytes === undefined))) {
+            const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
+            statusText = `☁️ Torbox baixando na nuvem (${cProg}%)... Aguardando término no servidor para iniciar local`;
+            statusClass = 'status-downloading';
+            showProgress = true;
+          } else {
+            statusText = `Baixando (${item.progress || 0}%) • ${formatBytes(item.speed)}/s • ETA ${formatETA(item.eta)}`;
+            statusClass = 'status-downloading';
+            showProgress = true;
+          }
+        } else if (item.status === 'pending') {
+          statusText = 'Aguardando início...';
+          statusClass = 'status-pending';
+        } else if (item.status === 'paused') {
+          statusText = `Pausado (${item.progress || 0}%)`;
+          statusClass = 'status-paused';
+          showProgress = true;
+        } else if (item.status === 'completed') {
+          statusText = 'Concluído (100%)';
+          statusClass = 'status-completed';
+        } else if (item.status === 'error') {
+          statusText = `Erro: ${item.error || 'Falha no download'}`;
+          statusClass = 'status-error';
+        }
+
+        const isChecked = selectedQueueItemIds.has(item.id);
+
+        itemRow.innerHTML = `
+          <div class="queue-item-main">
+            <input type="checkbox" class="queue-item-checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="margin-right: 10px; cursor: pointer;">
+            <div class="queue-item-info">
+              <div class="queue-item-title-line">
+                <span style="background: ${itemTag.bg}; color: ${itemTag.color}; border: 1px solid ${itemTag.border}; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${itemTag.text}</span>
+                <span class="queue-item-name" title="${escapeHtml(pureFileName)}">${escapeHtml(pureFileName)}</span>
+              </div>
+              <div class="queue-item-sub">
+                <span class="queue-item-status ${statusClass}">${statusText}</span>
+                <span class="queue-item-size">${formatBytes(item.downloadedBytes || 0)} / ${formatBytes(item.size || 0)}</span>
+              </div>
+              ${showProgress ? `
+                <div class="queue-item-progress-track">
+                  <div class="queue-item-progress-fill" style="width: ${item.progress || 0}%;"></div>
+                </div>
+              ` : ''}
+            </div>
+            <div class="queue-item-actions">
+              ${item.status === 'downloading' ? `
+                <button class="btn-icon btn-item-pause" data-id="${item.id}" title="Pausar download">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                </button>
+              ` : ''}
+              ${item.status === 'paused' ? `
+                <button class="btn-icon btn-item-resume" data-id="${item.id}" title="Retomar download">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </button>
+              ` : ''}
+              ${item.status === 'completed' ? `
+                <button class="btn-icon btn-item-folder" data-id="${item.id}" title="Mostrar na pasta de downloads">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                </button>
+              ` : ''}
+              <button class="btn-icon btn-item-delete" data-id="${item.id}" title="Remover da fila">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+          </div>
+        `;
+
+        const chk = itemRow.querySelector('.queue-item-checkbox');
+        if (chk) {
+          chk.onclick = (e) => {
+            e.stopPropagation();
+            if (chk.checked) selectedQueueItemIds.add(item.id);
+            else selectedQueueItemIds.delete(item.id);
+          };
+        }
+
+        const btnPause = itemRow.querySelector('.btn-item-pause');
+        if (btnPause) btnPause.onclick = (e) => { e.stopPropagation(); window.api.pauseDownload(item.id); };
+
+        const btnResume = itemRow.querySelector('.btn-item-resume');
+        if (btnResume) btnResume.onclick = (e) => { e.stopPropagation(); window.api.resumeDownload(item.id); };
+
+        const btnFolder = itemRow.querySelector('.btn-item-folder');
+        if (btnFolder) btnFolder.onclick = (e) => { e.stopPropagation(); window.api.openDownloadDir(); };
+
+        const btnDelete = itemRow.querySelector('.btn-item-delete');
+        if (btnDelete) btnDelete.onclick = async (e) => {
+          e.stopPropagation();
+          window.api.removeQueueItem(item.id);
+        };
+
+        itemsContainer.appendChild(itemRow);
+      });
     });
-  });
+  };
+
+  renderEntriesToContainer(activeEntries, activeBody);
+  renderEntriesToContainer(completedEntries, completedBody);
 }
 
 function createQueueItemElement(item, hasActiveDownloading = false) {
@@ -2184,11 +2396,11 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
     const folderTag = getFolderTypeTag(groupItems, groupName);
 
     const serviceSpan = document.createElement('span');
-    serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;`;
+    serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;`;
     serviceSpan.textContent = serviceTag.text;
 
     const folderTypeSpan = document.createElement('span');
-    folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
+    folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;`;
     folderTypeSpan.textContent = folderTag.text;
 
     const nameSpan = document.createElement('span');
@@ -2208,13 +2420,13 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
     const headerStatusSpan = document.createElement('span');
     headerStatusSpan.className = 'folder-group-status-badge';
     if (groupItems.some(f => f.isInactive)) {
-      headerStatusSpan.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">Inativo</span>`;
+      headerStatusSpan.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;">Inativo</span>`;
     } else if (groupItems.every(f => f.isFinished)) {
-      headerStatusSpan.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">Ready (100%)</span>`;
+      headerStatusSpan.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;">Ready (100%)</span>`;
     } else {
       const activeItem = groupItems.find(f => !f.isFinished) || groupItems[0];
       const activeProg = activeItem.progress || 0;
-      headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px;">☁️ Baixando (${activeProg}%)</span>`;
+      headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;">☁️ Baixando (${activeProg}%)</span>`;
     }
     metaDiv.appendChild(headerStatusSpan);
 

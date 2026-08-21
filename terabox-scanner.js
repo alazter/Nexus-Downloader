@@ -349,6 +349,32 @@ async function scanTeraBoxLink(urlStr) {
             uk: uk,
             parentFolderName: currentFolderName
           });
+        } else {
+          // Arquivo individual dentro da pasta do TeraBox
+          const rawFileName = item.server_filename || item.filename || item.name || 'Arquivo_TeraBox';
+          const pureFileName = sanitizeFolderName(rawFileName);
+          const fSize = parseInt(item.size, 10) || 0;
+          const fsId = item.fs_id || item.fsid || item.id;
+          const folderNameClean = sanitizeFolderName(current.dirPath ? current.dirPath.split('/').pop() : (data.title || currentFolderName));
+
+          files.push({
+            id: 'terabox_file_' + (fsId || (Date.now() + '_' + Math.random().toString(36).substr(2, 5))),
+            fileId: 'tb_f_' + fsId,
+            numericId: fsId,
+            name: pureFileName,
+            size: fSize,
+            sizeFormatted: formatBytes(fSize),
+            relativePath: current.dirPath ? `${currentFolderName}/${folderNameClean}/${pureFileName}` : `${folderNameClean}/${pureFileName}`,
+            folderName: currentFolderName,
+            isHttpDirect: true,
+            teraboxUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
+            teraboxDlink: item.dlink || item.direct_link || '',
+            teraboxShareId: shareId,
+            teraboxUk: uk,
+            teraboxPath: item.path || current.dirPath,
+            teraboxFsId: fsId,
+            thumbs: item.thumbs
+          });
         }
       }
     } else {
