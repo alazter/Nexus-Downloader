@@ -656,6 +656,21 @@ Caso algum download do Torbox volte a apresentar erro 416 ou interrompa no iníc
 
 ---
 
+## Bug 26: Exibição Condicional do Botão "Iniciar Download" Somente Após Escaneamento de Links (`app.js`)
+
+### Causa Raiz Identificada e Corrigida
+- **Referência Incorreta e Falta de Ocultação ao Iniciar/Limpar (`app.js`)**:
+  - No handler de remoção/limpeza (`btnClearScanned`), a variável que ocultava o botão tentava acessar `btnStartDownloadMain`, que não estava declarada (`undefined`).
+  - Além disso, no momento em que o usuário clicava em "Escanear Links", o botão "Iniciar Download" não garantia a ocultação preventiva durante o carregamento.
+
+### Solução Aplicada
+1. **Controle Estrito de Exibição (`renderer/js/app.js`)**:
+   - Ajustadas todas as chamadas para `btnAddSelected.style.display = 'none'` ao iniciar a varredura, ao limpar os links ou quando a lista de escaneados estiver vazia (`scannedFiles.length === 0`).
+2. **Garantia de Fluxo**:
+   - O botão verde **`Iniciar Download`** permanece oculto e só aparece (`display: inline-flex`) **exclusivamente após a conclusão do escaneamento**, quando houver ao menos 1 arquivo escaneado e pronto na lista.
+
+---
+
 ## Bug 11: Desformatação e Empilhamento Vertical dos Arquivos Internos na Fila de Downloads
 
 ### Causa Raiz Identificada e Corrigida

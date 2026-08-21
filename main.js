@@ -1802,8 +1802,117 @@ ipcMain.handle('open-downloads-folder', () => {
   shell.openPath(config.downloadPath);
 });
 
+ipcMain.handle('open-downloads-folder', () => {
+  shell.openPath(config.downloadPath);
+});
+
+// ==========================================
+// ARQUITETURA DO SISTEMA DE ATUALIZAÇÃO (GITHUB RELEASES API + AUTO-UPDATER)
+// ==========================================
+let cachedLatestRelease = null;
+let downloadedInstallerPath = null;
+
+function parseSemVer(v) {
+  if (!v) return [0, 0, 0];
+  const cleaned = String(v).trim().replace(/^v/i, '').split('-')[0];
+  const parts = cleaned.split('.').map(n => parseInt(n, 10) || 0);
+  while (parts.length < 3) parts.push(0);
+  return parts;
+}
+
+function isNewerVersion(remoteVer, currentVer) {
+  const [rMajor, rMinor, rPatch] = parseSemVer(remoteVer);
+  const [cMajor, cMinor, cPatch] = parseSemVer(currentVer);
+
+  if (rMajor > cMajor) return true;
+  if (rMajor < cMajor) return false;
+  if (rMinor > cMinor) return true;
+  if (rMinor < cMinor) return false;
+  return rPatch > cPatch;
+}
+
+async function fetchLatestGitHubRelease() {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/alazter/nexus-downloader/releases',
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Nexus-Downloader-App',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const releases = JSON.parse(body);
+            if (Array.isArray(releases) && releases.length > 0) {
+              const latest = releases.find(r => !r.draft) || releases[0];
+              resolve(latest);
+              return;
+            }
+          }
+          resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.end();
+  });
+}
+
 // IPC Handlers para Auto-Updater
 ipcMain.handle('check-for-updates', async () => {
+  const currentVersion = app.getVersion();
+
+  try {
+    const release = await fetchLatestGitHubRelease();
+    if (release) {
+      cachedLatestRelease = release;
+      const remoteVersion = release.tag_name || release.name || currentVersion;
+      const updateAvailable = isNewerVersion(remoteVersion, currentVersion);
+
+      if (updateAvailable && Notification.isSupported()) {
+        try {
+          new Notification({
+            title: '⚡ Nexus Downloader',
+            body: `Nova versão ${remoteVersion} disponível para download!`,
+            icon: path.join(__dirname, 'renderer', 'icon.png')
+          }).show();
+        } catch (e) {}
+      }
+
+      const payload = {
+        success: true,
+        updateAvailable,
+        currentVersion,
+        version: remoteVersion,
+        title: release.name || `⚡ Nexus ${remoteVersion}`,
+        body: release.body || 'Melhorias de desempenho e correções gerais de estabilidade.',
+        publishedAt: release.published_at,
+        assets: release.assets || []
+      };
+
+      if (mainWindow) {
+        mainWindow.webContents.send('updater-status', {
+          status: updateAvailable ? 'available' : 'not-available',
+          ...payload
+        });
+      }
+
+      return payload;
+    }
+  } catch (err) {
+    console.error('[AutoUpdater] Erro ao consultar GitHub Releases API:', err.message);
+  }
+
+  // Fallback para electron-updater
   try {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: result ? result.updateInfo : null };
@@ -1814,13 +1923,122 @@ ipcMain.handle('check-for-updates', async () => {
 
 ipcMain.handle('download-update', async () => {
   try {
+    if (cachedLatestRelease && cachedLatestRelease.assets && cachedLatestRelease.assets.length > 0) {
+      const assets = cachedLatestRelease.assets;
+      const isPortable = !!process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('exe').toLowerCase().includes('portable');
+
+      let targetAsset = null;
+      if (isPortable) {
+        targetAsset = assets.find(a => a.name.toLowerCase().includes('portable') && a.name.endsWith('.exe'));
+      }
+      if (!targetAsset) {
+        targetAsset = assets.find(a => a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe'));
+      }
+      if (!targetAsset) {
+        targetAsset = assets.find(a => a.name.endsWith('.exe'));
+      }
+
+      if (targetAsset && targetAsset.browser_download_url) {
+        const downloadUrl = targetAsset.browser_download_url;
+        const destDir = path.join(app.getPath('temp'), 'NexusDownloaderUpdates');
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+        const destPath = path.join(destDir, targetAsset.name);
+        downloadedInstallerPath = destPath;
+
+        // Stream download via https
+        await new Promise((resolve, reject) => {
+          const fileStream = fs.createWriteStream(destPath);
+          let downloadedBytes = 0;
+          const totalBytes = targetAsset.size || 0;
+          const startTime = Date.now();
+
+          const downloadReq = (urlStr) => {
+            https.get(urlStr, { headers: { 'User-Agent': 'Nexus-Downloader-App' } }, (res) => {
+              if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                downloadReq(res.headers.location);
+                return;
+              }
+
+              if (res.statusCode !== 200) {
+                reject(new Error(`HTTP Error ${res.statusCode}`));
+                return;
+              }
+
+              res.on('data', (chunk) => {
+                downloadedBytes += chunk.length;
+                fileStream.write(chunk);
+
+                const elapsedSec = (Date.now() - startTime) / 1000 || 0.1;
+                const bytesPerSec = downloadedBytes / elapsedSec;
+                const mbps = ((bytesPerSec * 8) / (1024 * 1024)).toFixed(2);
+                const percent = totalBytes > 0 ? ((downloadedBytes / totalBytes) * 100).toFixed(1) : 0;
+
+                if (mainWindow) {
+                  mainWindow.webContents.send('updater-status', {
+                    status: 'downloading',
+                    percent,
+                    transferred: downloadedBytes,
+                    total: totalBytes,
+                    bytesPerSecond: bytesPerSec,
+                    mbps
+                  });
+                }
+              });
+
+              res.on('end', () => {
+                fileStream.end();
+                resolve();
+              });
+
+              res.on('error', (err) => {
+                fileStream.destroy();
+                reject(err);
+              });
+            }).on('error', reject);
+          };
+
+          downloadReq(downloadUrl);
+        });
+
+        if (mainWindow) {
+          mainWindow.webContents.send('updater-status', {
+            status: 'downloaded',
+            version: cachedLatestRelease.tag_name,
+            exePath: downloadedInstallerPath,
+            msg: 'Atualização baixada e pronta para instalar!'
+          });
+        }
+
+        return { success: true, exePath: downloadedInstallerPath };
+      }
+    }
+
     await autoUpdater.downloadUpdate();
     return { success: true };
   } catch (err) {
-    return { success: false, error: err.message };
+    console.error('[AutoUpdater] Erro no download da atualização:', err.message);
+    try {
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: err.message };
+    }
   }
 });
 
 ipcMain.handle('restart-and-install', () => {
+  if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+    try {
+      app.releaseSingleInstanceLock();
+      shell.openPath(downloadedInstallerPath);
+      setTimeout(() => {
+        app.quit();
+      }, 500);
+      return;
+    } catch (e) {
+      console.error('[AutoUpdater] Erro ao abrir executável atualizado:', e);
+    }
+  }
   autoUpdater.quitAndInstall();
 });

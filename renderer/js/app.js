@@ -348,39 +348,80 @@ if (btnCheckVersion) {
   });
 }
 
-// Escuta automática de eventos do Auto-Updater
+// Escuta automática de eventos do Auto-Updater (Arquitetura em 5 Camadas)
 if (window.api && window.api.onUpdaterStatus) {
-  let updatePromptShown = false;
+  const updaterModal = document.getElementById('updater-modal-overlay');
+  const modalTitle = document.getElementById('updater-modal-title');
+  const modalSubtitle = document.getElementById('updater-modal-subtitle');
+  const changelogCard = document.getElementById('updater-changelog-card');
+  const releaseTag = document.getElementById('updater-release-tag');
+  const releaseDate = document.getElementById('updater-release-date');
+  const changelogBody = document.getElementById('updater-changelog-body');
+  const progressContainer = document.getElementById('updater-progress-container');
+  const progressBar = document.getElementById('updater-progress-bar');
+  const percentText = document.getElementById('updater-progress-percent');
+  const metaRow = document.getElementById('updater-meta-row');
+  const sizeText = document.getElementById('updater-size-text');
+  const speedText = document.getElementById('updater-speed-text');
+  const modalFooter = document.getElementById('updater-modal-footer');
+  const btnUpdateNow = document.getElementById('btn-update-now');
+  const btnUpdateIgnore = document.getElementById('btn-update-ignore');
+
+  if (btnUpdateIgnore) {
+    btnUpdateIgnore.addEventListener('click', () => {
+      if (updaterModal) updaterModal.style.display = 'none';
+    });
+  }
+
+  if (btnUpdateNow) {
+    btnUpdateNow.addEventListener('click', async () => {
+      if (btnUpdateNow.dataset.mode === 'install') {
+        window.api.restartAndInstall();
+        return;
+      }
+
+      if (changelogCard) changelogCard.style.display = 'none';
+      if (modalFooter) modalFooter.style.display = 'none';
+      if (progressContainer) progressContainer.style.display = 'flex';
+      if (metaRow) metaRow.style.display = 'flex';
+      if (modalSubtitle) modalSubtitle.textContent = 'Baixando nova versão do software. O Nexus será reiniciado automaticamente ao concluir.';
+
+      try {
+        await window.api.downloadUpdate();
+      } catch (err) {
+        console.error('Erro ao iniciar download da atualização:', err);
+      }
+    });
+  }
 
   window.api.onUpdaterStatus(async (data) => {
     if (!data) return;
 
-    const updaterModal = document.getElementById('updater-modal-overlay');
-    const progressBar = document.getElementById('updater-progress-bar');
-    const percentText = document.getElementById('updater-progress-percent');
-    const sizeText = document.getElementById('updater-size-text');
-    const speedText = document.getElementById('updater-speed-text');
-
-    if (data.status === 'available') {
+    if (data.status === 'available' || data.updateAvailable) {
       if (updateNotice) {
         updateNotice.textContent = `Nova v${data.version || ''} disponível`;
         updateNotice.style.display = 'block';
       }
 
-      if (!updatePromptShown) {
-        updatePromptShown = true;
-        const wantDownload = await showCustomConfirm(
-          `Uma nova versão (v${data.version || ''}) do Nexus Downloader está disponível! Deseja baixar e instalar a nova versão agora?`,
-          'Atualização Disponível'
-        );
+      if (modalTitle) modalTitle.textContent = data.title || `⚡ Nova Versão v${data.version || ''} Disponível`;
+      if (modalSubtitle) modalSubtitle.textContent = 'Uma nova versão do Nexus Downloader está disponível com melhorias e correções.';
+      if (releaseTag) releaseTag.textContent = data.version ? `v${data.version.replace(/^v/i, '')}` : 'vNova';
+      if (releaseDate) releaseDate.textContent = data.publishedAt ? new Date(data.publishedAt).toLocaleDateString('pt-BR') : 'GitHub Releases';
+      if (changelogBody) changelogBody.textContent = data.body || 'Melhorias de desempenho e correções gerais de estabilidade.';
 
-        if (wantDownload) {
-          if (updateNotice) {
-            updateNotice.textContent = 'Iniciando download...';
-          }
-          await window.api.downloadUpdate();
+      if (changelogCard) changelogCard.style.display = 'block';
+      if (progressContainer) progressContainer.style.display = 'none';
+      if (metaRow) metaRow.style.display = 'none';
+      if (modalFooter) {
+        modalFooter.style.display = 'flex';
+        if (btnUpdateNow) {
+          btnUpdateNow.textContent = 'Atualizar Agora';
+          btnUpdateNow.dataset.mode = 'download';
         }
+        if (btnUpdateIgnore) btnUpdateIgnore.style.display = 'inline-flex';
       }
+      if (updaterModal) updaterModal.style.display = 'flex';
+
     } else if (data.status === 'downloading') {
       if (updateNotice) {
         updateNotice.textContent = `Baixando atualização: ${data.percent || 0}%...`;
@@ -388,26 +429,41 @@ if (window.api && window.api.onUpdaterStatus) {
       }
 
       if (updaterModal) updaterModal.style.display = 'flex';
+      if (changelogCard) changelogCard.style.display = 'none';
+      if (modalFooter) modalFooter.style.display = 'none';
+      if (progressContainer) progressContainer.style.display = 'flex';
+      if (metaRow) metaRow.style.display = 'flex';
+
       if (progressBar) progressBar.style.width = `${data.percent || 0}%`;
       if (percentText) percentText.textContent = `${data.percent || 0}%`;
       if (sizeText) sizeText.textContent = `${formatBytes(data.transferred || 0)} / ${formatBytes(data.total || 0)}`;
       if (speedText) speedText.textContent = `${data.mbps || '0.00'} Mbps`;
+
     } else if (data.status === 'downloaded') {
-      if (updaterModal) updaterModal.style.display = 'none';
       if (updateNotice) {
         updateNotice.textContent = 'Versão pronta para instalar';
         updateNotice.style.display = 'block';
       }
-      const wantInstall = await showCustomConfirm(
-        `A nova versão v${data.version || ''} foi baixada com sucesso! Clique em Confirmar para reiniciar o Nexus Downloader, atualizar o ícone na área de trabalho e abrir na nova versão.`,
-        'Atualização Pronta'
-      );
 
-      if (wantInstall) {
-        window.api.restartAndInstall();
+      if (modalTitle) modalTitle.textContent = '⚡ Atualização Concluída';
+      if (modalSubtitle) modalSubtitle.textContent = 'O download foi concluído com sucesso! Clique em Reiniciar e Instalar para aplicar a nova versão.';
+      if (progressBar) progressBar.style.width = '100%';
+      if (percentText) percentText.textContent = '100%';
+
+      if (modalFooter) {
+        modalFooter.style.display = 'flex';
+        if (btnUpdateNow) {
+          btnUpdateNow.textContent = 'Reiniciar e Instalar';
+          btnUpdateNow.dataset.mode = 'install';
+        }
+        if (btnUpdateIgnore) btnUpdateIgnore.style.display = 'none';
       }
+      if (updaterModal) updaterModal.style.display = 'flex';
+
     } else if (data.status === 'error') {
-      if (updaterModal) updaterModal.style.display = 'none';
+      if (updaterModal && progressContainer && progressContainer.style.display === 'none') {
+        updaterModal.style.display = 'none';
+      }
     }
   });
 }

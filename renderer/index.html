@@ -740,20 +740,37 @@
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
         </div>
-        <h3 id="updater-modal-title">Atualizando o Nexus Downloader</h3>
+        <h3 id="updater-modal-title">⚡ Nova Versão Disponível</h3>
       </div>
       <div class="updater-modal-body">
-        <p id="updater-modal-subtitle" class="updater-subtitle">Baixando nova versão do software. O Nexus será reiniciado automaticamente ao concluir.</p>
-        <div class="updater-progress-container">
+        <p id="updater-modal-subtitle" class="updater-subtitle">Uma nova versão do Nexus Downloader está disponível com melhorias e correções.</p>
+
+        <!-- CHANGELOG CONTAINER -->
+        <div class="updater-changelog-card" id="updater-changelog-card">
+          <div class="changelog-header">
+            <span class="changelog-tag" id="updater-release-tag">v1.2.2</span>
+            <span class="changelog-date" id="updater-release-date">GitHub Releases</span>
+          </div>
+          <div class="changelog-body" id="updater-changelog-body">
+            Carregando notas da versão...
+          </div>
+        </div>
+
+        <!-- BARRA DE PROGRESSO DE DOWNLOAD DA ATUALIZAÇÃO -->
+        <div class="updater-progress-container" id="updater-progress-container" style="display: none;">
           <div class="updater-progress-track">
             <div class="updater-progress-bar" id="updater-progress-bar" style="width: 0%;"></div>
           </div>
           <span class="updater-progress-percent" id="updater-progress-percent">0%</span>
         </div>
-        <div class="updater-meta-row">
+        <div class="updater-meta-row" id="updater-meta-row" style="display: none;">
           <span class="updater-size-text" id="updater-size-text">0 MB / 0 MB</span>
           <span class="updater-speed-badge" id="updater-speed-text">0.00 Mbps</span>
         </div>
+      </div>
+      <div class="updater-modal-footer" id="updater-modal-footer">
+        <button class="btn btn-outline" id="btn-update-ignore">Ignorar por enquanto</button>
+        <button class="btn btn-primary" id="btn-update-now">Atualizar Agora</button>
       </div>
     </div>
   </div>
