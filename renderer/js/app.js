@@ -735,12 +735,14 @@ btnScan.addEventListener('click', async () => {
   btnScan.querySelector('.btn-text').textContent = 'Escaneando...';
   
   scanEmptyState.style.display = 'none';
+  if (btnAddSelected) btnAddSelected.style.display = 'none';
 
   try {
     const files = await window.api.scanLink(url);
     if (!files || files.length === 0) {
       await showCustomAlert('Nenhum arquivo encontrado no link fornecido.', 'Escaneamento Concluído');
       if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
+      if (btnAddSelected) btnAddSelected.style.display = 'none';
       return;
     }
 
@@ -755,6 +757,7 @@ btnScan.addEventListener('click', async () => {
   } catch (err) {
     await showCustomAlert('Erro ao escanear link: ' + err.message, 'Erro no Escaneamento');
     if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
+    if (btnAddSelected) btnAddSelected.style.display = 'none';
   } finally {
     btnScan.disabled = false;
     scanSpinner.style.display = 'none';
@@ -769,7 +772,7 @@ if (btnClearScanned) {
     if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
     if (resultsList) resultsList.innerHTML = '';
     resultsContainer.style.display = 'none';
-    if (btnStartDownloadMain) btnStartDownloadMain.style.display = 'none';
+    if (btnAddSelected) btnAddSelected.style.display = 'none';
     scanEmptyState.style.display = 'flex';
   });
 }
@@ -813,6 +816,7 @@ function renderResults() {
   selectAllFiles.checked = true;
 
   if (!scannedFiles || scannedFiles.length === 0) {
+    if (btnAddSelected) btnAddSelected.style.display = 'none';
     updateSelectionSummary();
     return;
   }
