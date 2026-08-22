@@ -11,6 +11,8 @@ const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require
 const { isTeraBoxUrl, scanTeraBoxLink, resolveTeraBoxDirectUrl } = require('./terabox-scanner');
 const { isOneDriveUrl, scanOneDriveLink, resolveOneDriveDirectUrl } = require('./onedrive-scanner');
 const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, fetchTorboxUserDownloads } = require('./torbox-scanner');
+const { isDrimeUrl, scanDrimeLink } = require('./drime-scanner');
+const { isTurboUrl, scanTurboLink, resolveTurboDirectUrl } = require('./turbo-scanner');
 const { scanGenericLink } = require('./generic-scanner');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
@@ -681,6 +683,11 @@ function downloadBunkrFile(queueItem) {
         );
         directUrl = tbInfo.directUrl;
         referer = tbInfo.referer || 'https://torbox.app/';
+      } else if (queueItem.turboFileId) {
+        console.log(`[Turbo Worker] Resolvendo URL direta assinada para "${queueItem.name}"...`);
+        const turboInfo = await resolveTurboDirectUrl(queueItem.turboFileId);
+        directUrl = turboInfo ? turboInfo.directUrl : (queueItem.url || directUrl);
+        referer = 'https://turbo.cr/';
       } else {
         console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
         const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
@@ -1510,6 +1517,40 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
       } catch (err) {
         console.error('Erro ao escanear link OneDrive/SharePoint:', link, err.message);
         throw new Error(`Erro ao escanear OneDrive/SharePoint: ${err.message}`);
+      }
+      continue;
+    }
+
+    // 0.21. Links do Drime Cloud
+    if (isDrimeUrl(link)) {
+      try {
+        console.log('[main.js] Link do Drime Cloud detectado! Escaneando nativamente:', link);
+        const drimeFiles = await scanDrimeLink(link);
+        if (drimeFiles && drimeFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(drimeFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do Drime Cloud para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link Drime Cloud:', link, err.message);
+        throw new Error(`Erro ao escanear Drime Cloud: ${err.message}`);
+      }
+      continue;
+    }
+
+    // 0.22. Links do Turbo.cr
+    if (isTurboUrl(link)) {
+      try {
+        console.log('[main.js] Link do Turbo.cr detectado! Escaneando nativamente:', link);
+        const turboFiles = await scanTurboLink(link);
+        if (turboFiles && turboFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(turboFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do Turbo.cr para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link Turbo.cr:', link, err.message);
+        throw new Error(`Erro ao escanear Turbo.cr: ${err.message}`);
       }
       continue;
     }

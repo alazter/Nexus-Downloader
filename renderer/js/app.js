@@ -1230,9 +1230,16 @@ function getFolderTypeTag(folderItems, folderName) {
 
 function getServiceTag(file) {
   const id = (file && file.id) || '';
+  const service = (file && file.service) || '';
   const url = (file && (file.downloadUrl || file.directUrl || '')) || '';
 
-  if (id.startsWith('torbox_') || id.startsWith('gofile_') || id.startsWith('megaup_') || id.startsWith('turbocr_') || id.startsWith('generic_') || id.startsWith('scraper_') || (file && file.torboxType) || url.includes('gofile') || url.includes('megaup') || url.includes('turbo.cr') || url.includes('tb-cdn')) {
+  if (id.startsWith('drime_') || service === 'Drime Cloud' || url.includes('drime.cloud')) {
+    return { text: 'Drime Cloud', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
+  }
+  if (id.startsWith('turbo_') || service === 'Turbo.cr' || (url.includes('turbocdn.st') && !file.torboxType)) {
+    return { text: 'Turbo.cr', bg: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: 'rgba(244, 63, 94, 0.4)' };
+  }
+  if (id.startsWith('torbox_') || (file && file.torboxType) || url.includes('tb-cdn')) {
     return { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
   }
   if (id.startsWith('terabox_')) {
