@@ -671,6 +671,30 @@ Caso algum download do Torbox volte a apresentar erro 416 ou interrompa no iníc
 
 ---
 
+## Recursos / Feature 27: Implementação Completa da Arquitetura em 5 Camadas do Sistema de Atualização
+
+### Estrutura Implementada (`main.js`, `index.html`, `style.css`, `app.js`)
+1. **🔍 1. Detecção e Comparação Semântica (Version Checking & SemVer)**:
+   - Consulta nativa via HTTP GET a `https://api.github.com/repos/alazter/nexus-downloader/releases`.
+   - Comparação SemVer (`isNewerVersion`) comparando `app.getVersion()` com a release remota.
+   - Emissão de notificação nativa do Windows (`Notification`) ao detectar nova versão.
+2. **🎨 2. Interface, Badge e Modal com Changelog (`UpdatePopupModal`)**:
+   - Exibição de contador/badge dinâmico no rodapé e sidebar (`update-notice`).
+   - Modal com scroll das notas da versão (Release Notes / Changelog) extraídas de `release.body`.
+   - Botões de ação clara: `"Atualizar Agora"` (`#btn-update-now`) e `"Ignorar por enquanto"` (`#btn-update-ignore`).
+3. **📥 3. Download Resiliente com Progresso em Tempo Real (Asset Matcher & Stream)**:
+   - Seleção inteligente entre instalador Setup (`Nexus-Downloader-Setup-*.exe`) e portátil (`Nexus-Downloader-Portable-*.exe`).
+   - Download via Stream com feedback IPC em tempo real (`percent`, `transferred`, `total`, `mbps`).
+4. **🔄 4. Instalação Transparente e Substituição de Processo (Hot Swap Handover)**:
+   - Preservação do `AppUserModelId` e ícone permanente.
+   - Liberação de trava de instância única (`app.releaseSingleInstanceLock()`).
+   - Execução transparente da nova versão (`shell.openPath`) e encerramento limpo do processo antigo (`app.quit()`).
+5. **🏷️ 5. Padronização de Publicação (Publishing Pattern)**:
+   - Formatação padrão de versão `⚡ Nexus v[Versão]`.
+   - Suporte completo a nota de versão e banners no GitHub.
+
+---
+
 ## Bug 11: Desformatação e Empilhamento Vertical dos Arquivos Internos na Fila de Downloads
 
 ### Causa Raiz Identificada e Corrigida
