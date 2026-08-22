@@ -277,7 +277,7 @@ async function scanTorboxLink(urlStr, apiKey) {
 
       if (existing) {
         console.log(`[Torbox Scanner] WebDL pré-existente encontrada na conta do Torbox! ID: ${existing.id} (${existing.name})`);
-        return buildWebdlResultList(existing, apiKey);
+        return buildWebdlResultList(existing, apiKey, cleanUrlStr);
       }
     } catch (e) {
       console.warn('[Torbox Scanner] Não foi possível consultar lista prévia de WebDLs:', e.message);
@@ -297,7 +297,7 @@ async function scanTorboxLink(urlStr, apiKey) {
         const targetClean = cleanUrlStr.toLowerCase();
         const existing = myWebdls.find(w => (w.original_url && w.original_url.toLowerCase().includes(targetClean)) || (w.name && targetClean.includes(w.name.toLowerCase())));
         if (existing) {
-          return buildWebdlResultList(existing, apiKey);
+          return buildWebdlResultList(existing, apiKey, cleanUrlStr);
         }
       } catch (e) {}
 
@@ -318,19 +318,19 @@ async function scanTorboxLink(urlStr, apiKey) {
       console.warn('[Torbox Scanner] Não foi possível buscar detalhes da lista webdl recém-criada:', e.message);
     }
 
-    return buildWebdlResultList(currentWebdl, apiKey);
+    return buildWebdlResultList(currentWebdl, apiKey, cleanUrlStr);
   }
 }
 
 /**
  * Função auxiliar para montar a lista de resultados de uma WebDL (Arquivos individuais ou Pacote ZIP)
  */
-function buildWebdlResultList(webdlItem, apiKey) {
+function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
   const webdlId = webdlItem.id || webdlItem.webdownload_id;
   const folderDisplayName = sanitizePathSegment(webdlItem.name || 'Hoster_Download');
   const resultList = [];
 
-  // Se o Torbox descompactou os arquivos da WebDL (ex: Pixeldrain album com 6 vídeos)
+  // Se a WebDL do Torbox possui múltiplos arquivos descompactados (ex: pasta/álbum Pixeldrain com vídeos .mp4)
   if (webdlItem.files && Array.isArray(webdlItem.files) && webdlItem.files.length > 0) {
     webdlItem.files.forEach((f, idx) => {
       let rawName = f.short_name || f.name || `Arquivo_${idx + 1}`;
@@ -354,38 +354,41 @@ function buildWebdlResultList(webdlItem, apiKey) {
         torboxType: 'webdl',
         torboxId: webdlId,
         torboxFileId: fFileId,
+        isZipDownload: false,
         torboxDownloadUrl: permalinkUrl,
         directUrl: permalinkUrl,
         downloadUrl: permalinkUrl
       });
     });
-  } else {
-    // Se for arquivo único ou empacotado pelo Torbox como .zip / .rar
-    let fileName = folderDisplayName;
-    if (!/\.[a-zA-Z0-9]{2,4}$/.test(fileName)) {
-      fileName = fileName + '.zip';
-    }
-    const fileSize = webdlItem.size || 0;
-    const webdlPermalink = `https://api.torbox.app/v1/api/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${webdlId}&redirect=true`;
-
-    resultList.push({
-      id: 'torbox_webdl_' + webdlId + '_0',
-      fileId: 'tb_w_' + webdlId,
-      numericId: 'tb_w_0',
-      name: fileName,
-      size: fileSize,
-      sizeFormatted: formatBytes(fileSize),
-      relativePath: fileName,
-      folderName: fileName,
-      isHttpDirect: true,
-      torboxType: 'webdl',
-      torboxId: webdlId,
-      torboxFileId: 0,
-      torboxDownloadUrl: webdlPermalink,
-      directUrl: webdlPermalink,
-      downloadUrl: webdlPermalink
-    });
+    return resultList;
   }
+
+  // Se for arquivo único ou se o Torbox empacotou como .zip único
+  let fileName = folderDisplayName;
+  if (!/\.[a-zA-Z0-9]{2,4}$/.test(fileName)) {
+    fileName = fileName + '.zip';
+  }
+  const fileSize = webdlItem.size || 0;
+  const webdlPermalink = `https://api.torbox.app/v1/api/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${webdlId}&zip=true&redirect=true`;
+
+  resultList.push({
+    id: 'torbox_webdl_' + webdlId + '_zip',
+    fileId: 'tb_w_' + webdlId + '_zip',
+    numericId: 'tb_w_zip',
+    name: fileName,
+    size: fileSize,
+    sizeFormatted: formatBytes(fileSize),
+    relativePath: `${folderDisplayName}/${fileName}`,
+    folderName: folderDisplayName,
+    isHttpDirect: true,
+    torboxType: 'webdl',
+    torboxId: webdlId,
+    torboxFileId: 0,
+    isZipDownload: true,
+    torboxDownloadUrl: webdlPermalink,
+    directUrl: webdlPermalink,
+    downloadUrl: webdlPermalink
+  });
 
   return resultList;
 }
@@ -393,8 +396,8 @@ function buildWebdlResultList(webdlItem, apiKey) {
 /**
  * Resolve o link direto de download do Torbox (solicita temporário via API)
  */
-async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'torrent', torboxId = 0, torboxFileId = 0, onStatusUpdate = null) {
-  console.log(`[Torbox Resolver] Resolvendo URL para ${torboxType} (ID: ${torboxId}, FileID: ${torboxFileId})...`);
+async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'torrent', torboxId = 0, torboxFileId = 0, onStatusUpdate = null, isZipDownload = false) {
+  console.log(`[Torbox Resolver] Resolvendo URL para ${torboxType} (ID: ${torboxId}, FileID: ${torboxFileId}, Zip: ${isZipDownload})...`);
 
   if (!apiKey) {
     throw new Error('API Key do Torbox ausente.');
@@ -404,9 +407,14 @@ async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'torrent', to
 
   const requestDirect = async (targetFileId) => {
     let fid = (targetFileId !== undefined && targetFileId !== null) ? targetFileId : 0;
-    const endpoint = torboxType === 'torrent' 
-      ? `/torrents/requestdl?token=${encodeURIComponent(apiKey)}&torrent_id=${torboxId}&file_id=${fid}&redirect=false`
-      : `/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${torboxId}&redirect=false`;
+    let endpoint = '';
+    if (torboxType === 'torrent') {
+      endpoint = `/torrents/requestdl?token=${encodeURIComponent(apiKey)}&torrent_id=${torboxId}&file_id=${fid}&redirect=false`;
+    } else if (isZipDownload || String(fileId).endsWith('_zip')) {
+      endpoint = `/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${torboxId}&zip=true&redirect=false`;
+    } else {
+      endpoint = `/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${torboxId}&file_id=${fid}&redirect=false`;
+    }
 
     const res = await callTorboxApi(endpoint, 'GET', apiKey);
     if (res.statusCode === 200 && res.data && res.data.success) {
@@ -607,7 +615,46 @@ async function fetchTorboxUserDownloads(apiKey) {
       let statusText = isFinished ? 'Concluído' : (isInactive ? 'Inativo' : `Baixando (${percent}%)`);
       const folderDisplayName = sanitizePathSegment(w.name || `WebDL_${w.id}`);
 
-      if (w.files && Array.isArray(w.files) && w.files.length > 0) {
+      const isPixeldrain = (w.original_url && w.original_url.toLowerCase().includes('pixeldrain')) ||
+                           (w.name && w.name.toLowerCase().includes('pixeldrain'));
+
+      if (isPixeldrain || !w.files || !Array.isArray(w.files) || w.files.length <= 1) {
+        let fileName = folderDisplayName;
+        if (!/\.[a-zA-Z0-9]{2,4}$/.test(fileName)) {
+          fileName = fileName + '.zip';
+        } else if (isPixeldrain && !fileName.toLowerCase().endsWith('.zip')) {
+          const extIdx = fileName.lastIndexOf('.');
+          if (extIdx > 0) fileName = fileName.substring(0, extIdx);
+          fileName = fileName + '.zip';
+        }
+        const fileSize = w.size || (w.files ? w.files.reduce((acc, f) => acc + (f.size || 0), 0) : 0);
+        const directUrl = `https://api.torbox.app/v1/api/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${w.id}&zip=true&redirect=true`;
+
+        allFiles.push({
+          id: `torbox_cloud_w_${w.id}_zip`,
+          name: fileName,
+          size: fileSize,
+          folderName: folderDisplayName,
+          relativePath: `${folderDisplayName}/${fileName}`,
+          downloadUrl: directUrl,
+          directUrl: directUrl,
+          isHttpDirect: true,
+          torboxType: 'webdl',
+          torboxId: w.id,
+          torboxFileId: 0,
+          isZipDownload: true,
+          isFinished: isFinished,
+          isInactive: isInactive,
+          progress: percent,
+          cloudStatus: statusText,
+          createdAt: w.created_at || w.added_at || '',
+          updatedAt: w.updated_at || '',
+          cachedAt: w.cached_at || '',
+          ratio: 0,
+          downloadSpeed: w.download_speed || 0,
+          uploadSpeed: 0
+        });
+      } else {
         w.files.forEach((f, idx) => {
           let rawName = f.short_name || f.name || `Arquivo_${idx + 1}`;
           let pureFileName = rawName.includes('/') ? rawName.split('/').pop() : rawName;
@@ -640,36 +687,6 @@ async function fetchTorboxUserDownloads(apiKey) {
             downloadSpeed: w.download_speed || 0,
             uploadSpeed: 0
           });
-        });
-      } else {
-        let fileName = folderDisplayName;
-        if (!/\.[a-zA-Z0-9]{2,4}$/.test(fileName)) {
-          fileName = fileName + '.zip';
-        }
-        const directUrl = `https://api.torbox.app/v1/api/webdl/requestdl?token=${encodeURIComponent(apiKey)}&web_id=${w.id}&redirect=true`;
-
-        allFiles.push({
-          id: `torbox_cloud_w_${w.id}_0`,
-          name: fileName,
-          size: w.size || 0,
-          folderName: fileName,
-          relativePath: fileName,
-          downloadUrl: directUrl,
-          directUrl: directUrl,
-          isHttpDirect: true,
-          torboxType: 'webdl',
-          torboxId: w.id,
-          torboxFileId: 0,
-          isFinished: isFinished,
-          isInactive: isInactive,
-          progress: percent,
-          cloudStatus: statusText,
-          createdAt: w.created_at || w.added_at || '',
-          updatedAt: w.updated_at || '',
-          cachedAt: w.cached_at || '',
-          ratio: 0,
-          downloadSpeed: w.download_speed || 0,
-          uploadSpeed: 0
         });
       }
     }

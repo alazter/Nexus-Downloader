@@ -597,6 +597,8 @@ async function loadConfig() {
   const elTeraBox = document.getElementById('setting-mode-terabox');
   const elOneDrive = document.getElementById('setting-mode-onedrive');
   const elTorbox = document.getElementById('setting-mode-torbox');
+  const elDrime = document.getElementById('setting-mode-drime');
+  const elTurbo = document.getElementById('setting-mode-turbo');
 
   if (elGdrive) elGdrive.value = modes.gdrive || 'single';
   if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
@@ -604,6 +606,8 @@ async function loadConfig() {
   if (elTeraBox) elTeraBox.value = modes.terabox || 'multi';
   if (elOneDrive) elOneDrive.value = modes.onedrive || 'single';
   if (elTorbox) elTorbox.value = modes.torbox || 'multi';
+  if (elDrime) elDrime.value = modes.drime || 'multi';
+  if (elTurbo) elTurbo.value = modes.turbo || 'multi';
 
   const settingTorboxKey = document.getElementById('setting-torbox-api-key');
   const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
@@ -613,12 +617,12 @@ async function loadConfig() {
   settingNotifications.checked = config.notificationsEnabled;
 }
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox'].forEach(service => {
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo'].forEach(service => {
   const el = document.getElementById(`setting-mode-${service}`);
   if (el) {
     el.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi' };
+      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi' };
       modes[service] = el.value;
       await window.api.setConfig({ downloadModes: modes });
     });
@@ -792,6 +796,7 @@ btnScan.addEventListener('click', async () => {
   
   scanEmptyState.style.display = 'none';
   if (btnAddSelected) btnAddSelected.style.display = 'none';
+  scannedFiles = [];
 
   try {
     const files = await window.api.scanLink(url);
@@ -1113,22 +1118,36 @@ selectAllFiles.addEventListener('change', () => {
 });
 
 function updateSelectionSummary() {
-  const allFileCbs = document.querySelectorAll('.file-checkbox');
+  const container = resultsContainer || document;
+  const allFileCbs = container.querySelectorAll('.file-checkbox');
   let selectedCount = 0;
   let selectedSize = 0;
   
   allFileCbs.forEach(cb => {
     if (cb.checked) {
       selectedCount++;
-      const index = parseInt(cb.dataset.index);
-      if (scannedFiles[index]) {
+      const index = parseInt(cb.dataset.index, 10);
+      if (!isNaN(index) && scannedFiles[index]) {
         selectedSize += scannedFiles[index].size;
       }
     }
   });
 
-  selectedCountText.textContent = `${selectedCount} arquivos selecionados (${formatBytes(selectedSize)})`;
-  btnAddSelected.disabled = selectedCount === 0;
+  if (selectedCount === 0 && scannedFiles && scannedFiles.length > 0) {
+    selectedCount = scannedFiles.length;
+    selectedSize = scannedFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+  }
+
+  if (selectedCountText) {
+    selectedCountText.textContent = `${selectedCount} arquivos selecionados (${formatBytes(selectedSize)})`;
+  }
+
+  if (btnAddSelected) {
+    btnAddSelected.disabled = false;
+    if (scannedFiles && scannedFiles.length > 0) {
+      btnAddSelected.style.display = 'inline-flex';
+    }
+  }
 
   if (allFileCbs.length > 0) {
     if (selectedCount === 0) {
@@ -1145,32 +1164,44 @@ function updateSelectionSummary() {
 }
 
 btnAddSelected.addEventListener('click', async () => {
-  const allFileCbs = document.querySelectorAll('.file-checkbox');
+  const container = resultsContainer || document;
+  const allFileCbs = container.querySelectorAll('.file-checkbox');
   const selectedFiles = [];
   
   allFileCbs.forEach(cb => {
     if (cb.checked) {
-      const index = parseInt(cb.dataset.index);
-      if (scannedFiles[index]) {
+      const index = parseInt(cb.dataset.index, 10);
+      if (!isNaN(index) && scannedFiles[index]) {
         selectedFiles.push(scannedFiles[index]);
       }
     }
   });
 
+  // Fallback infalível: Se nenhum checkbox individual foi capturado, mas scannedFiles possui itens
+  if (selectedFiles.length === 0 && scannedFiles && scannedFiles.length > 0) {
+    console.log('[Scanner UI] Fallback acionado: adicionando todos os scannedFiles à fila');
+    selectedFiles.push(...scannedFiles);
+  }
+
   if (selectedFiles.length > 0) {
-    const queueLength = await window.api.addToQueue(selectedFiles);
-    
-    // Alterna automaticamente para a aba Fila de Downloads sem aviso na tela
-    switchTab('queue');
-    
-    // Reset scanner
-    inputDriveLink.value = '';
-    resultsContainer.style.display = 'none';
-    scanEmptyState.style.display = 'flex';
-    btnAddSelected.style.display = 'none';
-    if (resultsList) resultsList.innerHTML = '';
-    if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
-    scannedFiles = [];
+    try {
+      const queueLength = await window.api.addToQueue(selectedFiles);
+      switchTab('queue');
+      
+      // Reset scanner
+      if (inputDriveLink) inputDriveLink.value = '';
+      if (resultsContainer) resultsContainer.style.display = 'none';
+      if (scanEmptyState) scanEmptyState.style.display = 'flex';
+      if (btnAddSelected) btnAddSelected.style.display = 'none';
+      if (resultsList) resultsList.innerHTML = '';
+      if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
+      scannedFiles = [];
+    } catch (err) {
+      console.error('[Scanner UI] Erro ao adicionar arquivos à fila:', err);
+      await showCustomAlert('Erro ao adicionar arquivos à fila: ' + err.message, 'Erro na Fila');
+    }
+  } else {
+    await showCustomAlert('Nenhum arquivo selecionado para iniciar o download.', 'Escanear Links');
   }
 });
 
@@ -1429,8 +1460,11 @@ function renderQueue(queue) {
           <span>✅ Downloads Concluídos</span>
           <span class="queue-section-count" id="queue-completed-count">0</span>
         </div>
-        <button class="btn btn-sm btn-outline-success" id="btn-clear-completed-sec" title="Limpar downloads concluídos">
-          <span>🧹 Limpar Concluídos</span>
+        <button class="btn btn-outline-success btn-sm" id="btn-clear-completed-sec" title="Limpar downloads concluídos" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Limpar Concluídos</span>
         </button>
       </div>
       <div class="queue-section-body" id="queue-completed-body"></div>
@@ -1487,6 +1521,15 @@ function renderQueue(queue) {
 
   // Função interna auxiliar para renderizar os cartões em cada container de seção
   const renderEntriesToContainer = (entries, container) => {
+    // Remove cartões de pasta que não estão mais presentes em 'entries'
+    const validFolderNames = new Set(entries.map(([name]) => name));
+    Array.from(container.querySelectorAll('.queue-folder-card')).forEach(card => {
+      const cardFolderName = card.dataset.folderName;
+      if (!validFolderNames.has(cardFolderName)) {
+        card.remove();
+      }
+    });
+
     entries.forEach(([folderName, folderItems]) => {
       folderItems.sort((a, b) => getItemSortRank(a) - getItemSortRank(b));
       const totalFiles = folderItems.length;
@@ -1541,20 +1584,6 @@ function renderQueue(queue) {
           <span class="queue-folder-name" title="${folderName}">${folderName}</span>
         `;
 
-        const folderChk = titleGroup.querySelector('.queue-folder-checkbox');
-        if (folderChk) {
-          folderChk.onclick = (e) => {
-            e.stopPropagation();
-            const isChecked = folderChk.checked;
-            folderItems.forEach(f => {
-              if (isChecked) selectedQueueItemIds.add(f.id);
-              else selectedQueueItemIds.delete(f.id);
-            });
-            const itemCbs = folderCard.querySelectorAll('.queue-item-checkbox');
-            itemCbs.forEach(cb => cb.checked = isChecked);
-          };
-        }
-
         const badgeGroup = document.createElement('div');
         badgeGroup.className = 'queue-folder-badge-group';
         badgeGroup.innerHTML = `
@@ -1570,7 +1599,7 @@ function renderQueue(queue) {
 
         const progressTrack = document.createElement('div');
         progressTrack.className = 'queue-folder-progress-track';
-        progressTrack.innerHTML = `<div class="queue-folder-progress-fill" style="width: ${folderPercent}%;"></div>`;
+        progressTrack.innerHTML = `<div class="queue-folder-progress-fill" style="width: ${folderPercent}%"></div>`;
 
         folderHeader.appendChild(titleRow);
         folderHeader.appendChild(progressTrack);
@@ -1595,6 +1624,25 @@ function renderQueue(queue) {
         folderCard.appendChild(folderHeader);
         folderCard.appendChild(folderItemsContainer);
       }
+
+      // Atualiza listener e estado da caixa de seleção do cabeçalho da pasta
+      const folderChk = folderCard.querySelector('.queue-folder-checkbox');
+      if (folderChk) {
+        const allSelected = folderItems.length > 0 && folderItems.every(f => selectedQueueItemIds.has(f.id));
+        folderChk.checked = allSelected;
+        folderChk.onclick = (e) => {
+          e.stopPropagation();
+          const isChecked = folderChk.checked;
+          folderItems.forEach(f => {
+            if (isChecked) selectedQueueItemIds.add(f.id);
+            else selectedQueueItemIds.delete(f.id);
+          });
+          const itemCbs = folderCard.querySelectorAll('.queue-item-checkbox');
+          itemCbs.forEach(cb => cb.checked = isChecked);
+        };
+      }
+
+
 
       // Reposiciona no container correto da seção
       container.appendChild(folderCard);
@@ -1751,7 +1799,11 @@ function renderQueue(queue) {
         if (btnResume) btnResume.onclick = (e) => { e.stopPropagation(); window.api.resumeDownload(item.id); };
 
         const btnFolder = itemRow.querySelector('.btn-item-folder');
-        if (btnFolder) btnFolder.onclick = (e) => { e.stopPropagation(); window.api.openDownloadDir(); };
+        if (btnFolder) btnFolder.onclick = (e) => {
+          e.stopPropagation();
+          const pathTarget = item.relativePath || item.name;
+          window.api.openDownloadsFolder(pathTarget);
+        };
 
         const btnDelete = itemRow.querySelector('.btn-item-delete');
         if (btnDelete) btnDelete.onclick = async (e) => {
@@ -2161,9 +2213,7 @@ btnClearAll.addEventListener('click', async () => {
   if (selectedQueueItemIds.size > 0) {
     const count = selectedQueueItemIds.size;
     if (await showCustomConfirm(`Deseja remover os ${count} item(ns) selecionado(s) da fila de downloads?`, 'Remover Selecionados')) {
-      for (const id of selectedQueueItemIds) {
-        window.api.cancelDownload(id);
-      }
+      await window.api.cancelDownloads(Array.from(selectedQueueItemIds));
       selectedQueueItemIds.clear();
     }
   } else {
@@ -2176,13 +2226,25 @@ btnClearAll.addEventListener('click', async () => {
 
 if (btnResumeAll) {
   btnResumeAll.addEventListener('click', async () => {
-    await window.api.resumeAllDownloads();
+    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+      for (const id of selectedQueueItemIds) {
+        await window.api.resumeDownload(id);
+      }
+    } else {
+      await window.api.resumeAllDownloads();
+    }
   });
 }
 
 if (btnPauseAll) {
   btnPauseAll.addEventListener('click', async () => {
-    await window.api.pauseAllDownloads();
+    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+      for (const id of selectedQueueItemIds) {
+        await window.api.pauseDownload(id);
+      }
+    } else {
+      await window.api.pauseAllDownloads();
+    }
   });
 }
 
@@ -2199,9 +2261,22 @@ if (btnRestartAll) {
 // ==========================================
 let torboxCloudFiles = [];
 let selectedTorboxFileIds = new Set();
-let currentTorboxStatusFilter = 'all';
-let currentTorboxTypeFilter = 'all';
-let currentTorboxSort = 'default';
+try {
+  const savedSelected = localStorage.getItem('nexus_selected_torbox_ids');
+  if (savedSelected) {
+    JSON.parse(savedSelected).forEach(id => selectedTorboxFileIds.add(id));
+  }
+} catch (e) {}
+
+function saveSelectedTorboxFileIds() {
+  try {
+    localStorage.setItem('nexus_selected_torbox_ids', JSON.stringify(Array.from(selectedTorboxFileIds)));
+  } catch (e) {}
+}
+
+let currentTorboxStatusFilter = localStorage.getItem('nexus_torbox_status_filter') || 'all';
+let currentTorboxTypeFilter = localStorage.getItem('nexus_torbox_type_filter') || 'all';
+let currentTorboxSort = localStorage.getItem('nexus_torbox_sort') || 'default';
 let torboxLivePollInterval = null;
 
 let hiddenTorboxFileIds = new Set();
@@ -2212,7 +2287,14 @@ try {
   }
 } catch (e) {}
 
-let showHiddenTorboxFiles = false;
+function saveHiddenTorboxFileIds() {
+  try {
+    const array = Array.from(hiddenTorboxFileIds);
+    localStorage.setItem('nexus_hidden_torbox_ids', JSON.stringify(array));
+  } catch (e) {}
+}
+
+let showHiddenTorboxFiles = localStorage.getItem('nexus_torbox_show_hidden') === 'true';
 
 function startTorboxLivePolling() {
   if (torboxLivePollInterval) return;
@@ -2245,8 +2327,10 @@ function updateTorboxStatsBar() {
   const btnReady = document.getElementById('btn-filter-ready');
   const btnInactive = document.getElementById('btn-filter-inactive');
 
+  const visibleFiles = torboxCloudFiles.filter(f => showHiddenTorboxFiles || !hiddenTorboxFileIds.has(f.id));
+
   const groupsMap = new Map();
-  torboxCloudFiles.forEach(f => {
+  visibleFiles.forEach(f => {
     const k = f.folderName || 'Downloads Torbox';
     if (!groupsMap.has(k)) groupsMap.set(k, []);
     groupsMap.get(k).push(f);
@@ -2391,10 +2475,9 @@ async function loadTorboxDownloads(isSilent = false) {
     torboxEmptyState.style.display = 'none';
     torboxResultsContainer.style.display = 'block';
 
-    if (!isSilent) {
-      selectedTorboxFileIds.clear();
-      torboxCloudFiles.forEach(f => selectedTorboxFileIds.add(f.id));
-    }
+    const validIds = new Set(torboxCloudFiles.map(f => f.id));
+    selectedTorboxFileIds = new Set(Array.from(selectedTorboxFileIds).filter(id => validIds.has(id)));
+    saveSelectedTorboxFileIds();
 
     applyTorboxFilters();
   } catch (err) {
@@ -2495,7 +2578,18 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
       const activeProg = activeItem.progress || 0;
       headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;">☁️ Baixando (${activeProg}%)</span>`;
     }
-    metaDiv.appendChild(headerStatusSpan);
+    const badge = document.createElement('span');
+    badge.className = 'badge-cyan folder-group-badge';
+    badge.textContent = `${groupItems.length} arquivo(s) • ${formatBytes(totalSize)}`;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'folder-group-toggle';
+    toggleBtn.title = 'Expandir / Recolher';
+    toggleBtn.innerHTML = `
+      <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    `;
 
     const isGroupHidden = groupItems.some(f => hiddenTorboxFileIds.has(f.id));
     if (isGroupHidden && showHiddenTorboxFiles) {
@@ -2518,19 +2612,7 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
       metaDiv.appendChild(unhideBtn);
     }
 
-    const badge = document.createElement('span');
-    badge.className = 'badge-cyan folder-group-badge';
-    badge.textContent = `${groupItems.length} arquivo(s) • ${formatBytes(totalSize)}`;
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'folder-group-toggle';
-    toggleBtn.title = 'Expandir / Recolher';
-    toggleBtn.innerHTML = `
-      <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    `;
-
+    metaDiv.appendChild(headerStatusSpan);
     metaDiv.appendChild(badge);
     metaDiv.appendChild(toggleBtn);
 
@@ -2574,6 +2656,8 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         cb.addEventListener('change', () => {
           if (cb.checked) selectedTorboxFileIds.add(file.id);
           else selectedTorboxFileIds.delete(file.id);
+          groupCb.checked = groupItems.every(f => selectedTorboxFileIds.has(f.id));
+          saveSelectedTorboxFileIds();
           updateTorboxSelectionSummary();
         });
         tdCheck.appendChild(cb);
@@ -2630,12 +2714,15 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
     card.appendChild(body);
 
     header.addEventListener('click', (e) => {
-      if (e.target.type === 'checkbox' || e.target.closest('button')) return;
-      card.classList.toggle('collapsed');
-      if (!card.classList.contains('collapsed')) {
-        collapsedTorboxGroups.delete(groupName);
-        expandedTorboxGroups.add(groupName);
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('input')) {
+        return;
+      }
+      isCollapsed = !isCollapsed;
+      card.classList.toggle('collapsed', isCollapsed);
+      if (!isCollapsed) {
         populateRows();
+        expandedTorboxGroups.add(groupName);
+        collapsedTorboxGroups.delete(groupName);
       } else {
         expandedTorboxGroups.delete(groupName);
         collapsedTorboxGroups.add(groupName);
@@ -2650,6 +2737,7 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         else selectedTorboxFileIds.delete(f.id);
       });
       tbody.querySelectorAll('.file-checkbox').forEach(c => c.checked = isChecked);
+      saveSelectedTorboxFileIds();
       updateTorboxSelectionSummary();
     });
 
@@ -2679,7 +2767,6 @@ function updateTorboxSelectionSummary() {
 
   if (!selectedCountText) return;
 
-  const total = torboxCloudFiles.length;
   const count = selectedTorboxFileIds.size;
   let totalBytes = 0;
 
@@ -2690,10 +2777,44 @@ function updateTorboxSelectionSummary() {
   selectedCountText.textContent = `${count} arquivo(s) selecionado(s) (${formatBytes(totalBytes)})`;
 
   if (selectAllCb) {
-    if (count === 0) {
+    const searchInput = document.getElementById('input-search-torbox');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
+
+    const visibleFiles = torboxCloudFiles.filter(file => {
+      const isHidden = hiddenTorboxFileIds.has(file.id);
+      if (isHidden && !showHiddenTorboxFiles) return false;
+
+      if (query) {
+        const matchName = (file.name || '').toLowerCase().includes(query);
+        const matchFolder = (file.folderName || '').toLowerCase().includes(query);
+        if (!matchName && !matchFolder) return false;
+      }
+
+      if (currentTorboxStatusFilter === 'ready' && !file.isFinished) return false;
+      if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive)) return false;
+      if (currentTorboxStatusFilter === 'inactive' && !file.isInactive) return false;
+
+      if (currentTorboxTypeFilter === 'torrent' && file.torboxType !== 'torrent') return false;
+      if (currentTorboxTypeFilter === 'webdl' && file.torboxType !== 'webdl') return false;
+      if (currentTorboxTypeFilter === 'video') {
+        const isVid = videoExts.some(ext => (file.name || '').toLowerCase().endsWith(ext));
+        if (!isVid) return false;
+      }
+
+      return true;
+    });
+
+    const visibleTotal = visibleFiles.length;
+    let selectedVisibleCount = 0;
+    visibleFiles.forEach(f => {
+      if (selectedTorboxFileIds.has(f.id)) selectedVisibleCount++;
+    });
+
+    if (visibleTotal === 0 || selectedVisibleCount === 0) {
       selectAllCb.checked = false;
       selectAllCb.indeterminate = false;
-    } else if (count === total) {
+    } else if (selectedVisibleCount === visibleTotal) {
       selectAllCb.checked = true;
       selectAllCb.indeterminate = false;
     } else {
@@ -2707,12 +2828,13 @@ const selectAllTorboxFiles = document.getElementById('select-all-torbox-files');
 if (selectAllTorboxFiles) {
   selectAllTorboxFiles.addEventListener('change', () => {
     const isChecked = selectAllTorboxFiles.checked;
-    selectedTorboxFileIds.clear();
-    if (isChecked) {
-      const filtered = applyTorboxFilters();
-      filtered.forEach(f => selectedTorboxFileIds.add(f.id));
-    }
     const filtered = applyTorboxFilters();
+    if (isChecked) {
+      filtered.forEach(f => selectedTorboxFileIds.add(f.id));
+    } else {
+      filtered.forEach(f => selectedTorboxFileIds.delete(f.id));
+    }
+    saveSelectedTorboxFileIds();
     renderTorboxDownloads(filtered);
   });
 }
@@ -2731,12 +2853,34 @@ if (inputSearchTorbox) {
   });
 }
 
+function syncTorboxFilterDropdownUI() {
+  const dropdownTorboxFilter = document.getElementById('torbox-filter-dropdown');
+  if (!dropdownTorboxFilter) return;
+
+  dropdownTorboxFilter.querySelectorAll('[data-filter-status]').forEach(o => {
+    o.classList.toggle('active', o.getAttribute('data-filter-status') === currentTorboxStatusFilter);
+  });
+
+  dropdownTorboxFilter.querySelectorAll('[data-filter-type]').forEach(o => {
+    o.classList.toggle('active', o.getAttribute('data-filter-type') === currentTorboxTypeFilter);
+  });
+
+  dropdownTorboxFilter.querySelectorAll('[data-filter-sort]').forEach(o => {
+    o.classList.toggle('active', o.getAttribute('data-filter-sort') === currentTorboxSort);
+  });
+
+  const btnToggleHidden = document.getElementById('btn-toggle-show-hidden');
+  if (btnToggleHidden) {
+    btnToggleHidden.classList.toggle('active', showHiddenTorboxFiles);
+    btnToggleHidden.textContent = showHiddenTorboxFiles ? '✓ Exibir Itens Ocultados' : '👁️ Exibir Itens Ocultados';
+  }
+}
+
 function selectCategoryFilesAndFilter(statusFilter) {
   currentTorboxStatusFilter = statusFilter;
-  selectedTorboxFileIds.clear();
-  const filtered = applyTorboxFilters();
-  filtered.forEach(f => selectedTorboxFileIds.add(f.id));
-  renderTorboxDownloads(filtered);
+  localStorage.setItem('nexus_torbox_status_filter', currentTorboxStatusFilter);
+  syncTorboxFilterDropdownUI();
+  applyTorboxFilters();
 }
 
 const btnFilterTotal = document.getElementById('btn-filter-total');
@@ -2775,6 +2919,7 @@ const dropdownTorboxFilter = document.getElementById('torbox-filter-dropdown');
 if (btnTorboxFilter && dropdownTorboxFilter) {
   btnTorboxFilter.addEventListener('click', (e) => {
     e.stopPropagation();
+    syncTorboxFilterDropdownUI();
     const isVisible = dropdownTorboxFilter.style.display === 'flex';
     dropdownTorboxFilter.style.display = isVisible ? 'none' : 'flex';
   });
@@ -2795,25 +2940,41 @@ if (btnTorboxFilter && dropdownTorboxFilter) {
       const sortVal = opt.getAttribute('data-filter-sort');
 
       if (statusVal) {
-        dropdownTorboxFilter.querySelectorAll('[data-filter-status]').forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
         selectCategoryFilesAndFilter(statusVal);
       }
 
       if (typeVal) {
         currentTorboxTypeFilter = typeVal;
-        dropdownTorboxFilter.querySelectorAll('[data-filter-type]').forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
+        localStorage.setItem('nexus_torbox_type_filter', currentTorboxTypeFilter);
+        syncTorboxFilterDropdownUI();
         applyTorboxFilters();
       }
 
       if (sortVal) {
         currentTorboxSort = sortVal;
-        dropdownTorboxFilter.querySelectorAll('[data-filter-sort]').forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
+        localStorage.setItem('nexus_torbox_sort', currentTorboxSort);
+        syncTorboxFilterDropdownUI();
         applyTorboxFilters();
       }
     });
+  });
+}
+
+const btnResetTorboxFilters = document.getElementById('btn-reset-torbox-filters');
+if (btnResetTorboxFilters) {
+  btnResetTorboxFilters.addEventListener('click', () => {
+    currentTorboxStatusFilter = 'all';
+    currentTorboxTypeFilter = 'all';
+    currentTorboxSort = 'default';
+    showHiddenTorboxFiles = false;
+
+    localStorage.setItem('nexus_torbox_status_filter', 'all');
+    localStorage.setItem('nexus_torbox_type_filter', 'all');
+    localStorage.setItem('nexus_torbox_sort', 'default');
+    localStorage.setItem('nexus_torbox_show_hidden', 'false');
+
+    syncTorboxFilterDropdownUI();
+    applyTorboxFilters();
   });
 }
 
@@ -2844,6 +3005,7 @@ if (btnHideTorboxSelected) {
       selectedTorboxFileIds.forEach(id => hiddenTorboxFileIds.add(id));
       saveHiddenTorboxFileIds();
       selectedTorboxFileIds.clear();
+      saveSelectedTorboxFileIds();
       applyTorboxFilters();
       updateTorboxSelectionSummary();
     }
@@ -2854,8 +3016,8 @@ const btnToggleShowHidden = document.getElementById('btn-toggle-show-hidden');
 if (btnToggleShowHidden) {
   btnToggleShowHidden.addEventListener('click', () => {
     showHiddenTorboxFiles = !showHiddenTorboxFiles;
-    btnToggleShowHidden.classList.toggle('active', showHiddenTorboxFiles);
-    btnToggleShowHidden.textContent = showHiddenTorboxFiles ? '✓ Exibir Itens Ocultados' : '👁️ Exibir Itens Ocultados';
+    localStorage.setItem('nexus_torbox_show_hidden', showHiddenTorboxFiles ? 'true' : 'false');
+    syncTorboxFilterDropdownUI();
     applyTorboxFilters();
   });
 }

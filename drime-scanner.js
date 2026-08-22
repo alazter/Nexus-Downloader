@@ -17,7 +17,7 @@ function getFileType(fileName) {
   return 'other';
 }
 
-function httpGet(urlStr) {
+function httpGetWithCookies(urlStr) {
   return new Promise((resolve, reject) => {
     const options = {
       headers: {
@@ -27,11 +27,13 @@ function httpGet(urlStr) {
     };
     https.get(urlStr, options, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return httpGet(res.headers.location).then(resolve).catch(reject);
+        return httpGetWithCookies(res.headers.location).then(resolve).catch(reject);
       }
+      const setCookies = res.headers['set-cookie'] || [];
+      const cookieHeader = setCookies.map(c => c.split(';')[0]).join('; ');
       let body = '';
       res.on('data', c => body += c);
-      res.on('end', () => resolve(body));
+      res.on('end', () => resolve({ body, cookieHeader }));
     }).on('error', reject);
   });
 }
@@ -39,7 +41,7 @@ function httpGet(urlStr) {
 async function scanDrimeLink(linkUrl) {
   if (!isDrimeUrl(linkUrl)) return [];
 
-  const html = await httpGet(linkUrl);
+  const { body: html, cookieHeader } = await httpGetWithCookies(linkUrl);
 
   const match = html.match(/window\.bootstrapData\s*=\s*"([^"]+)"/);
   if (!match || !match[1]) {
@@ -56,6 +58,7 @@ async function scanDrimeLink(linkUrl) {
 
   const payload = linkPreload.payload;
   const hash = linkPreload.hash || (payload.link && payload.link.hash) || 'drime_hash';
+  const shareableLinkId = (payload.link && payload.link.id) ? payload.link.id : (linkPreload.id || '');
   const folderName = (payload.link && payload.link.entry && payload.link.entry.name) ? payload.link.entry.name : 'Drime Cloud Package';
 
   // 1. Se for uma PASTA COMPARTILHADA com arquivos dentro (folderChildren.data)
@@ -63,17 +66,23 @@ async function scanDrimeLink(linkUrl) {
     return payload.folderChildren.data.map(child => {
       const childName = child.name || child.file_name || `Arquivo_${child.id}`;
       const childSize = child.file_size || child.size || 0;
-      const downloadUrl = `https://app.drime.cloud/api/v1/shareable-links/${hash}/download?entry_id=${child.id}`;
+      const childHash = child.hash || Buffer.from(`${child.id}|`).toString('base64');
+      const downloadUrl = shareableLinkId 
+        ? `https://app.drime.cloud/api/v1/file-entries/download/${childHash}?shareable_link=${shareableLinkId}`
+        : `https://app.drime.cloud/api/v1/shareable-links/${hash}/download?entry_id=${child.id}`;
 
       return {
         id: `drime_${hash}_${child.id}`,
         name: childName,
         size: childSize,
         url: downloadUrl,
+        directUrl: downloadUrl,
         service: 'Drime Cloud',
         fileType: getFileType(childName),
         folderName: folderName,
-        relativePath: `${folderName}/${childName}`
+        relativePath: `${folderName}/${childName}`,
+        referer: linkUrl,
+        cookieHeader: cookieHeader
       };
     });
   }
@@ -83,7 +92,10 @@ async function scanDrimeLink(linkUrl) {
   const entry = linkObj.entry || linkObj;
   const fileName = entry.name || entry.file_name || 'Arquivo_Drime';
   const fileSize = entry.file_size || entry.size || 0;
-  const directDownloadUrl = `https://app.drime.cloud/api/v1/shareable-links/${hash}/download`;
+  const entryHash = entry.hash || Buffer.from(`${entry.id || Date.now()}|`).toString('base64');
+  const directDownloadUrl = shareableLinkId
+    ? `https://app.drime.cloud/api/v1/file-entries/download/${entryHash}?shareable_link=${shareableLinkId}`
+    : `https://app.drime.cloud/api/v1/shareable-links/${hash}/download`;
 
   return [{
     id: `drime_${hash}_${entry.id || Date.now()}`,
@@ -92,7 +104,9 @@ async function scanDrimeLink(linkUrl) {
     url: directDownloadUrl,
     service: 'Drime Cloud',
     fileType: getFileType(fileName),
-    folderName: folderName
+    folderName: folderName,
+    referer: linkUrl,
+    cookieHeader: cookieHeader
   }];
 }
 

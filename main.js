@@ -90,7 +90,9 @@ let config = {
     mediafire: 'multi',
     terabox: 'multi',
     onedrive: 'single',
-    torbox: 'multi'
+    torbox: 'multi',
+    drime: 'multi',
+    turbo: 'multi'
   }
 };
 
@@ -170,13 +172,34 @@ function loadQueue() {
     try {
       const data = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8'));
       if (Array.isArray(data)) {
-        downloadQueue = data.map(item => ({
-          ...item,
-          folderName: item.folderName || 'Downloads',
-          status: item.status === 'downloading' ? 'pending' : item.status,
-          speed: 0,
-          eta: 0
-        }));
+        downloadQueue = data.map(item => {
+          let directUrl = item.url || item.directUrl || item.downloadUrl || '';
+          let referer = item.referer || null;
+
+          if (item.id && item.id.startsWith('drime_') && !directUrl) {
+            const parts = item.id.split('_');
+            if (parts.length >= 3) {
+              const hash = parts[1];
+              const childId = parts[2];
+              directUrl = `https://app.drime.cloud/api/v1/shareable-links/${hash}/download?entry_id=${childId}`;
+              referer = referer || `https://app.drime.cloud/drive/s/${hash}`;
+            }
+          }
+
+          const isInvalidUrlErr = (item.error || '').includes('Invalid URL');
+
+          return {
+            ...item,
+            url: directUrl || item.url || null,
+            directUrl: directUrl || item.directUrl || null,
+            referer: referer || item.referer || null,
+            folderName: item.folderName || 'Downloads',
+            status: (item.status === 'downloading' || isInvalidUrlErr) ? 'pending' : item.status,
+            error: isInvalidUrlErr ? null : item.error,
+            speed: 0,
+            eta: 0
+          };
+        });
         console.log(`Fila persistida carregada com ${downloadQueue.length} itens.`);
       }
     } catch (err) {
@@ -589,6 +612,11 @@ async function processQueue() {
   processQueue();
 }
 
+function sanitizePathSegment(segment) {
+  if (!segment || typeof segment !== 'string') return 'Download';
+  return segment.replace(/[\r\n\t]/g, ' ').replace(/[\\/:*?"<>|]/g, '_').trim() || 'Download';
+}
+
 function sanitizeLocalPath(relPath) {
   if (!relPath || typeof relPath !== 'string') return 'Download';
   const parts = relPath.split(/[/\\]+/);
@@ -669,6 +697,7 @@ function downloadBunkrFile(queueItem) {
         const tbId = queueItem.torboxId || (queueItem.id ? (queueItem.id.match(/\d+/g) || [0])[0] : 0);
         const tbFileId = queueItem.torboxFileId !== undefined ? queueItem.torboxFileId : 0;
 
+        const isZip = queueItem.isZipDownload || (queueItem.id && String(queueItem.id).endsWith('_zip'));
         const tbInfo = await resolveTorboxDirectUrl(
           queueItem.fileId || queueItem.id,
           config.torboxApiKey,
@@ -679,15 +708,37 @@ function downloadBunkrFile(queueItem) {
             queueItem.cloudProgress = percent;
             queueItem.cloudMessage = statusMsg;
             updateQueueUI();
-          }
+          },
+          isZip
         );
         directUrl = tbInfo.directUrl;
         referer = tbInfo.referer || 'https://torbox.app/';
-      } else if (queueItem.turboFileId) {
+      } else if (queueItem.id && queueItem.id.startsWith('drime_')) {
+        console.log(`[Drime Worker] Preparando URL direta para "${queueItem.name}"...`);
+        directUrl = queueItem.url || queueItem.directUrl || queueItem.downloadUrl || '';
+        if (!directUrl && queueItem.id) {
+          const parts = queueItem.id.split('_');
+          if (parts.length >= 3) {
+            const hash = parts[1];
+            const childId = parts[2];
+            const childHash = Buffer.from(`${childId}|`).toString('base64');
+            directUrl = `https://app.drime.cloud/api/v1/file-entries/download/${childHash}`;
+            if (!referer || referer === 'https://bunkr.cr/') {
+              referer = `https://app.drime.cloud/drive/s/${hash}`;
+            }
+          }
+        }
+        referer = queueItem.referer || referer || 'https://app.drime.cloud/';
+        cookieHeader = queueItem.cookieHeader || '';
+      } else if (queueItem.id && (queueItem.id.startsWith('turbo_') || queueItem.turboFileId)) {
         console.log(`[Turbo Worker] Resolvendo URL direta assinada para "${queueItem.name}"...`);
         const turboInfo = await resolveTurboDirectUrl(queueItem.turboFileId);
         directUrl = turboInfo ? turboInfo.directUrl : (queueItem.url || directUrl);
         referer = 'https://turbo.cr/';
+      } else if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
+        console.log(`[MediaFire Worker] Utilizando link direto do MediaFire para "${queueItem.name}"...`);
+        directUrl = queueItem.url || directUrl;
+        referer = 'https://www.mediafire.com/';
       } else {
         console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
         const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
@@ -715,7 +766,9 @@ function downloadBunkrFile(queueItem) {
       };
 
       let service = 'bunkr';
-      if (queueItem.id && queueItem.id.startsWith('terabox_')) service = 'terabox';
+      if (queueItem.id && queueItem.id.startsWith('drime_')) service = 'drime';
+      else if (queueItem.id && (queueItem.id.startsWith('turbo_') || queueItem.turboFileId)) service = 'turbo';
+      else if (queueItem.id && queueItem.id.startsWith('terabox_')) service = 'terabox';
       else if (queueItem.id && queueItem.id.startsWith('mediafire_')) service = 'mediafire';
       else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) service = 'onedrive';
       else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) service = 'torbox';
@@ -758,7 +811,18 @@ function downloadBunkrFile(queueItem) {
               resPf({ statusCode, location, realSize, isRangeOk });
             });
 
-            pfReq.on('error', () => resPf({ statusCode: 500 }));
+            pfReq.on('error', (err) => {
+              if (err && (err.code === 'EPROTO' || (err.message && err.message.includes('WRONG_VERSION_NUMBER'))) && probeUrl.startsWith('https:')) {
+                console.warn('[HTTP Direct Worker] SSL/TLS EPROTO detectado no pré-flight (WRONG_VERSION_NUMBER). Revertendo URL para HTTP puro...');
+                probeUrl = probeUrl.replace(/^https:/i, 'http:');
+                directUrl = directUrl.replace(/^https:/i, 'http:');
+                parsedUrl = new URL(directUrl);
+                transport = http;
+                resPf({ statusCode: 307, location: probeUrl, realSize: 0, isRangeOk: false });
+              } else {
+                resPf({ statusCode: 500 });
+              }
+            });
             pfReq.end();
           });
 
@@ -905,6 +969,12 @@ function downloadBunkrFile(queueItem) {
         const targetTransport = targetParsed.protocol === 'https:' ? https : http;
 
         const req = targetTransport.get(targetUrl, currentReqOptions, res => {
+          const cleanupFileOnFailure = () => {
+            if (fs.existsSync(localFilePath)) {
+              try { fs.unlinkSync(localFilePath); } catch (e) {}
+            }
+          };
+
           // Trata redirecionamentos HTTP 301, 302, 303, 307, 308
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             let nextUrl = res.headers.location;
@@ -912,6 +982,13 @@ function downloadBunkrFile(queueItem) {
               nextUrl = `${targetParsed.protocol}//${targetParsed.host}${nextUrl}`;
             }
             console.log(`[HTTP Direct Worker] Redirecionando (${res.statusCode}) para: ${nextUrl}`);
+
+            if (nextUrl.toLowerCase().includes('malwarebytes') || (nextUrl.toLowerCase().includes('block') && nextUrl.toLowerCase().includes('cat='))) {
+              clearInterval(progressInterval);
+              writeStream.destroy();
+              cleanupFileOnFailure();
+              return reject(new Error('Download bloqueado pelo antivírus/firewall local (Malwarebytes). Adicione uma exceção para *.tb-cdn.cx ou desative a Proteção Web.'));
+            }
 
             let updatedCookie = currentReqOptions.headers['Cookie'] || '';
             if (res.headers['set-cookie']) {
@@ -934,13 +1011,15 @@ function downloadBunkrFile(queueItem) {
           if (res.statusCode !== 200 && res.statusCode !== 206) {
             clearInterval(progressInterval);
             writeStream.destroy();
+            cleanupFileOnFailure();
             return reject(new Error(`Servidor retornou HTTP ${res.statusCode}`));
           }
 
           if (res.headers['content-type'] && res.headers['content-type'].includes('text/html')) {
             clearInterval(progressInterval);
             writeStream.destroy();
-            return reject(new Error('Servidor retornou HTML (desafio não resolvido)'));
+            cleanupFileOnFailure();
+            return reject(new Error('Servidor ou antivírus retornou página HTML em vez do arquivo binário.'));
           }
 
           const totalLength = parseInt(res.headers['content-length'], 10);
@@ -959,9 +1038,11 @@ function downloadBunkrFile(queueItem) {
           writeStream.on('finish', () => {
             clearInterval(progressInterval);
             if (isAborted) {
-              reject(new Error('Download cancelado'));
-            } else if (queueItem.size > 0 && queueItem.downloadedBytes < Math.floor(queueItem.size * 0.98)) {
-              reject(new Error(`Download truncado/incompleto: baixou apenas ${formatBytes(queueItem.downloadedBytes)} de ${formatBytes(queueItem.size)}`));
+              cleanupFileOnFailure();
+              reject(new Error('Download cancelado pelo usuário'));
+            } else if (queueItem.size > 0 && queueItem.downloadedBytes < Math.floor(queueItem.size * 0.95)) {
+              cleanupFileOnFailure();
+              reject(new Error(`Download bloqueado pelo antivírus (Malwarebytes): baixou apenas ${formatBytes(queueItem.downloadedBytes)} de ${formatBytes(queueItem.size)}. Adicione *.tb-cdn.cx às exceções do Malwarebytes.`));
             } else {
               resolve();
             }
@@ -986,6 +1067,11 @@ function downloadBunkrFile(queueItem) {
         });
 
         req.on('error', err => {
+          if (err && (err.code === 'EPROTO' || (err.message && err.message.includes('WRONG_VERSION_NUMBER'))) && targetUrl.startsWith('https:')) {
+            console.warn('[HTTP Direct Worker] SSL/TLS EPROTO detectado no stream (WRONG_VERSION_NUMBER). Revertendo URL para HTTP puro...');
+            const httpUrl = targetUrl.replace(/^https:/i, 'http:');
+            return startSingleDownload(httpUrl, currentReqOptions, redirectCount);
+          }
           clearInterval(progressInterval);
           writeStream.destroy();
           reject(err);
@@ -1665,15 +1751,31 @@ ipcMain.handle('add-to-queue', (event, files) => {
     // Evita duplicatas na fila se já existir o mesmo ID com status pendente ou baixando
     const exists = downloadQueue.some(item => item.id === file.id && (item.status === 'pending' || item.status === 'downloading'));
     if (!exists) {
-      let folderName = file.folderName || (file.relativePath ? file.relativePath.split(/[/\\]/)[0] : file.name);
+      let folderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
       if (!folderName || folderName === 'Downloads' || folderName === 'Arquivos Avulsos') {
         folderName = file.name || 'Downloads';
       }
+
+      let pureFileName = file.name || 'Arquivo';
+      if (pureFileName.includes('/')) pureFileName = pureFileName.split('/').pop();
+      if (pureFileName.includes('\\')) pureFileName = pureFileName.split('\\').pop();
+
+      let folderSegment = sanitizePathSegment(folderName);
+      const extIdx = folderSegment.lastIndexOf('.');
+      if (extIdx > 0 && extIdx > folderSegment.length - 6) {
+        folderSegment = folderSegment.substring(0, extIdx);
+      }
+
+      let finalRelativePath = file.relativePath;
+      if (!finalRelativePath || (!finalRelativePath.includes('/') && !finalRelativePath.includes('\\'))) {
+        finalRelativePath = `${folderSegment}/${pureFileName}`;
+      }
+
       downloadQueue.push({
         id: file.id,
         fileId: file.fileId,
         numericId: file.numericId,
-        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
+        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
         mediafireUrl: file.mediafireUrl || null,
         teraboxUrl: file.teraboxUrl || null,
         teraboxDlink: file.teraboxDlink || null,
@@ -1684,10 +1786,13 @@ ipcMain.handle('add-to-queue', (event, files) => {
         torboxId: file.torboxId || 0,
         torboxFileId: file.torboxFileId || 0,
         torboxDownloadUrl: file.torboxDownloadUrl || file.directUrl || file.downloadUrl || null,
-        directUrl: file.directUrl || file.downloadUrl || file.torboxDownloadUrl || null,
-        name: file.name,
+        url: file.url || file.directUrl || file.downloadUrl || null,
+        directUrl: file.directUrl || file.url || file.downloadUrl || file.torboxDownloadUrl || null,
+        referer: file.referer || null,
+        cookieHeader: file.cookieHeader || null,
+        name: pureFileName,
         size: file.size,
-        relativePath: file.relativePath,
+        relativePath: finalRelativePath,
         folderName: folderName,
         status: 'pending',
         progress: 0,
@@ -1772,7 +1877,7 @@ ipcMain.handle('cancel-download', (event, fileId) => {
       activeDownloads.delete(fileId);
 
       // Deleta o arquivo parcial se existir
-      const localFilePath = path.join(config.downloadPath, item.relativePath);
+      const localFilePath = path.join(config.downloadPath, item.relativePath || item.name);
       if (fs.existsSync(localFilePath)) {
         try { fs.unlinkSync(localFilePath); } catch (e) {}
       }
@@ -1782,6 +1887,33 @@ ipcMain.handle('cancel-download', (event, fileId) => {
     updateQueueUI();
     processQueue();
   }
+});
+
+ipcMain.handle('cancel-downloads', (event, fileIds) => {
+  if (!Array.isArray(fileIds) || fileIds.length === 0) return;
+  const idSet = new Set(fileIds);
+
+  downloadQueue = downloadQueue.filter(item => {
+    if (idSet.has(item.id)) {
+      if (item.status === 'downloading') {
+        const active = activeDownloads.get(item.id);
+        if (active) {
+          active.abortController.abort();
+        }
+        activeDownloads.delete(item.id);
+
+        const localFilePath = path.join(config.downloadPath, item.relativePath || item.name);
+        if (fs.existsSync(localFilePath)) {
+          try { fs.unlinkSync(localFilePath); } catch (e) {}
+        }
+      }
+      return false;
+    }
+    return true;
+  });
+
+  updateQueueUI();
+  processQueue();
 });
 
 ipcMain.handle('clear-completed', () => {
@@ -1839,11 +1971,14 @@ ipcMain.handle('restart-queue', () => {
   processQueue();
 });
 
-ipcMain.handle('open-downloads-folder', () => {
-  shell.openPath(config.downloadPath);
-});
-
-ipcMain.handle('open-downloads-folder', () => {
+ipcMain.handle('open-downloads-folder', (event, itemPath) => {
+  if (itemPath && typeof itemPath === 'string') {
+    const fullPath = path.isAbsolute(itemPath) ? itemPath : path.join(config.downloadPath, itemPath);
+    if (fs.existsSync(fullPath)) {
+      shell.showItemInFolder(fullPath);
+      return;
+    }
+  }
   shell.openPath(config.downloadPath);
 });
 

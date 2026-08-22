@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   testTorboxApiKey: (apiKey) => ipcRenderer.invoke('test-torbox-api-key', apiKey),
   getTorboxUserDownloads: () => ipcRenderer.invoke('get-torbox-user-downloads'),
   selectDownloadDir: () => ipcRenderer.invoke('select-download-dir'),
-  openDownloadsFolder: () => ipcRenderer.invoke('open-downloads-folder'),
+  openDownloadsFolder: (itemPath) => ipcRenderer.invoke('open-downloads-folder', itemPath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   pauseDownload: (fileId) => ipcRenderer.invoke('pause-download', fileId),
   resumeDownload: (fileId) => ipcRenderer.invoke('resume-download', fileId),
   cancelDownload: (fileId) => ipcRenderer.invoke('cancel-download', fileId),
+  cancelDownloads: (fileIds) => ipcRenderer.invoke('cancel-downloads', fileIds),
   clearCompleted: () => ipcRenderer.invoke('clear-completed'),
   clearQueue: () => ipcRenderer.invoke('clear-queue'),
   pauseAllDownloads: () => ipcRenderer.invoke('pause-all-downloads'),

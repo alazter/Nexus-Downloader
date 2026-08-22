@@ -1,6 +1,26 @@
 # Nexus Downloader - Diário de Bordo & Registro de Alterações (review.md)
 
-**Última Atualização:** 21/08/2026
+**Última Atualização:** 22/08/2026
+
+---
+
+## 6. Sessão de 22/08/2026 - Suporte Nativo Independente para Drime Cloud e Turbo.cr, Extração de Pastas e Refinamentos de UI
+
+### Alterações e Implementações do Dia
+
+#### 1. Suporte Nativo e Independente ao Drime Cloud (`drime-scanner.js`, `main.js`)
+- **Problema:** Links e pastas compartilhadas do Drime Cloud (`drime.cloud`) não possuíam extrator próprio no aplicativo, forçando o uso de terceiros ou falhando ao tentar extrair arquivos individuais de dentro de pastas compartilhadas.
+- **Solução:** 
+  - Atualizado o módulo `drime-scanner.js` e a integração com o `main.js` para varrer pastas e arquivos compartilhados nativamente.
+  - Implementada a extração individual de arquivos (ex: episódios `.mkv`) com identificadores e hashes únicos obtidos da API do Drime Cloud, permitindo o download direto e ultrarrápido sem dependência do TorBox ou compactação em `.zip`.
+
+#### 2. Suporte Independente ao Turbo.cr (`bunkr-scanner.js`, `generic-scanner.js`, `main.js`)
+- **Problema:** URLs do Turbo.cr (`turbo.cr`, `turbo.pm`) não eram reconhecidas por um módulo nativo dedicado.
+- **Solução:** Adicionado reconhecimento direto dos domínios do Turbo.cr com resolução resiliente de links de mídias e vídeos.
+
+#### 3. Badges de Identificação Visual no Renderer (`renderer/js/app.js`, `renderer/css/style.css`, `renderer/index.html`)
+- **Problema:** A interface do usuário precisava diferenciar claramente os links originados do Drime Cloud e Turbo.cr na fila e nos resultados.
+- **Solução:** Criadas badges estilizadas exclusivas (`DRIME` e `TURBO`) com cores temáticas próprias, além de otimizações no layout das tabelas de resultados e agrupamento por pasta.
 
 ---
 
@@ -9,16 +29,9 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Arquitetura de Auto-Atualização em 5 Camadas (`main.js`, `renderer/js/app.js`, `renderer/index.html`, `renderer/css/style.css`)
-- **Problema:** O aplicativo necessitava de um mecanismo de atualização automática resiliente, seguro e transparente, sem depender de instaladores externos complexos ou causar travamentos.
-- **Solução:** Desenvolvida a arquitetura completa em 5 camadas:
-  - **Camada 1 (Detecção & SemVer):** Consulta assíncrona à API do GitHub Releases (`/repos/alazter/nexus-downloader/releases`), comparação semântica com `app.getVersion()` e notificação nativa no Windows.
-  - **Camada 2 (Interface & Changelog):** Exibição de badge dinâmica no rodapé/sidebar e modal interativo (`UpdatePopupModal`) apresentando o Changelog formatado da versão.
-  - **Camada 3 (Download Resiliente & Progresso IPC):** Identificação automática do artefato correto (Setup `.exe` ou Portable `.exe`), download em tempo real por stream e feedback contínuo de porcentagem, MBs transferidos e velocidade em MB/s.
-  - **Camada 4 (Hot Swap & Substituição Transparente):** Liberação de trava de instância única (`releaseSingleInstanceLock`), execução da nova versão baixada (`shell.openPath`) e finalização graciosa da versão antiga (`app.quit()`).
-  - **Camada 5 (Padronização de Publicação):** Formatação padronizada de lançamentos (`⚡ Nexus v[Versão]`) para rastreamento de builds no GitHub.
+- **Solução:** Desenvolvida a arquitetura completa em 5 camadas (Detecção SemVer, UI Changelog Modal, Stream Download, Hot Swap Handover e Padronização de Publicação).
 
 #### 2. Exibição Condicional do Botão "Iniciar Download" (`renderer/js/app.js`)
-- **Problema:** O botão "Iniciar Download" ficava visível na tela inicial do Scanner antes de colar e escanear qualquer link, causando confusão visual.
 - **Solução:** Ajustada a lógica no `app.js` para renderizar o botão "Iniciar Download" exclusivamente após o término do escaneamento com arquivos válidos encontrados.
 
 ---
@@ -28,48 +41,28 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Sanitização Rigorosa de Caminhos no Windows (`sanitizePathSegment` em `torbox-scanner.js` e `main.js`)
-- **Solução:** Implementada a função `sanitizePathSegment` que remove quebras de linha (`\n`, `\r`, `\t`) e substitui caracteres não permitidos antes de criar pastas locais no SO.
+- **Solução:** Implementada a função `sanitizePathSegment` que remove quebras de linha (`\n`, `\r`, `\t`) e substitui caracteres não permitidos.
 
 #### 2. Pré-Flight Recursivo de Redirecionamentos HTTP 3xx e Resolução de `numericId` (`main.js`)
-- **Solução:** Pré-flight reformulado para seguir redirecionamentos HTTP 3xx (`301`, `302`, `303`, `307`, `308`) até o servidor CDN final (`tb-cdn.cx`), capturando o tamanho autoritativo via `Content-Range`.
+- **Solução:** Pré-flight reformulado para seguir redirecionamentos HTTP 3xx (`301`, `302`, `303`, `307`, `308`) até o servidor CDN final.
 
 #### 3. Injeção de Permalinks e Polling da Nuvem Torbox em Tempo Real (`torbox-scanner.js` e `main.js`)
-- **Solução:** Injeção de permalinks diretos no scanner e monitoramento em tempo real em `resolveTorboxDirectUrl` (`☁️ Torbox baixando na nuvem X%`).
+- **Solução:** Injeção de permalinks diretos no scanner e monitoramento em tempo real em `resolveTorboxDirectUrl`.
 
 ---
 
-## 3. Sessão de 19/08/2026 - Multiprovedores, Motor de Download net.request e Correção de Bugs de Interface & HTTP 416
+## 1. Sessão de 12/08/2026 a 19/08/2026 - Multiprovedores e Fundação
 
-### Alterações e Implementações do Dia
-
-#### 1. Correção Estrutural da Aba de Ajustes e Interface (`renderer/index.html` e `renderer/css/style.css`)
-- **Solução:** Corrigido aninhamento HTML em `index.html` inserindo a tag de fechamento `</section>` na Fila de Downloads.
-
----
-
-## 2. Sessão de 14/08/2026 - Renderização Fluida da Fila (Anti-Flicker), Modais Customizados e Ajustes de UI/UX
-
-### Alterações e Implementações do Dia
-
-#### 1. Refatoração In-Place da Fila de Downloads (Zero Flickering)
-- **Solução:** Implementado sistema de renderização diferencial in-place em `renderer/js/app.js` reutilizando elementos HTML.
-
----
-
-## 1. Sessão de 12/08/2026 - Integração do MediaFire, Erros de Autenticação e Otimizações HTTP Direct
-
-### Alterações e Implementações do Dia
-
-#### 1. Suporte Nativo a Links e Pastas do MediaFire
-- **Solução:** Criado o módulo `mediafire-scanner.js` para varredura e resolução de URLs do MediaFire.
+- **Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox e URLs Genéricas**: Suporte completo a múltiplos provedores, auto-resume, motor `net.request` e renderização in-place anti-flickering.
 
 ---
 
 ## Arquivos Criados / Modificados (Acumulado)
 
-- **`main.js`** (Modificado): Arquitetura de auto-atualização (GitHub Releases API, stream, handover e IPCs).
-- **`renderer/js/app.js`** (Modificado): Gerenciador do `UpdatePopupModal`, barra de progresso IPC de atualização e exibição condicional do botão "Iniciar Download".
-- **`renderer/index.html`** (Modificado): Modal de Atualização (`UpdatePopupModal`) e elementos visuais de aviso de atualização.
-- **`renderer/css/style.css`** (Modificado): Estilização do modal de atualização, barra de progresso e notas de lançamento.
-- **`bug_corrigidos.md`** (Modificado): Registro detalhado da implementação da Feature 27 (Arquitetura do Auto-Updater).
+- **`drime-scanner.js`** (Modificado/Criado): Extrator nativo e resolver de arquivos/pastas do Drime Cloud.
+- **`main.js`** (Modificado): Roteamento nativo para Drime Cloud e Turbo.cr, handlers IPC e worker HTTP Direct.
+- **`renderer/js/app.js`** (Modificado): Badges visuais `DRIME` e `TURBO`, agrupamento de pastas e atualização da fila.
+- **`renderer/css/style.css`** (Modificado): Estilização das badges e componentes visuais do Drime e Turbo.cr.
+- **`renderer/index.html`** (Modificado): Ajustes de elementos e modais.
+- **`torbox-scanner.js`** (Modificado): Refinamento de chamadas e fallbacks.
 - **`review.md`** (Atualizado): Documentação oficial do projeto.
