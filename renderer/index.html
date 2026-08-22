@@ -175,6 +175,49 @@
               </button>
             </div>
           </div>
+
+          <!-- PAINEL DE DOWNLOAD ATIVO / NUVEM (MOVIDO PARA FICAR ABAIXO DO ACTION CONTROLS GRID NO TOP CONTENT) -->
+          <div class="card active-download-panel" id="active-download-panel" style="display: none; margin-top: 14px; margin-bottom: 0;">
+            <!-- COLUNA 1: TÍTULO, BADGES E CONTROLES (ESQUERDA) -->
+            <div class="active-title-group">
+              <span class="active-badge" id="active-badge-element">Baixando Agora</span>
+              <h3 id="active-filename">carregando...</h3>
+              <div class="active-controls">
+                <button class="btn-icon" id="btn-active-pause" title="Pausar">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="4" width="4" height="16"></rect>
+                    <rect x="14" y="4" width="4" height="16"></rect>
+                  </svg>
+                </button>
+                <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- COLUNA 2: BANNER DE AVISO DA NUVEM TORBOX (CENTRO) -->
+            <div id="active-cloud-notice-container" class="active-cloud-notice-box" style="display: none;"></div>
+
+            <!-- COLUNA 3: PROGRESSO E ESTATÍSTICAS (DIREITA) -->
+            <div class="active-stats">
+              <div class="active-progress-row">
+                <span class="stat-main" id="active-progress-text">0%</span>
+                <div class="progress-bar-container active-progress-bar-wrap">
+                  <div class="progress-bar-fill" id="active-progress-bar" style="width: 0%;"></div>
+                </div>
+              </div>
+              <div class="stat-sub-group">
+                <span id="active-speed-text">0 MB/s</span>
+                <span class="dot">•</span>
+                <span id="active-eta-text">--:--:--</span>
+                <span class="dot">•</span>
+                <span id="active-bytes-text">0 B / 0 B</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- TORBOX TOP -->
@@ -352,49 +395,6 @@
 
       <!-- QUEUE TAB BOTTOM CONTENT -->
       <section class="tab-content" id="queue-tab">
-        <!-- PAINEL DE DOWNLOAD ATIVO (LAYOUT HORIZONTAL FLUIDO CONFORME MEDIA_1787281634503.PNG) -->
-        <div class="card active-download-panel" id="active-download-panel" style="display: none;">
-          <!-- COLUNA 1: TÍTULO, BADGES E CONTROLES (ESQUERDA) -->
-          <div class="active-title-group">
-            <span class="active-badge" id="active-badge-element">Baixando Agora</span>
-            <h3 id="active-filename">carregando...</h3>
-            <div class="active-controls">
-              <button class="btn-icon" id="btn-active-pause" title="Pausar">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="6" y="4" width="4" height="16"></rect>
-                  <rect x="14" y="4" width="4" height="16"></rect>
-                </svg>
-              </button>
-              <button class="btn-icon danger" id="btn-active-cancel" title="Cancelar">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- COLUNA 2: BANNER DE AVISO DA NUVEM TORBOX (CENTRO) -->
-          <div id="active-cloud-notice-container" class="active-cloud-notice-box" style="display: none;"></div>
-
-          <!-- COLUNA 3: PROGRESSO E ESTATÍSTICAS (DIREITA) -->
-          <div class="active-stats">
-            <div class="active-progress-row">
-              <span class="stat-main" id="active-progress-text">0%</span>
-              <div class="progress-bar-container active-progress-bar-wrap">
-                <div class="progress-bar-fill" id="active-progress-bar" style="width: 0%;"></div>
-              </div>
-            </div>
-            <div class="stat-sub-group">
-              <span id="active-speed-text">0 MB/s</span>
-              <span class="dot">•</span>
-              <span id="active-eta-text">--:--:--</span>
-              <span class="dot">•</span>
-              <span id="active-bytes-text">0 B / 0 B</span>
-            </div>
-          </div>
-        </div>
-
         <div class="queue-container">
           <div class="queue-header-info">
             <h2>Lista de Downloads (<span id="queue-total-count">0</span>)</h2>
