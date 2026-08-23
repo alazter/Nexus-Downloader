@@ -599,6 +599,7 @@ async function loadConfig() {
   const elTorbox = document.getElementById('setting-mode-torbox');
   const elDrime = document.getElementById('setting-mode-drime');
   const elTurbo = document.getElementById('setting-mode-turbo');
+  const elSend = document.getElementById('setting-mode-send');
 
   if (elGdrive) elGdrive.value = modes.gdrive || 'single';
   if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
@@ -608,23 +609,48 @@ async function loadConfig() {
   if (elTorbox) elTorbox.value = modes.torbox || 'multi';
   if (elDrime) elDrime.value = modes.drime || 'multi';
   if (elTurbo) elTurbo.value = modes.turbo || 'multi';
+  if (elSend) elSend.value = modes.send || 'multi';
 
   const settingTorboxKey = document.getElementById('setting-torbox-api-key');
   const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
   if (settingTorboxKey) settingTorboxKey.value = config.torboxApiKey || '';
   if (settingTorboxEnabled) settingTorboxEnabled.checked = !!config.torboxEnabled;
 
+  const torboxServices = config.torboxForServices || {
+    gdrive: false, bunkr: false, mediafire: false, terabox: false, onedrive: false, torbox: true, drime: false, turbo: false, send: true
+  };
+  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+    const chk = document.getElementById(`setting-torbox-service-${svc}`);
+    if (chk) {
+      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox');
+    }
+  });
+
   settingNotifications.checked = config.notificationsEnabled;
 }
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo'].forEach(service => {
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(service => {
   const el = document.getElementById(`setting-mode-${service}`);
   if (el) {
     el.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi' };
+      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
       modes[service] = el.value;
       await window.api.setConfig({ downloadModes: modes });
+    });
+  }
+});
+
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+  const chk = document.getElementById(`setting-torbox-service-${svc}`);
+  if (chk) {
+    chk.addEventListener('change', async () => {
+      const config = await window.api.getConfig();
+      const currentServices = config.torboxForServices || {
+        gdrive: false, bunkr: false, mediafire: false, terabox: false, onedrive: false, torbox: true, drime: false, turbo: false, send: true
+      };
+      currentServices[svc] = chk.checked;
+      await window.api.setConfig({ torboxForServices: currentServices });
     });
   }
 });
@@ -882,20 +908,24 @@ function renderResults() {
     return;
   }
 
-  // Agrupa arquivos por caminho de subpasta/diretório
+  // Agrupa arquivos por Serviço e caminho de subpasta/diretório
   const groupsMap = new Map();
   scannedFiles.forEach((file, index) => {
-    let groupKey = file.folderName || 'Downloads';
+    let rawGroupName = file.folderName || 'Downloads';
     if (!file.folderName && file.relativePath && file.relativePath.includes('/')) {
       const parts = file.relativePath.split('/').filter(Boolean);
       const cleanParts = parts.filter((part, idx) => idx === 0 || part !== parts[idx - 1]);
-      groupKey = cleanParts.length > 1 ? cleanParts.slice(0, -1).join(' / ') : cleanParts[0];
+      rawGroupName = cleanParts.length > 1 ? cleanParts.slice(0, -1).join(' / ') : cleanParts[0];
     }
 
+    const sTag = getServiceTag(file);
+    const serviceName = sTag ? (sTag.hoster ? `${sTag.text} ${sTag.hoster}` : sTag.text) : 'Google Drive';
+    const groupKey = `${serviceName}:::${rawGroupName}`;
+
     if (!groupsMap.has(groupKey)) {
-      groupsMap.set(groupKey, []);
+      groupsMap.set(groupKey, { groupName: rawGroupName, groupItems: [] });
     }
-    groupsMap.get(groupKey).push({ file, index });
+    groupsMap.get(groupKey).groupItems.push({ file, index });
   });
 
   const isMultiGroup = groupsMap.size >= 1;
@@ -904,7 +934,7 @@ function renderResults() {
     if (resultsTableWrapperSingle) resultsTableWrapperSingle.style.display = 'none';
     resultsGroupsContainer.style.display = 'flex';
 
-    groupsMap.forEach((groupItems, groupName) => {
+    groupsMap.forEach(({ groupName, groupItems }) => {
       const totalGroupSize = groupItems.reduce((acc, item) => acc + item.file.size, 0);
 
       const card = document.createElement('div');
@@ -935,9 +965,11 @@ function renderResults() {
       const serviceTag = getServiceTag(sampleFile);
       const folderTag = getFolderTypeTag(groupItems.map(gi => gi.file), groupName);
 
-      const serviceSpan = document.createElement('span');
-      serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle;`;
-      serviceSpan.textContent = serviceTag.text;
+      const serviceTagSpanWrapper = document.createElement('span');
+      serviceTagSpanWrapper.style.display = 'inline-flex';
+      serviceTagSpanWrapper.style.alignItems = 'center';
+      serviceTagSpanWrapper.style.verticalAlign = 'middle';
+      serviceTagSpanWrapper.innerHTML = renderServiceTagHTML(serviceTag, false);
 
       const folderTypeSpan = document.createElement('span');
       folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
@@ -949,7 +981,7 @@ function renderResults() {
 
       titleGroup.appendChild(groupCb);
       titleGroup.appendChild(folderIcon);
-      titleGroup.appendChild(serviceSpan);
+      titleGroup.appendChild(serviceTagSpanWrapper);
       titleGroup.appendChild(folderTypeSpan);
       titleGroup.appendChild(nameSpan);
 
@@ -1016,7 +1048,7 @@ function renderResults() {
         tdName.className = 'text-truncate';
         const sTag = getServiceTag(file);
         const fTag = getFileTypeTag(file);
-        tdName.innerHTML = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${sTag.text}</span><span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+        tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
         tdName.title = file.name;
 
         const tdPath = document.createElement('td');
@@ -1078,7 +1110,7 @@ function renderResults() {
       tdName.className = 'text-truncate';
       const sTag = getServiceTag(file);
       const fTag = getFileTypeTag(file);
-      tdName.innerHTML = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${sTag.text}</span><span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+      tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
       tdName.title = file.name;
       
       const tdPath = document.createElement('td');
@@ -1259,10 +1291,81 @@ function getFolderTypeTag(folderItems, folderName) {
   return { text: 'Outros', bg: 'rgba(100, 116, 139, 0.18)', color: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' };
 }
 
+function detectTorboxHoster(file) {
+  if (!file) return null;
+  const str = (
+    (file.sourceUrl || '') + ' ' + 
+    (file.originalUrl || '') + ' ' + 
+    (file.originalLink || '') + ' ' + 
+    (file.downloadUrl || '') + ' ' + 
+    (file.directUrl || '') + ' ' + 
+    (file.folderName || '') + ' ' + 
+    (file.name || '')
+  ).toLowerCase();
+  
+  if (str.includes('pixeldrain') || str.includes('pixeldrain.com')) return 'Pixeldrain';
+  if (str.includes('1fichier') || str.includes('1fichier.com')) return '1fichier';
+  if (str.includes('rapidgator') || str.includes('rapidgator.net') || str.includes('rg.to')) return 'Rapidgator';
+  if (str.includes('mega.nz') || str.includes('mega.co.nz')) return 'Mega';
+  if (str.includes('mediafire') || str.includes('mediafire.com')) return 'MediaFire';
+  if (str.includes('ddownload') || str.includes('ddownload.com')) return 'DDownload';
+  if (str.includes('katfile') || str.includes('katfile.com') || str.includes('katfile.cloud')) return 'KatFile';
+  if (str.includes('turbobit') || str.includes('turbobit.net') || str.includes('turbo.to')) return 'Turbobit';
+  if (str.includes('nitroflare') || str.includes('nitroflare.com') || str.includes('nitro.download')) return 'Nitroflare';
+  if (str.includes('uptobox') || str.includes('uptobox.com') || str.includes('uptostream')) return 'Uptobox';
+  if (str.includes('gofile') || str.includes('gofile.io')) return 'GoFile';
+  if (str.includes('filefactory') || str.includes('filefactory.com')) return 'FileFactory';
+  if (str.includes('sendspace') || str.includes('sendspace.com')) return 'SendSpace';
+  if (str.includes('megaup') || str.includes('megaup.net')) return 'MegaUp';
+  if (str.includes('drop.download') || str.includes('dropapk')) return 'DropDownload';
+  if (str.includes('terabox') || str.includes('1024tera') || str.includes('gibibox')) return 'TeraBox';
+  if (str.includes('send.cm') || str.includes('send.now') || str.includes('sendit.cloud') || str.includes('userscloud') || str.includes('tusfiles')) return 'Send';
+  if (str.includes('swisstransfer')) return 'SwissTransfer';
+  if (str.includes('nexusmods')) return 'NexusMods';
+  if (str.includes('mixdrop')) return 'Mixdrop';
+  if (str.includes('uploady')) return 'Uploady';
+  if (str.includes('cyberdrop')) return 'Cyberdrop';
+  if (str.includes('catbox')) return 'Catbox';
+  if (str.includes('darkibox')) return 'Darkibox';
+  if (str.includes('filespace')) return 'FileSpace';
+  if (str.includes('hubcloud')) return 'HubCloud';
+  if (str.includes('drive.google') || str.includes('googledrive')) return 'Google Drive';
+  if (str.includes('bunkr')) return 'Bunkr';
+  if (str.includes('onedrive') || str.includes('sharepoint')) return 'OneDrive';
+  if (str.includes('e-hentai')) return 'E-Hentai';
+  if (str.includes('eporner')) return 'EPorner';
+  if (str.includes('fansly')) return 'Fansly';
+  if (str.includes('gelbooru')) return 'Gelbooru';
+  if (str.includes('hitomi')) return 'Hitomi';
+  if (str.includes('koofr')) return 'Koofr';
+  if (str.includes('mangadex')) return 'Mangadex';
+  if (str.includes('webtoon')) return 'Webtoon';
+  if (str.includes('hubdrive')) return 'HubDrive';
+  if (str.includes('driveseed')) return 'DriveSeed';
+  if (str.includes('datavaults')) return 'DataVaults';
+  if (str.includes('transfernow')) return 'TransferNow';
+  if (str.includes('t.me') || str.includes('telegram')) return 'Telegram';
+  if (str.includes('discord')) return 'Discord';
+  
+  return null;
+}
+
+function renderServiceTagHTML(sTag, isTableRow = false) {
+  if (!sTag) return '';
+  const pad = isTableRow ? '2px 6px' : '2px 7px';
+  const fontSize = isTableRow ? '10px' : '11px';
+  let html = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${sTag.text}</span>`;
+  if (sTag.hosterTag) {
+    const ht = sTag.hosterTag;
+    html += `<span style="background: ${ht.bg}; color: ${ht.color}; border: 1px solid ${ht.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${ht.text}</span>`;
+  }
+  return html;
+}
+
 function getServiceTag(file) {
   const id = (file && file.id) || '';
   const service = (file && file.service) || '';
-  const url = (file && (file.downloadUrl || file.directUrl || '')) || '';
+  const url = (file && (file.downloadUrl || file.directUrl || file.sourceUrl || file.originalUrl || '')) || '';
 
   if (id.startsWith('drime_') || service === 'Drime Cloud' || url.includes('drime.cloud')) {
     return { text: 'Drime Cloud', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
@@ -1270,14 +1373,42 @@ function getServiceTag(file) {
   if (id.startsWith('turbo_') || service === 'Turbo.cr' || (url.includes('turbocdn.st') && !file.torboxType)) {
     return { text: 'Turbo.cr', bg: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: 'rgba(244, 63, 94, 0.4)' };
   }
-  if (id.startsWith('torbox_') || (file && file.torboxType) || url.includes('tb-cdn')) {
-    return { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+  if (id.startsWith('torbox_') || (file && file.torboxType) || url.includes('tb-cdn') || service === 'Torrent' || url.startsWith('magnet:') || url.endsWith('.torrent')) {
+    const isTorrent = (file && file.torboxType === 'torrent') || service === 'Torrent' || id.includes('torrent') || !!(file && file.hash) || (url && (url.startsWith('magnet:') || url.endsWith('.torrent')));
+    const hosterName = detectTorboxHoster(file);
+    const result = { 
+      text: 'Torbox', 
+      bg: 'rgba(139, 92, 246, 0.18)', 
+      color: '#a78bfa', 
+      border: 'rgba(139, 92, 246, 0.4)' 
+    };
+    if (isTorrent) {
+      result.hoster = 'Torrent';
+      result.hosterTag = {
+        text: 'Torrent',
+        bg: 'rgba(59, 130, 246, 0.18)',
+        color: '#60a5fa',
+        border: 'rgba(59, 130, 246, 0.4)'
+      };
+    } else if (hosterName) {
+      result.hoster = hosterName;
+      result.hosterTag = {
+        text: hosterName,
+        bg: 'rgba(236, 72, 153, 0.18)',
+        color: '#f472b6',
+        border: 'rgba(236, 72, 153, 0.4)'
+      };
+    }
+    return result;
   }
   if (id.startsWith('terabox_')) {
     return { text: 'TeraBox', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
   }
   if (id.startsWith('onedrive_') || (file && file.oneDriveUrl && file.oneDriveUrl.includes('sharepoint'))) {
     return { text: 'Microsoft OneDrive', bg: 'rgba(255, 255, 255, 0.18)', color: '#ffffff', border: 'rgba(255, 255, 255, 0.4)' };
+  }
+  if (id.startsWith('send_') || service === 'Send' || url.includes('send.now') || url.includes('send.cm')) {
+    return { text: 'Send', bg: 'rgba(236, 72, 153, 0.18)', color: '#f472b6', border: 'rgba(236, 72, 153, 0.4)' };
   }
   if (id.startsWith('mediafire_')) {
     return { text: 'MediaFire', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
@@ -1332,9 +1463,11 @@ function renderQueue(queue) {
     if (activeDownloadPanel.dataset.activeItemName !== active.name) {
       activeDownloadPanel.dataset.activeItemName = active.name;
       const pureFileName = (active.name || '').includes('/') ? active.name.split('/').pop() : active.name;
+      const sTag = getServiceTag(active);
       const tag = getFileTypeTag(active);
-      const spanTag = `<span style="background: ${tag.bg}; color: ${tag.color}; border: 1px solid ${tag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${tag.text}</span>`;
-      activeFilename.innerHTML = `${spanTag}${escapeHtml(pureFileName)}`;
+      const spanServiceTags = renderServiceTagHTML(sTag, false);
+      const spanFileTag = `<span style="background: ${tag.bg}; color: ${tag.color}; border: 1px solid ${tag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${tag.text}</span>`;
+      activeFilename.innerHTML = `${spanServiceTags}${spanFileTag}${escapeHtml(pureFileName)}`;
       activeFilename.title = pureFileName;
     }
 
@@ -1423,14 +1556,17 @@ function renderQueue(queue) {
 
   queueEmptyState.style.display = 'none';
 
-  // Agrupa arquivos por folderName
+  // Agrupa arquivos por Serviço + Hoster e folderName
   const folderMap = new Map();
   queue.forEach(item => {
-    const folder = item.folderName || 'Downloads';
-    if (!folderMap.has(folder)) {
-      folderMap.set(folder, []);
+    const sTag = getServiceTag(item);
+    const serviceName = sTag ? (sTag.hoster ? `${sTag.text} ${sTag.hoster}` : sTag.text) : 'Google Drive';
+    const rawFolder = item.folderName || 'Downloads';
+    const groupKey = `${serviceName}:::${rawFolder}`;
+    if (!folderMap.has(groupKey)) {
+      folderMap.set(groupKey, { serviceName, folderName: rawFolder, items: [] });
     }
-    folderMap.get(folder).push(item);
+    folderMap.get(groupKey).items.push(item);
   });
 
   // Garante a existência dos dois containers de seção na fila
@@ -1484,23 +1620,23 @@ function renderQueue(queue) {
   const activeEntries = [];
   const completedEntries = [];
 
-  folderMap.forEach((folderItems, folderName) => {
+  folderMap.forEach(({ serviceName, folderName, items: folderItems }, groupKey) => {
     const isAllCompleted = folderItems.every(f => f.status === 'completed');
     if (isAllCompleted) {
-      completedEntries.push([folderName, folderItems]);
+      completedEntries.push([groupKey, folderName, folderItems]);
     } else {
-      activeEntries.push([folderName, folderItems]);
+      activeEntries.push([groupKey, folderName, folderItems]);
     }
   });
 
   activeEntries.sort((a, b) => {
-    const rankA = getFolderSortRank(a[1]);
-    const rankB = getFolderSortRank(b[1]);
+    const rankA = getFolderSortRank(a[2]);
+    const rankB = getFolderSortRank(b[2]);
     if (rankA !== rankB) return rankA - rankB;
-    return a[0].localeCompare(b[0]);
+    return a[1].localeCompare(b[1]);
   });
 
-  completedEntries.sort((a, b) => a[0].localeCompare(b[0]));
+  completedEntries.sort((a, b) => a[1].localeCompare(b[1]));
 
   // Atualiza visibilidade e contadores dos cabeçalhos de seção
   if (activeEntries.length > 0) {
@@ -1522,15 +1658,15 @@ function renderQueue(queue) {
   // Função interna auxiliar para renderizar os cartões em cada container de seção
   const renderEntriesToContainer = (entries, container) => {
     // Remove cartões de pasta que não estão mais presentes em 'entries'
-    const validFolderNames = new Set(entries.map(([name]) => name));
+    const validKeys = new Set(entries.map(([key]) => key));
     Array.from(container.querySelectorAll('.queue-folder-card')).forEach(card => {
-      const cardFolderName = card.dataset.folderName;
-      if (!validFolderNames.has(cardFolderName)) {
+      const cardKey = card.dataset.groupKey || card.dataset.folderName;
+      if (!validKeys.has(cardKey)) {
         card.remove();
       }
     });
 
-    entries.forEach(([folderName, folderItems]) => {
+    entries.forEach(([groupKey, folderName, folderItems]) => {
       folderItems.sort((a, b) => getItemSortRank(a) - getItemSortRank(b));
       const totalFiles = folderItems.length;
       const completedFiles = folderItems.filter(f => f.status === 'completed').length;
@@ -1547,19 +1683,20 @@ function renderQueue(queue) {
       const hasActiveOrPausedItem = folderItems.some(f => f.status === 'downloading' || f.status === 'paused' || f.status === 'pending');
 
       let isCollapsed = false;
-      if (collapsedFolders.has(folderName)) {
+      if (collapsedFolders.has(groupKey) || collapsedFolders.has(folderName)) {
         isCollapsed = true;
-      } else if (expandedFolders.has(folderName)) {
+      } else if (expandedFolders.has(groupKey) || expandedFolders.has(folderName)) {
         isCollapsed = false;
       } else {
         isCollapsed = folderPercent === 100 || !hasActiveOrPausedItem;
       }
 
-      let folderCard = container.querySelector(`.queue-folder-card[data-folder-name="${CSS.escape(folderName)}"]`);
+      let folderCard = container.querySelector(`.queue-folder-card[data-group-key="${CSS.escape(groupKey)}"]`);
 
       if (!folderCard) {
         folderCard = document.createElement('div');
         folderCard.className = `queue-folder-card ${isCollapsed ? 'collapsed' : ''}`;
+        folderCard.dataset.groupKey = groupKey;
         folderCard.dataset.folderName = folderName;
 
         const folderHeader = document.createElement('div');
@@ -1579,7 +1716,7 @@ function renderQueue(queue) {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
           </div>
-          <span style="background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${serviceTag.text}</span>
+          ${renderServiceTagHTML(serviceTag, false)}
           <span style="background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${folderTag.text}</span>
           <span class="queue-folder-name" title="${folderName}">${folderName}</span>
         `;
@@ -1608,12 +1745,12 @@ function renderQueue(queue) {
           if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
           const willBeCollapsed = !folderCard.classList.contains('collapsed');
           if (willBeCollapsed) {
-            expandedFolders.delete(folderName);
-            collapsedFolders.add(folderName);
+            expandedFolders.delete(groupKey);
+            collapsedFolders.add(groupKey);
             folderCard.classList.add('collapsed');
           } else {
-            collapsedFolders.delete(folderName);
-            expandedFolders.add(folderName);
+            collapsedFolders.delete(groupKey);
+            expandedFolders.add(groupKey);
             folderCard.classList.remove('collapsed');
           }
         };
@@ -1700,6 +1837,7 @@ function renderQueue(queue) {
 
       folderItems.forEach(item => {
         let itemRow = itemsContainer.querySelector(`.queue-item-row[data-item-id="${CSS.escape(item.id)}"]`);
+        const sTag = getServiceTag(item);
         const itemTag = getFileTypeTag(item);
         const pureFileName = (item.name || '').includes('/') ? item.name.split('/').pop() : item.name;
 
@@ -1747,6 +1885,7 @@ function renderQueue(queue) {
             <input type="checkbox" class="queue-item-checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="margin-right: 10px; cursor: pointer;">
             <div class="queue-item-info">
               <div class="queue-item-title-line">
+                ${renderServiceTagHTML(sTag, true)}
                 <span style="background: ${itemTag.bg}; color: ${itemTag.color}; border: 1px solid ${itemTag.border}; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${itemTag.text}</span>
                 <span class="queue-item-name" title="${escapeHtml(pureFileName)}">${escapeHtml(pureFileName)}</span>
               </div>
@@ -2542,12 +2681,14 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
       </svg>
     `;
 
-    const serviceTag = { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+    const serviceTag = getServiceTag(groupItems[0]);
     const folderTag = getFolderTypeTag(groupItems, groupName);
 
-    const serviceSpan = document.createElement('span');
-    serviceSpan.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;`;
-    serviceSpan.textContent = serviceTag.text;
+    const serviceTagSpanWrapper = document.createElement('span');
+    serviceTagSpanWrapper.style.display = 'inline-flex';
+    serviceTagSpanWrapper.style.alignItems = 'center';
+    serviceTagSpanWrapper.style.verticalAlign = 'middle';
+    serviceTagSpanWrapper.innerHTML = renderServiceTagHTML(serviceTag, false);
 
     const folderTypeSpan = document.createElement('span');
     folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;`;
@@ -2559,7 +2700,7 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
 
     titleGroup.appendChild(groupCb);
     titleGroup.appendChild(folderIcon);
-    titleGroup.appendChild(serviceSpan);
+    titleGroup.appendChild(serviceTagSpanWrapper);
     titleGroup.appendChild(folderTypeSpan);
     titleGroup.appendChild(nameSpan);
 
@@ -2664,8 +2805,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
 
         const tdName = document.createElement('td');
         tdName.className = 'text-truncate';
+        const sTag = getServiceTag(file);
         const fTag = getFileTypeTag(file);
-        tdName.innerHTML = `<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+        tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
         tdName.title = file.name;
 
         const tdStatus = document.createElement('td');

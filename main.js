@@ -14,6 +14,7 @@ const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, f
 const { isDrimeUrl, scanDrimeLink } = require('./drime-scanner');
 const { isTurboUrl, scanTurboLink, resolveTurboDirectUrl } = require('./turbo-scanner');
 const { scanGenericLink } = require('./generic-scanner');
+const { isSendUrl, scanSendLink, resolveSendDirectUrl } = require('./send-scanner');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -92,7 +93,19 @@ let config = {
     onedrive: 'single',
     torbox: 'multi',
     drime: 'multi',
-    turbo: 'multi'
+    turbo: 'multi',
+    send: 'multi'
+  },
+  torboxForServices: {
+    gdrive: false,
+    bunkr: false,
+    mediafire: false,
+    terabox: false,
+    onedrive: false,
+    torbox: true,
+    drime: false,
+    turbo: false,
+    send: true
   }
 };
 
@@ -101,6 +114,18 @@ function getDownloadMode(service) {
     return config.downloadModes[service];
   }
   return config.downloadMode || 'single';
+}
+
+function isTorboxEnabledForService(service) {
+  if (!config.torboxEnabled || !config.torboxApiKey || config.torboxApiKey.trim().length === 0) {
+    return false;
+  }
+  if (!service) return true;
+  const s = service.toLowerCase();
+  if (config.torboxForServices && config.torboxForServices[s] !== undefined) {
+    return !!config.torboxForServices[s];
+  }
+  return true;
 }
 
 // Carregar configurações salvas
@@ -113,6 +138,10 @@ if (fs.existsSync(CONFIG_FILE)) {
       downloadModes: {
         ...config.downloadModes,
         ...(loaded.downloadModes || {})
+      },
+      torboxForServices: {
+        ...config.torboxForServices,
+        ...(loaded.torboxForServices || {})
       }
     };
   } catch (err) {
@@ -147,7 +176,11 @@ function saveQueue() {
       id: item.id,
       fileId: item.fileId || null,
       numericId: item.numericId || null,
-      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_'))),
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_'))),
+      sendUrl: item.sendUrl || item.url || item.directUrl || null,
+      url: item.url || item.sendUrl || item.directUrl || item.downloadUrl || null,
+      directUrl: item.directUrl || item.url || item.sendUrl || item.downloadUrl || null,
+      downloadUrl: item.downloadUrl || item.directUrl || item.url || null,
       mediafireUrl: item.mediafireUrl || null,
       teraboxUrl: item.teraboxUrl || null,
       teraboxDlink: item.teraboxDlink || null,
@@ -541,7 +574,13 @@ function updateQueueUI() {
       cloudProgress: item.cloudProgress,
       torboxType: item.torboxType,
       torboxId: item.torboxId,
-      torboxFileId: item.torboxFileId
+      torboxFileId: item.torboxFileId,
+      sendUrl: item.sendUrl || item.url || item.directUrl || null,
+      url: item.url || item.sendUrl || item.directUrl || item.downloadUrl || null,
+      directUrl: item.directUrl || item.url || item.sendUrl || item.downloadUrl || null,
+      numericId: item.numericId || null,
+      fileId: item.fileId || null,
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_')))
     }));
     mainWindow.webContents.send('queue-updated', serializedQueue);
   }
@@ -739,6 +778,26 @@ function downloadBunkrFile(queueItem) {
         console.log(`[MediaFire Worker] Utilizando link direto do MediaFire para "${queueItem.name}"...`);
         directUrl = queueItem.url || directUrl;
         referer = 'https://www.mediafire.com/';
+      } else if (queueItem.id && (queueItem.id.startsWith('send_') || queueItem.sendUrl)) {
+        console.log(`[Send Worker] Resolvendo URL direta do Send para "${queueItem.name}"...`);
+        const fileCode = queueItem.numericId || (queueItem.sendUrl ? queueItem.sendUrl.split('/').pop() : '');
+        const useTorbox = isTorboxEnabledForService('send');
+        const sendInfo = await resolveSendDirectUrl(
+          fileCode,
+          queueItem.sendUrl || queueItem.url || queueItem.directUrl,
+          config.torboxApiKey,
+          useTorbox,
+          (statusMsg, percent) => {
+            queueItem.cloudProgress = percent;
+            queueItem.cloudMessage = statusMsg;
+            updateQueueUI();
+          }
+        );
+        if (sendInfo && sendInfo.isTorbox) {
+          delete queueItem.cloudMessage;
+        }
+        directUrl = sendInfo ? sendInfo.directUrl : (queueItem.url || queueItem.downloadUrl || directUrl);
+        referer = sendInfo ? sendInfo.referer : 'https://send.now/';
       } else {
         console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}"...`);
         const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId);
@@ -766,7 +825,8 @@ function downloadBunkrFile(queueItem) {
       };
 
       let service = 'bunkr';
-      if (queueItem.id && queueItem.id.startsWith('drime_')) service = 'drime';
+      if (queueItem.id && queueItem.id.startsWith('send_')) service = 'send';
+      else if (queueItem.id && queueItem.id.startsWith('drime_')) service = 'drime';
       else if (queueItem.id && (queueItem.id.startsWith('turbo_') || queueItem.turboFileId)) service = 'turbo';
       else if (queueItem.id && queueItem.id.startsWith('terabox_')) service = 'terabox';
       else if (queueItem.id && queueItem.id.startsWith('mediafire_')) service = 'mediafire';
@@ -1087,9 +1147,9 @@ function downloadBunkrFile(queueItem) {
 
 function downloadFile(queueItem) {
   const id = (queueItem && queueItem.id) || '';
-  const isGoogleDrive = !queueItem.isHttpDirect && !queueItem.downloadUrl && (id.length === 33 || id.length === 19 || (!id.includes('_') && !id.startsWith('torbox') && !id.startsWith('gofile') && !id.startsWith('onedrive') && !id.startsWith('terabox') && !id.startsWith('mediafire') && !id.startsWith('bunkr') && !id.startsWith('megaup') && !id.startsWith('turbocr') && !id.startsWith('generic') && !id.startsWith('scraper')));
+  const isGoogleDrive = !queueItem.isHttpDirect && !queueItem.downloadUrl && (id.length === 33 || id.length === 19 || (!id.includes('_') && !id.startsWith('send') && !id.startsWith('drime') && !id.startsWith('turbo') && !id.startsWith('torbox') && !id.startsWith('gofile') && !id.startsWith('onedrive') && !id.startsWith('terabox') && !id.startsWith('mediafire') && !id.startsWith('bunkr') && !id.startsWith('megaup') && !id.startsWith('generic') && !id.startsWith('scraper')));
 
-  if (!isGoogleDrive || queueItem.downloadUrl || queueItem.isHttpDirect) {
+  if (!isGoogleDrive || queueItem.downloadUrl || queueItem.isHttpDirect || queueItem.sendUrl) {
     return downloadBunkrFile(queueItem);
   }
 
@@ -1577,6 +1637,18 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
     if (isMediaFireUrl(link)) {
       try {
         console.log('[main.js] Link do MediaFire detectado! Escaneando:', link);
+        if (isTorboxEnabledForService('mediafire')) {
+          try {
+            console.log('[main.js] Escaneando MediaFire via Torbox WebDL...');
+            const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
+            if (tbFiles && tbFiles.length > 0) {
+              aggregatedFiles = aggregatedFiles.concat(tbFiles);
+              continue;
+            }
+          } catch (e) {
+            console.warn('[main.js] Torbox para MediaFire falhou, usando scanner nativo:', e.message);
+          }
+        }
         const mfFiles = await scanMediaFireLink(link);
         if (mfFiles && mfFiles.length > 0) {
           aggregatedFiles = aggregatedFiles.concat(mfFiles);
@@ -1586,6 +1658,35 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
       } catch (err) {
         console.error('Erro ao escanear link MediaFire:', link, err.message);
         throw new Error(`Erro ao escanear MediaFire: ${err.message}`);
+      }
+      continue;
+    }
+
+    // 0.15. Links do Send (send.now / send.cm / sendit.cloud / userscloud / tusfiles)
+    if (isSendUrl(link)) {
+      try {
+        console.log('[main.js] Link do Send (send.now / send.cm) detectado! Escaneando:', link);
+        if (isTorboxEnabledForService('send')) {
+          try {
+            console.log('[main.js] Escaneando Send via Torbox WebDL...');
+            const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
+            if (tbFiles && tbFiles.length > 0) {
+              aggregatedFiles = aggregatedFiles.concat(tbFiles);
+              continue;
+            }
+          } catch (e) {
+            console.warn('[main.js] Torbox WebDL para Send falhou, usando scanner nativo:', e.message);
+          }
+        }
+        const sendFiles = await scanSendLink(link);
+        if (sendFiles && sendFiles.length > 0) {
+          aggregatedFiles = aggregatedFiles.concat(sendFiles);
+        } else {
+          console.warn('[main.js] Nenhum arquivo retornado do Send para:', link);
+        }
+      } catch (err) {
+        console.error('Erro ao escanear link Send:', link, err.message);
+        throw new Error(`Erro ao escanear Send: ${err.message}`);
       }
       continue;
     }
@@ -1748,9 +1849,19 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
 // Ações da Fila
 ipcMain.handle('add-to-queue', (event, files) => {
   files.forEach(file => {
-    // Evita duplicatas na fila se já existir o mesmo ID com status pendente ou baixando
-    const exists = downloadQueue.some(item => item.id === file.id && (item.status === 'pending' || item.status === 'downloading'));
-    if (!exists) {
+    // Remove qualquer versão antiga existente do mesmo ID (ex: falhado, concluído, etc) para garantir um início limpo
+    const existingIndex = downloadQueue.findIndex(item => item.id === file.id);
+    if (existingIndex !== -1) {
+      const oldItem = downloadQueue[existingIndex];
+      if (oldItem.status === 'downloading') {
+        const active = activeDownloads.get(file.id);
+        if (active) {
+          try { active.abortController.abort(); } catch (e) {}
+        }
+        activeDownloads.delete(file.id);
+      }
+      downloadQueue.splice(existingIndex, 1);
+    }
       let folderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
       if (!folderName || folderName === 'Downloads' || folderName === 'Arquivos Avulsos') {
         folderName = file.name || 'Downloads';
@@ -1775,7 +1886,8 @@ ipcMain.handle('add-to-queue', (event, files) => {
         id: file.id,
         fileId: file.fileId,
         numericId: file.numericId,
-        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
+        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('send_') || file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
+        sendUrl: file.sendUrl || file.url || file.directUrl || file.downloadUrl || null,
         mediafireUrl: file.mediafireUrl || null,
         teraboxUrl: file.teraboxUrl || null,
         teraboxDlink: file.teraboxDlink || null,
@@ -1786,8 +1898,9 @@ ipcMain.handle('add-to-queue', (event, files) => {
         torboxId: file.torboxId || 0,
         torboxFileId: file.torboxFileId || 0,
         torboxDownloadUrl: file.torboxDownloadUrl || file.directUrl || file.downloadUrl || null,
-        url: file.url || file.directUrl || file.downloadUrl || null,
-        directUrl: file.directUrl || file.url || file.downloadUrl || file.torboxDownloadUrl || null,
+        url: file.url || file.sendUrl || file.directUrl || file.downloadUrl || null,
+        directUrl: file.directUrl || file.url || file.sendUrl || file.downloadUrl || file.torboxDownloadUrl || null,
+        downloadUrl: file.downloadUrl || file.directUrl || file.url || file.sendUrl || null,
         referer: file.referer || null,
         cookieHeader: file.cookieHeader || null,
         name: pureFileName,
@@ -1801,7 +1914,6 @@ ipcMain.handle('add-to-queue', (event, files) => {
         eta: 0,
         error: null
       });
-    }
   });
 
   updateQueueUI();

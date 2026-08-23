@@ -259,9 +259,9 @@ async function scanTorboxLink(urlStr, apiKey) {
       const targetClean = cleanUrlStr.toLowerCase();
       const targetFull = urlStr.trim().toLowerCase();
 
-      // Procura em primeiro lugar uma WebDL do álbum completo (com a matriz de 6 arquivos)
+      // Procura em primeiro lugar uma WebDL ATIVA do álbum completo (com a matriz de arquivos)
       let existing = myWebdls.find(w => {
-        if (!w.original_url) return false;
+        if (!w.original_url || w.download_state === 'expired' || w.download_state === 'failed' || w.inactive) return false;
         const wOrig = w.original_url.trim().toLowerCase();
         const matches = wOrig === targetClean || wOrig.includes(targetClean) || targetClean.includes(wOrig);
         return matches && w.files && Array.isArray(w.files) && w.files.length > 1;
@@ -269,7 +269,7 @@ async function scanTorboxLink(urlStr, apiKey) {
 
       if (!existing) {
         existing = myWebdls.find(w => {
-          if (!w.original_url) return false;
+          if (!w.original_url || w.download_state === 'expired' || w.download_state === 'failed' || w.inactive) return false;
           const wOrig = w.original_url.trim().toLowerCase();
           return wOrig === targetClean || wOrig.includes(targetClean) || targetClean.includes(wOrig);
         });
@@ -355,6 +355,8 @@ function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
         torboxId: webdlId,
         torboxFileId: fFileId,
         isZipDownload: false,
+        sourceUrl: originalLink || webdlItem.original_url || '',
+        originalUrl: originalLink || webdlItem.original_url || '',
         torboxDownloadUrl: permalinkUrl,
         directUrl: permalinkUrl,
         downloadUrl: permalinkUrl
@@ -385,6 +387,8 @@ function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
     torboxId: webdlId,
     torboxFileId: 0,
     isZipDownload: true,
+    sourceUrl: originalLink || webdlItem.original_url || '',
+    originalUrl: originalLink || webdlItem.original_url || '',
     torboxDownloadUrl: webdlPermalink,
     directUrl: webdlPermalink,
     downloadUrl: webdlPermalink
@@ -643,6 +647,8 @@ async function fetchTorboxUserDownloads(apiKey) {
           torboxId: w.id,
           torboxFileId: 0,
           isZipDownload: true,
+          sourceUrl: w.original_url || '',
+          originalUrl: w.original_url || '',
           isFinished: isFinished,
           isInactive: isInactive,
           progress: percent,
@@ -676,6 +682,8 @@ async function fetchTorboxUserDownloads(apiKey) {
             torboxType: 'webdl',
             torboxId: w.id,
             torboxFileId: fFileId,
+            sourceUrl: w.original_url || '',
+            originalUrl: w.original_url || '',
             isFinished: isFinished,
             isInactive: isInactive,
             progress: percent,

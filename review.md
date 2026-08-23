@@ -1,6 +1,29 @@
 # Nexus Downloader - Diário de Bordo & Registro de Alterações (review.md)
 
-**Última Atualização:** 22/08/2026
+**Última Atualização:** 23/08/2026
+
+---
+
+## 7. Sessão de 23/08/2026 - Módulo de Varredura para a Família Send, Suporte a 1fichier e Redesenho de Modais de Entrada de Links
+
+### Alterações e Implementações do Dia
+
+#### 1. Suporte Nativo ao Provedor Send (`send-scanner.js`, `main.js`)
+- **Problema:** Links e pastas da família Send (`send.now`, `send.cm`, `sendit.cloud`, `userscloud.com`, `tusfiles.com`, `tusfiles.net`, `usersfiles.com`) não tinham tratamento de varredura ou extração de pastas `/s/`.
+- **Solução:** 
+  - Criado o módulo `send-scanner.js` para escaneamento de arquivos e pastas compartilhadas do Send, extraindo nome, tamanho e lista de itens.
+  - Integração no `main.js` com suporte a resolução inteligente via TorBox WebDL ou download direto HTTP.
+
+#### 2. Integração e Desproteção do 1fichier (`main.js`, `generic-scanner.js`)
+- **Problema:** Links de hospedagem do 1fichier exigiam bypass para capturar links diretos de alta velocidade.
+- **Solução:** Adicionado suporte a links do 1fichier via desprotetor TorBox Hoster e roteamento no motor genérico.
+
+#### 3. Redesenho e Aprimoramento dos Modais de Entrada (`renderer/index.html`, `renderer/css/style.css`, `renderer/js/app.js`)
+- **Problema:** Os modais de inserção de links ("Escanear Links", "Adicionar Torrent") careciam de feedback dinâmico de contagem e suporte a drag & drop.
+- **Solução:** 
+  - Reformulados os modais com caixa de texto com contador de linhas/links em tempo real.
+  - Adicionado suporte a drag & drop de arquivos e colagem rápida de magnet links.
+  - Injetada a badge temática visual `SEND` na fila de downloads e na tabela de resultados do scanner.
 
 ---
 
@@ -9,60 +32,34 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Suporte Nativo e Independente ao Drime Cloud (`drime-scanner.js`, `main.js`)
-- **Problema:** Links e pastas compartilhadas do Drime Cloud (`drime.cloud`) não possuíam extrator próprio no aplicativo, forçando o uso de terceiros ou falhando ao tentar extrair arquivos individuais de dentro de pastas compartilhadas.
-- **Solução:** 
-  - Atualizado o módulo `drime-scanner.js` e a integração com o `main.js` para varrer pastas e arquivos compartilhados nativamente.
-  - Implementada a extração individual de arquivos (ex: episódios `.mkv`) com identificadores e hashes únicos obtidos da API do Drime Cloud, permitindo o download direto e ultrarrápido sem dependência do TorBox ou compactação em `.zip`.
+- **Solução:** Atualizado o módulo `drime-scanner.js` e a integração com o `main.js` para varrer pastas e arquivos compartilhados nativamente (com hashes e episódios `.mkv` individuais).
 
 #### 2. Suporte Independente ao Turbo.cr (`bunkr-scanner.js`, `generic-scanner.js`, `main.js`)
-- **Problema:** URLs do Turbo.cr (`turbo.cr`, `turbo.pm`) não eram reconhecidas por um módulo nativo dedicado.
-- **Solução:** Adicionado reconhecimento direto dos domínios do Turbo.cr com resolução resiliente de links de mídias e vídeos.
-
-#### 3. Badges de Identificação Visual no Renderer (`renderer/js/app.js`, `renderer/css/style.css`, `renderer/index.html`)
-- **Problema:** A interface do usuário precisava diferenciar claramente os links originados do Drime Cloud e Turbo.cr na fila e nos resultados.
-- **Solução:** Criadas badges estilizadas exclusivas (`DRIME` e `TURBO`) com cores temáticas próprias, além de otimizações no layout das tabelas de resultados e agrupamento por pasta.
+- **Solução:** Adicionado reconhecimento direto dos domínios do Turbo.cr com resolução resiliente de mídias.
 
 ---
 
-## 5. Sessão de 21/08/2026 - Arquitetura em 5 Camadas do Auto-Updater (GitHub Releases API + Hot Swap) e Ajuste no Scanner de Links
+## 5. Sessão de 21/08/2026 - Arquitetura em 5 Camadas do Auto-Updater (GitHub Releases API + Hot Swap)
 
 ### Alterações e Implementações do Dia
 
 #### 1. Arquitetura de Auto-Atualização em 5 Camadas (`main.js`, `renderer/js/app.js`, `renderer/index.html`, `renderer/css/style.css`)
 - **Solução:** Desenvolvida a arquitetura completa em 5 camadas (Detecção SemVer, UI Changelog Modal, Stream Download, Hot Swap Handover e Padronização de Publicação).
 
-#### 2. Exibição Condicional do Botão "Iniciar Download" (`renderer/js/app.js`)
-- **Solução:** Ajustada a lógica no `app.js` para renderizar o botão "Iniciar Download" exclusivamente após o término do escaneamento com arquivos válidos encontrados.
-
 ---
 
-## 4. Sessão de 20/08/2026 - Correções no Torbox Cloud, Sanitização de Caminhos Windows, Polling de Nuvem e Refinamentos de UI
+## 1. Sessão de 12/08/2026 a 20/08/2026 - Multiprovedores e Fundação
 
-### Alterações e Implementações do Dia
-
-#### 1. Sanitização Rigorosa de Caminhos no Windows (`sanitizePathSegment` em `torbox-scanner.js` e `main.js`)
-- **Solução:** Implementada a função `sanitizePathSegment` que remove quebras de linha (`\n`, `\r`, `\t`) e substitui caracteres não permitidos.
-
-#### 2. Pré-Flight Recursivo de Redirecionamentos HTTP 3xx e Resolução de `numericId` (`main.js`)
-- **Solução:** Pré-flight reformulado para seguir redirecionamentos HTTP 3xx (`301`, `302`, `303`, `307`, `308`) até o servidor CDN final.
-
-#### 3. Injeção de Permalinks e Polling da Nuvem Torbox em Tempo Real (`torbox-scanner.js` e `main.js`)
-- **Solução:** Injeção de permalinks diretos no scanner e monitoramento em tempo real em `resolveTorboxDirectUrl`.
-
----
-
-## 1. Sessão de 12/08/2026 a 19/08/2026 - Multiprovedores e Fundação
-
-- **Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox e URLs Genéricas**: Suporte completo a múltiplos provedores, auto-resume, motor `net.request` e renderização in-place anti-flickering.
+- **Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox e URLs Genéricas**: Suporte completo a múltiplos provedores, auto-resume, motor `net.request`, sanitização no Windows e renderização in-place anti-flickering.
 
 ---
 
 ## Arquivos Criados / Modificados (Acumulado)
 
-- **`drime-scanner.js`** (Modificado/Criado): Extrator nativo e resolver de arquivos/pastas do Drime Cloud.
-- **`main.js`** (Modificado): Roteamento nativo para Drime Cloud e Turbo.cr, handlers IPC e worker HTTP Direct.
-- **`renderer/js/app.js`** (Modificado): Badges visuais `DRIME` e `TURBO`, agrupamento de pastas e atualização da fila.
-- **`renderer/css/style.css`** (Modificado): Estilização das badges e componentes visuais do Drime e Turbo.cr.
-- **`renderer/index.html`** (Modificado): Ajustes de elementos e modais.
-- **`torbox-scanner.js`** (Modificado): Refinamento de chamadas e fallbacks.
+- **`send-scanner.js`** (Criado): Extrator nativo para a família de domínios Send (send.now, send.cm, sendit.cloud, etc.).
+- **`main.js`** (Modificado): Roteamento do scanner Send, suporte a 1fichier e resiliência no worker HTTP Direct.
+- **`renderer/js/app.js`** (Modificado): Badge `SEND`, modais com contador em tempo real e atualização de fila.
+- **`renderer/css/style.css`** (Modificado): Estilização dos novos modais, badges e contadores de links.
+- **`renderer/index.html`** (Modificado): Estrutura renovada dos modais do scanner e torrent.
+- **`torbox-scanner.js`** (Modificado): Ajustes de tratamento de exceções assíncronas.
 - **`review.md`** (Atualizado): Documentação oficial do projeto.

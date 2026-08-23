@@ -565,19 +565,30 @@
                     <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
                   </select>
                 </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Send</span>
+                    <strong>Send (send.now / send.cm)</strong>
+                  </div>
+                  <select id="setting-mode-send" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div class="setting-item">
-              <div class="setting-row-toggle">
-                <div>
-                  <label class="setting-label">Notificações do Sistema</label>
-                  <span class="setting-hint">Emitir um som e balão de aviso do Windows ao finalizar a fila inteira.</span>
+            <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <label class="setting-label" style="margin-bottom: 0;">Notificações do Sistema</label>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-notifications" checked>
+                    <label for="setting-notifications"></label>
+                  </div>
                 </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="setting-notifications" checked>
-                  <span class="toggle-slider"></span>
-                </label>
+                <span class="setting-hint">Emitir um som e balão de aviso do Windows ao finalizar a fila inteira.</span>
               </div>
             </div>
 
@@ -625,6 +636,140 @@
                 <button class="btn btn-outline" id="btn-test-torbox-key" title="Validar chave de API com os servidores do Torbox">Validar Conexão</button>
               </div>
               <div id="torbox-key-status" style="margin-top: 8px; font-size: 13px; display: none;"></div>
+            </div>
+
+            <!-- SWITCHES DE FORÇAMENTO TORBOX POR SERVIÇO -->
+            <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <label class="setting-label" style="margin-bottom: 4px; display: block;">Forçar Resolução via Torbox por Serviço</label>
+              <span class="setting-hint" style="display: block; margin-bottom: 14px;">Ligue o switch para processar o download via servidor Torbox WebDL ou desligue para baixar diretamente fora do ambiente Torbox (modo nativo HTTP Direct).</span>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;">
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(34, 197, 94, 0.18); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Google Drive</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Google Drive</span>
+                      <span class="torbox-switch-sub">drive.google.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-gdrive">
+                    <label for="setting-torbox-service-gdrive"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Bunkr</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Bunkr</span>
+                      <span class="torbox-switch-sub">bunkr.cr / bunkr.site</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-bunkr">
+                    <label for="setting-torbox-service-bunkr"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(6, 182, 212, 0.18); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">MediaFire</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">MediaFire</span>
+                      <span class="torbox-switch-sub">mediafire.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-mediafire">
+                    <label for="setting-torbox-service-mediafire"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(251, 191, 36, 0.18); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">TeraBox</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">TeraBox</span>
+                      <span class="torbox-switch-sub">terabox.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-terabox">
+                    <label for="setting-torbox-service-terabox"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(255, 255, 255, 0.18); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">OneDrive</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Microsoft OneDrive</span>
+                      <span class="torbox-switch-sub">onedrive.live.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-onedrive">
+                    <label for="setting-torbox-service-onedrive"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(167, 139, 250, 0.18); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Torbox</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Torbox (Debrid & Torrents)</span>
+                      <span class="torbox-switch-sub">torbox.app</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-torbox" checked>
+                    <label for="setting-torbox-service-torbox"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Drime Cloud</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Drime Cloud</span>
+                      <span class="torbox-switch-sub">drime.cloud</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-drime">
+                    <label for="setting-torbox-service-drime"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Turbo.cr</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Turbo.cr</span>
+                      <span class="torbox-switch-sub">turbo.cr</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-turbo">
+                    <label for="setting-torbox-service-turbo"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Send</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Send (send.now / send.cm)</span>
+                      <span class="torbox-switch-sub">send.now, send.cm</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-send" checked>
+                    <label for="setting-torbox-service-send"></label>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
