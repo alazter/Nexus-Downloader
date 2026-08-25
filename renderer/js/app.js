@@ -627,7 +627,42 @@ async function loadConfig() {
   });
 
   settingNotifications.checked = config.notificationsEnabled;
+
+  const settingMinimizeToTray = document.getElementById('setting-minimize-to-tray');
+  if (settingMinimizeToTray) {
+    settingMinimizeToTray.checked = !!config.minimizeToTray;
+  }
+
+  const settingShowStartDownloadPopup = document.getElementById('setting-show-start-download-popup');
+  if (settingShowStartDownloadPopup) {
+    settingShowStartDownloadPopup.checked = config.showStartDownloadPopup !== false;
+  }
+
+  const settingEnableMultilinkAudit = document.getElementById('setting-enable-multilink-audit');
+  if (settingEnableMultilinkAudit) {
+    settingEnableMultilinkAudit.checked = config.enableMultilinkAuditAlerts !== false;
+  }
+
+  const serviceMaxObj = config.serviceMaxConcurrent || {};
+  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'drime', 'turbo', 'pixeldrain', 'gofile', 'torbox'].forEach(svc => {
+    const sel = document.getElementById(`setting-service-max-${svc}`);
+    if (sel) {
+      sel.value = (serviceMaxObj[svc] !== undefined ? serviceMaxObj[svc] : 1).toString();
+    }
+  });
 }
+
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'drime', 'turbo', 'pixeldrain', 'gofile', 'torbox'].forEach(svc => {
+  const sel = document.getElementById(`setting-service-max-${svc}`);
+  if (sel) {
+    sel.addEventListener('change', async () => {
+      const config = await window.api.getConfig();
+      const serviceMaxConcurrent = config.serviceMaxConcurrent || {};
+      serviceMaxConcurrent[svc] = parseInt(sel.value, 10) || 1;
+      await window.api.setConfig({ serviceMaxConcurrent });
+    });
+  }
+});
 
 ['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(service => {
   const el = document.getElementById(`setting-mode-${service}`);
@@ -753,6 +788,20 @@ settingNotifications.addEventListener('change', async () => {
   await window.api.setConfig({ notificationsEnabled: checked });
 });
 
+const settingMinimizeToTray = document.getElementById('setting-minimize-to-tray');
+if (settingMinimizeToTray) {
+  settingMinimizeToTray.addEventListener('change', async () => {
+    await window.api.setConfig({ minimizeToTray: settingMinimizeToTray.checked });
+  });
+}
+
+const settingShowStartDownloadPopup = document.getElementById('setting-show-start-download-popup');
+if (settingShowStartDownloadPopup) {
+  settingShowStartDownloadPopup.addEventListener('change', async () => {
+    await window.api.setConfig({ showStartDownloadPopup: settingShowStartDownloadPopup.checked });
+  });
+}
+
 // ==========================================
 // Scanner de Links do Drive
 // ==========================================
@@ -768,6 +817,10 @@ function formatUrlsText(rawText) {
 
 function autoResizeTextarea(el) {
   if (!el) return;
+  if (!el.value || el.value.trim().length === 0) {
+    el.style.height = '44px';
+    return;
+  }
   el.style.height = '44px';
   const newHeight = Math.min(Math.max(el.scrollHeight, 44), 260);
   el.style.height = `${newHeight}px`;
@@ -786,6 +839,15 @@ btnPaste.addEventListener('click', async () => {
 
 if (inputDriveLink) {
   inputDriveLink.addEventListener('input', () => autoResizeTextarea(inputDriveLink));
+  inputDriveLink.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const val = inputDriveLink.value.trim();
+      if (val.length > 0) {
+        e.preventDefault();
+        btnScan.click();
+      }
+    }
+  });
   inputDriveLink.addEventListener('paste', (e) => {
     e.preventDefault();
     const pastedData = (e.clipboardData || window.clipboardData).getData('text');
@@ -822,10 +884,12 @@ btnScan.addEventListener('click', async () => {
   
   scanEmptyState.style.display = 'none';
   if (btnAddSelected) btnAddSelected.style.display = 'none';
-  scannedFiles = [];
 
   try {
-    const files = await window.api.scanLink(url);
+    const res = await window.api.scanLink(url);
+    const files = Array.isArray(res) ? res : (res && res.files ? res.files : []);
+    const summary = res && res.summary ? res.summary : null;
+
     if (!files || files.length === 0) {
       await showCustomAlert('Nenhum arquivo encontrado no link fornecido.', 'Escaneamento Concluído');
       if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
@@ -839,10 +903,17 @@ btnScan.addEventListener('click', async () => {
       }
     });
 
-    if (inputDriveLink) inputDriveLink.value = '';
+    if (inputDriveLink) {
+      inputDriveLink.value = '';
+      autoResizeTextarea(inputDriveLink);
+    }
     renderResults();
+    renderMultilinkAuditSummary(summary);
   } catch (err) {
-    await showCustomAlert('Erro ao escanear link: ' + err.message, 'Erro no Escaneamento');
+    let cleanErrorMsg = (err && err.message ? err.message : 'Erro ao escanear o link.')
+      .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+      .replace(/^Error:\s*/i, '');
+    await showCustomAlert(cleanErrorMsg, 'Aviso no Escaneamento');
     if (scannedFiles.length === 0) scanEmptyState.style.display = 'flex';
     if (btnAddSelected) btnAddSelected.style.display = 'none';
   } finally {
@@ -856,6 +927,9 @@ const btnClearScanned = document.getElementById('btn-clear-scanned');
 if (btnClearScanned) {
   btnClearScanned.addEventListener('click', () => {
     scannedFiles = [];
+    accumulatedMultilinkSummary = null;
+    lastMultilinkSummary = null;
+    if (scanAuditSummaryBar) scanAuditSummaryBar.style.display = 'none';
     if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
     if (resultsList) resultsList.innerHTML = '';
     resultsContainer.style.display = 'none';
@@ -1074,17 +1148,23 @@ function renderResults() {
       card.appendChild(header);
       card.appendChild(body);
 
-      // Eventos
-      header.addEventListener('click', (e) => {
-        if (e.target === groupCb || e.target.type === 'checkbox') return;
-        card.classList.toggle('collapsed');
+      // Eventos do Folder Group Card
+      groupCb.addEventListener('click', (e) => {
+        e.stopPropagation();
       });
 
       groupCb.addEventListener('change', () => {
         const itemCbs = tbody.querySelectorAll('.file-checkbox');
-        itemCbs.forEach(c => c.checked = groupCb.checked);
+        itemCbs.forEach(c => {
+          c.checked = groupCb.checked;
+        });
         groupCb.indeterminate = false;
         updateSelectionSummary();
+      });
+
+      header.addEventListener('click', (e) => {
+        if (e.target === groupCb || e.target.type === 'checkbox' || (e.target.classList && e.target.classList.contains('folder-group-checkbox'))) return;
+        card.classList.toggle('collapsed');
       });
 
       resultsGroupsContainer.appendChild(card);
@@ -1165,17 +1245,12 @@ function updateSelectionSummary() {
     }
   });
 
-  if (selectedCount === 0 && scannedFiles && scannedFiles.length > 0) {
-    selectedCount = scannedFiles.length;
-    selectedSize = scannedFiles.reduce((acc, f) => acc + (f.size || 0), 0);
-  }
-
   if (selectedCountText) {
     selectedCountText.textContent = `${selectedCount} arquivos selecionados (${formatBytes(selectedSize)})`;
   }
 
   if (btnAddSelected) {
-    btnAddSelected.disabled = false;
+    btnAddSelected.disabled = (selectedCount === 0);
     if (scannedFiles && scannedFiles.length > 0) {
       btnAddSelected.style.display = 'inline-flex';
     }
@@ -1192,6 +1267,17 @@ function updateSelectionSummary() {
       selectAllFiles.checked = false;
       selectAllFiles.indeterminate = true;
     }
+  }
+
+  if (resultsGroupsContainer) {
+    const cards = resultsGroupsContainer.querySelectorAll('.folder-group-card');
+    cards.forEach(card => {
+      const gCb = card.querySelector('.folder-group-checkbox');
+      const tbody = card.querySelector('tbody');
+      if (gCb && tbody) {
+        updateGroupCheckboxState(gCb, tbody);
+      }
+    });
   }
 }
 
@@ -1217,7 +1303,13 @@ btnAddSelected.addEventListener('click', async () => {
 
   if (selectedFiles.length > 0) {
     try {
+      const countAdded = selectedFiles.length;
       const queueLength = await window.api.addToQueue(selectedFiles);
+      const appConfig = await window.api.getConfig();
+      if (appConfig.showStartDownloadPopup !== false && appConfig.enableMultilinkAuditAlerts !== false) {
+        await showCustomAlert(`Todos os ${countAdded} arquivo(s) selecionado(s) foram inseridos na Fila de Downloads sem erros.`, 'Fila de Downloads');
+      }
+      switchQueueSubtab('active');
       switchTab('queue');
       
       // Reset scanner
@@ -1228,6 +1320,9 @@ btnAddSelected.addEventListener('click', async () => {
       if (resultsList) resultsList.innerHTML = '';
       if (resultsGroupsContainer) resultsGroupsContainer.innerHTML = '';
       scannedFiles = [];
+      accumulatedMultilinkSummary = null;
+      lastMultilinkSummary = null;
+      if (scanAuditSummaryBar) scanAuditSummaryBar.style.display = 'none';
     } catch (err) {
       console.error('[Scanner UI] Erro ao adicionar arquivos à fila:', err);
       await showCustomAlert('Erro ao adicionar arquivos à fila: ' + err.message, 'Erro na Fila');
@@ -1299,14 +1394,16 @@ function detectTorboxHoster(file) {
     (file.originalLink || '') + ' ' + 
     (file.downloadUrl || '') + ' ' + 
     (file.directUrl || '') + ' ' + 
+    (file.url || '') + ' ' +
     (file.folderName || '') + ' ' + 
     (file.name || '')
   ).toLowerCase();
   
-  if (str.includes('pixeldrain') || str.includes('pixeldrain.com')) return 'Pixeldrain';
-  if (str.includes('1fichier') || str.includes('1fichier.com')) return '1fichier';
+  if (str.includes('vik1ngfile') || str.includes('vikingfile')) return 'Vik1ngFile';
+  if (str.includes('pixeldrain') || str.includes('pixeldrain.com')) return 'PixelDrain';
+  if (str.includes('1fichier') || str.includes('1fichier.com')) return '1Fichier';
   if (str.includes('rapidgator') || str.includes('rapidgator.net') || str.includes('rg.to')) return 'Rapidgator';
-  if (str.includes('mega.nz') || str.includes('mega.co.nz')) return 'Mega';
+  if (str.includes('mega.nz') || str.includes('mega.co.nz')) return 'MEGA';
   if (str.includes('mediafire') || str.includes('mediafire.com')) return 'MediaFire';
   if (str.includes('ddownload') || str.includes('ddownload.com')) return 'DDownload';
   if (str.includes('katfile') || str.includes('katfile.com') || str.includes('katfile.cloud')) return 'KatFile';
@@ -1318,8 +1415,8 @@ function detectTorboxHoster(file) {
   if (str.includes('sendspace') || str.includes('sendspace.com')) return 'SendSpace';
   if (str.includes('megaup') || str.includes('megaup.net')) return 'MegaUp';
   if (str.includes('drop.download') || str.includes('dropapk')) return 'DropDownload';
-  if (str.includes('terabox') || str.includes('1024tera') || str.includes('gibibox')) return 'TeraBox';
-  if (str.includes('send.cm') || str.includes('send.now') || str.includes('sendit.cloud') || str.includes('userscloud') || str.includes('tusfiles')) return 'Send';
+  if (str.includes('terabox') || str.includes('1024tera') || str.includes('gibibox') || str.includes('freeterabox')) return 'TeraBox';
+  if (str.includes('send.cm') || str.includes('send.now') || str.includes('sendit.cloud') || str.includes('userscloud') || str.includes('tusfiles') || str.includes('usersfiles')) return 'Send';
   if (str.includes('swisstransfer')) return 'SwissTransfer';
   if (str.includes('nexusmods')) return 'NexusMods';
   if (str.includes('mixdrop')) return 'Mixdrop';
@@ -1330,8 +1427,27 @@ function detectTorboxHoster(file) {
   if (str.includes('filespace')) return 'FileSpace';
   if (str.includes('hubcloud')) return 'HubCloud';
   if (str.includes('drive.google') || str.includes('googledrive')) return 'Google Drive';
-  if (str.includes('bunkr')) return 'Bunkr';
+  if (str.includes('bunkr') || str.includes('balbums')) return 'Bunkr';
   if (str.includes('onedrive') || str.includes('sharepoint')) return 'OneDrive';
+  if (str.includes('workupload')) return 'Workupload';
+  if (str.includes('krakenfiles')) return 'Krakenfiles';
+  if (str.includes('clicknupload')) return 'ClicknUpload';
+  if (str.includes('streamtape')) return 'Streamtape';
+  if (str.includes('filedot')) return 'Filedot';
+  if (str.includes('filemoon')) return 'Filemoon';
+  if (str.includes('doodstream') || str.includes('dood.')) return 'DoodStream';
+  if (str.includes('voe.sx')) return 'Voe';
+  if (str.includes('downmedialink')) return 'DownMediaLink';
+  if (str.includes('fshare.vn')) return 'Fshare';
+  if (str.includes('wupfile')) return 'Wupfile';
+  if (str.includes('userload')) return 'Userload';
+  if (str.includes('bowfile')) return 'Bowfile';
+  if (str.includes('fastclick')) return 'FastClick';
+  if (str.includes('uploadgig')) return 'Uploadgig';
+  if (str.includes('hexupload')) return 'Hexupload';
+  if (str.includes('filerio')) return 'Filerio';
+  if (str.includes('drime.cloud')) return 'Drime Cloud';
+  if (str.includes('turbo.cr') || str.includes('turbocdn')) return 'Turbo.cr';
   if (str.includes('e-hentai')) return 'E-Hentai';
   if (str.includes('eporner')) return 'EPorner';
   if (str.includes('fansly')) return 'Fansly';
@@ -1346,7 +1462,24 @@ function detectTorboxHoster(file) {
   if (str.includes('transfernow')) return 'TransferNow';
   if (str.includes('t.me') || str.includes('telegram')) return 'Telegram';
   if (str.includes('discord')) return 'Discord';
-  
+
+  // Fallback de extração dinâmica de domínio para QUALQUER site/hoster não catalogado
+  const candidateUrls = [file.sourceUrl, file.originalUrl, file.originalLink, file.downloadUrl, file.directUrl, file.url, file.id];
+  for (const rawUrl of candidateUrls) {
+    if (!rawUrl || typeof rawUrl !== 'string') continue;
+    try {
+      const uStr = rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl;
+      const parsed = new URL(uStr);
+      const domainParts = parsed.hostname.replace(/^www\./i, '').split('.');
+      if (domainParts.length >= 2) {
+        const hName = domainParts[domainParts.length - 2];
+        if (hName && hName.length > 2 && hName !== 'tb-cdn' && hName !== 'torbox' && hName !== 'localhost' && hName !== '127') {
+          return hName.charAt(0).toUpperCase() + hName.slice(1);
+        }
+      }
+    } catch (e) {}
+  }
+
   return null;
 }
 
@@ -1367,6 +1500,9 @@ function getServiceTag(file) {
   const service = (file && file.service) || '';
   const url = (file && (file.downloadUrl || file.directUrl || file.sourceUrl || file.originalUrl || '')) || '';
 
+  if (id.startsWith('pixeldrain_') || service === 'PixelDrain' || url.includes('pixeldrain.com')) {
+    return { text: 'PixelDrain', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+  }
   if (id.startsWith('drime_') || service === 'Drime Cloud' || url.includes('drime.cloud')) {
     return { text: 'Drime Cloud', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
   }
@@ -1478,14 +1614,14 @@ function renderQueue(queue) {
       );
       if (matchingCloudItem && !matchingCloudItem.isFinished && matchingCloudItem.progress !== undefined && matchingCloudItem.progress < 100) {
         active.cloudProgress = matchingCloudItem.progress;
-        active.cloudMessage = `☁️ Torbox baixando na nuvem (${matchingCloudItem.progress}%)...`;
+        active.cloudMessage = `Torbox baixando no servidor (${matchingCloudItem.progress}%)...`;
       }
     }
 
     const isTorboxActive = active && (active.id.startsWith('torbox_') || active.torboxType || active.torboxId);
     if (isTorboxActive && (active.downloadedBytes === 0 || active.downloadedBytes === undefined) && (active.cloudProgress === undefined && !active.cloudMessage)) {
       active.cloudProgress = active.progress || 0;
-      active.cloudMessage = `Torbox baixando na nuvem (${active.cloudProgress}%)...`;
+      active.cloudMessage = `Torbox baixando no servidor (${active.cloudProgress}%)...`;
     }
 
     const activeBadgeEl = document.getElementById('active-badge-element');
@@ -1495,21 +1631,21 @@ function renderQueue(queue) {
       const cProg = active.cloudProgress !== undefined ? active.cloudProgress : (active.progress || 0);
       
       if (activeBadgeEl) {
-        activeBadgeEl.textContent = '☁️ AGUARDANDO TORBOX';
+        activeBadgeEl.innerHTML = '<img src="assets/torbox_box_logo.png" width="14" height="14" style="vertical-align: middle; margin-right: 4px;"> AGUARDANDO TORBOX';
         activeBadgeEl.classList.add('cloud-waiting');
       }
 
       if (activeCloudNotice) {
         activeCloudNotice.style.display = 'flex';
         activeCloudNotice.innerHTML = `
-          <span class="notice-icon">☁️</span>
+          <span class="notice-icon" style="display: flex; align-items: center;"><img src="assets/torbox_box_logo.png" width="22" height="22" style="filter: drop-shadow(0 0 6px rgba(167,139,250,0.6));"></span>
           <div class="notice-body">
-            <div class="notice-title">Aguardando download na nuvem do Torbox (${cProg}%)</div>
+            <div class="notice-title">Aguardando download nos servidores do Torbox (${cProg}%)</div>
             <div class="notice-desc">O arquivo está sendo baixado no servidor Torbox. O download local no Nexus iniciará automaticamente assim que o Torbox finalizar.</div>
           </div>
         `;
       }
-      activeProgressText.textContent = `☁️ Nuvem ${cProg}%`;
+      activeProgressText.innerHTML = `<img src="assets/torbox_box_logo.png" width="14" height="14" style="vertical-align: middle; margin-right: 4px;"> Torbox ${cProg}%`;
       activeProgressBar.style.width = `${cProg}%`;
       activeSpeedText.textContent = 'Servidor Torbox Processando';
       activeEtaText.textContent = 'Aguardando Conclusão';
@@ -1548,13 +1684,14 @@ function renderQueue(queue) {
     queueTotalCount.textContent = queue.length.toString();
   }
 
+  const emptyStateElem = document.getElementById('queue-empty-state');
   if (queue.length === 0) {
     queueItemsList.innerHTML = '';
-    queueEmptyState.style.display = 'block';
+    if (emptyStateElem) emptyStateElem.style.display = 'flex';
     return;
   }
 
-  queueEmptyState.style.display = 'none';
+  if (emptyStateElem) emptyStateElem.style.display = 'none';
 
   // Agrupa arquivos por Serviço + Hoster e folderName
   const folderMap = new Map();
@@ -1569,7 +1706,15 @@ function renderQueue(queue) {
     folderMap.get(groupKey).items.push(item);
   });
 
-  // Garante a existência dos dois containers de seção na fila
+  // Helper para identificar se um item está pendente/processando na nuvem Torbox
+  const isTorboxPendingItem = (item) => {
+    if (!item || item.status === 'completed') return false;
+    if (item.cloudMessage || (item.cloudProgress !== undefined && item.cloudProgress < 100)) return true;
+    if (item.torboxType || (item.id && item.id.startsWith('torbox_')) || item.torboxId) return true;
+    return false;
+  };
+
+  // Garante a existência dos três containers de seção na fila
   let activeSection = queueItemsList.querySelector('#queue-active-section');
   if (!activeSection) {
     activeSection = document.createElement('div');
@@ -1584,6 +1729,22 @@ function renderQueue(queue) {
       <div class="queue-section-body" id="queue-active-body"></div>
     `;
     queueItemsList.appendChild(activeSection);
+  }
+
+  let torboxSection = queueItemsList.querySelector('#queue-torbox-section');
+  if (!torboxSection) {
+    torboxSection = document.createElement('div');
+    torboxSection.id = 'queue-torbox-section';
+    torboxSection.innerHTML = `
+      <div class="queue-section-header" style="border-left-color: #a78bfa;">
+        <div class="queue-section-title">
+          <span><img src="assets/torbox_box_logo.png" width="18" height="18" style="vertical-align: middle; margin-right: 6px; filter: drop-shadow(0 0 4px rgba(167,139,250,0.5));"> Aguardando / Processando no Torbox</span>
+          <span class="queue-section-count" id="queue-torbox-count" style="background: rgba(167, 139, 250, 0.2); color: #a78bfa;">0</span>
+        </div>
+      </div>
+      <div class="queue-section-body" id="queue-torbox-body"></div>
+    `;
+    queueItemsList.appendChild(torboxSection);
   }
 
   let completedSection = queueItemsList.querySelector('#queue-completed-section');
@@ -1614,18 +1775,28 @@ function renderQueue(queue) {
   }
 
   const activeBody = activeSection.querySelector('#queue-active-body');
+  const torboxBody = torboxSection.querySelector('#queue-torbox-body');
   const completedBody = completedSection.querySelector('#queue-completed-body');
 
-  // Separa diretórios entre ativos e concluídos
+  // Separa diretórios entre ativos, aguardando Torbox e concluídos
   const activeEntries = [];
+  const torboxEntries = [];
   const completedEntries = [];
 
   folderMap.forEach(({ serviceName, folderName, items: folderItems }, groupKey) => {
-    const isAllCompleted = folderItems.every(f => f.status === 'completed');
-    if (isAllCompleted) {
-      completedEntries.push([groupKey, folderName, folderItems]);
-    } else {
-      activeEntries.push([groupKey, folderName, folderItems]);
+    const completedItems = folderItems.filter(f => f.status === 'completed');
+    if (completedItems.length > 0) {
+      completedEntries.push([groupKey, folderName, completedItems]);
+    }
+
+    const torboxItems = folderItems.filter(f => f.status !== 'completed' && isTorboxPendingItem(f));
+    if (torboxItems.length > 0) {
+      torboxEntries.push([groupKey, folderName, torboxItems]);
+    }
+
+    const activeItems = folderItems.filter(f => f.status !== 'completed' && !isTorboxPendingItem(f));
+    if (activeItems.length > 0) {
+      activeEntries.push([groupKey, folderName, activeItems]);
     }
   });
 
@@ -1636,23 +1807,100 @@ function renderQueue(queue) {
     return a[1].localeCompare(b[1]);
   });
 
-  completedEntries.sort((a, b) => a[1].localeCompare(b[1]));
+  torboxEntries.sort((a, b) => a[1].localeCompare(b[1]));
 
-  // Atualiza visibilidade e contadores dos cabeçalhos de seção
-  if (activeEntries.length > 0) {
-    activeSection.style.display = 'block';
+  // Ordena itens internos e pastas da aba Concluídos do mais recente ao mais antigo
+  completedEntries.forEach(entry => {
+    entry[2].sort((a, b) => (b.completedAt || b.timestamp || 0) - (a.completedAt || a.timestamp || 0));
+  });
+
+  completedEntries.sort((a, b) => {
+    const maxA = Math.max(...a[2].map(item => item.completedAt || item.timestamp || 0), 0);
+    const maxB = Math.max(...b[2].map(item => item.completedAt || item.timestamp || 0), 0);
+    if (maxA !== maxB) return maxB - maxA;
+    return a[1].localeCompare(b[1]);
+  });
+
+  lastQueueData = queue;
+
+  // Atualiza Badges das 3 Sub-Abas com acendimento dinâmico quando count >= 1
+  const activeItemsCount = queue.filter(item => item.status !== 'completed' && !isTorboxPendingItem(item)).length;
+  const torboxItemsCount = queue.filter(item => item.status !== 'completed' && isTorboxPendingItem(item)).length;
+  const completedItemsCount = queue.filter(item => item.status === 'completed').length;
+
+  const badgeSubtabActive = document.getElementById('badge-subtab-active');
+  const badgeSubtabTorbox = document.getElementById('badge-subtab-torbox');
+  const badgeSubtabCompleted = document.getElementById('badge-subtab-completed');
+
+  const updateSubtabBadgeStyle = (badgeEl, count, activeBg, activeBorder, activeShadow) => {
+    if (!badgeEl) return;
+    badgeEl.textContent = count.toString();
+    if (count > 0) {
+      badgeEl.style.background = activeBg;
+      badgeEl.style.color = '#ffffff';
+      badgeEl.style.border = activeBorder;
+      badgeEl.style.boxShadow = activeShadow;
+      badgeEl.style.opacity = '1';
+    } else {
+      badgeEl.style.background = 'rgba(255, 255, 255, 0.08)';
+      badgeEl.style.color = '#94a3b8';
+      badgeEl.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+      badgeEl.style.boxShadow = 'none';
+      badgeEl.style.opacity = '0.7';
+    }
+  };
+
+  updateSubtabBadgeStyle(badgeSubtabActive, activeItemsCount, '#3b82f6', '1px solid rgba(59, 130, 246, 0.6)', '0 0 8px rgba(59, 130, 246, 0.5)');
+  updateSubtabBadgeStyle(badgeSubtabTorbox, torboxItemsCount, 'linear-gradient(135deg, #f59e0b, #d97706)', '1px solid rgba(245, 158, 11, 0.6)', '0 0 10px rgba(245, 158, 11, 0.5)');
+  updateSubtabBadgeStyle(badgeSubtabCompleted, completedItemsCount, '#10b981', '1px solid rgba(16, 185, 129, 0.6)', '0 0 8px rgba(16, 185, 129, 0.4)');
+
+  // Controla visibilidade das seções baseando-se na sub-aba ativa (currentQueueSubtab)
+  const subtabEmptyState = document.getElementById('queue-empty-state');
+  const queueEmptyTitle = document.getElementById('queue-empty-title');
+  const queueEmptyDesc = document.getElementById('queue-empty-desc');
+
+  if (currentQueueSubtab === 'active') {
+    activeSection.style.display = activeEntries.length > 0 ? 'block' : 'none';
+    torboxSection.style.display = 'none';
+    completedSection.style.display = 'none';
     const activeCountSpan = activeSection.querySelector('#queue-active-count');
     if (activeCountSpan) activeCountSpan.textContent = activeEntries.length.toString();
+
+    if (activeEntries.length === 0) {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'flex';
+      if (queueEmptyTitle) queueEmptyTitle.textContent = 'Nenhum download em andamento';
+      if (queueEmptyDesc) queueEmptyDesc.textContent = 'Adicione links de arquivos ou álbuns para iniciar o download.';
+    } else {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'none';
+    }
+  } else if (currentQueueSubtab === 'torbox') {
+    activeSection.style.display = 'none';
+    torboxSection.style.display = torboxEntries.length > 0 ? 'block' : 'none';
+    completedSection.style.display = 'none';
+    const torboxCountSpan = torboxSection.querySelector('#queue-torbox-count');
+    if (torboxCountSpan) torboxCountSpan.textContent = torboxEntries.length.toString();
+
+    if (torboxEntries.length === 0) {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'flex';
+      if (queueEmptyTitle) queueEmptyTitle.textContent = 'Nenhum download aguardando no Torbox';
+      if (queueEmptyDesc) queueEmptyDesc.textContent = 'Os arquivos em processamento nos servidores do Torbox aparecerão nesta aba.';
+    } else {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'none';
+    }
   } else {
     activeSection.style.display = 'none';
-  }
-
-  if (completedEntries.length > 0) {
-    completedSection.style.display = 'block';
+    torboxSection.style.display = 'none';
+    completedSection.style.display = completedEntries.length > 0 ? 'block' : 'none';
     const completedCountSpan = completedSection.querySelector('#queue-completed-count');
     if (completedCountSpan) completedCountSpan.textContent = completedEntries.length.toString();
-  } else {
-    completedSection.style.display = 'none';
+
+    if (completedEntries.length > 0) {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'none';
+    } else {
+      if (subtabEmptyState) subtabEmptyState.style.display = 'flex';
+      if (queueEmptyTitle) queueEmptyTitle.textContent = 'Nenhum download concluído ainda';
+      if (queueEmptyDesc) queueEmptyDesc.textContent = 'Os arquivos finalizados com sucesso aparecerão nesta aba.';
+    }
   }
 
   // Função interna auxiliar para renderizar os cartões em cada container de seção
@@ -1726,6 +1974,12 @@ function renderQueue(queue) {
         badgeGroup.innerHTML = `
           <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
           <span class="queue-folder-percent">${folderPercent}%</span>
+          <button class="btn-icon btn-folder-copy-link" data-group-key="${groupKey}" title="Copiar link original do álbum" style="margin-left: 6px; margin-right: 2px; padding: 4px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #60a5fa; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
+          <button class="btn-icon btn-folder-open-dir" data-group-key="${groupKey}" title="Mostrar na pasta de downloads" style="margin-right: 6px; padding: 4px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          </button>
           <svg class="queue-folder-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -1762,6 +2016,36 @@ function renderQueue(queue) {
         folderCard.appendChild(folderItemsContainer);
       }
 
+      const btnFolderCopyLink = folderCard.querySelector('.btn-folder-copy-link');
+      if (btnFolderCopyLink) {
+        btnFolderCopyLink.onclick = (e) => {
+          e.stopPropagation();
+          const sampleFile = folderItems[0];
+          const rawUrl = sampleFile ? (sampleFile.sourceUrl || sampleFile.originUrl || sampleFile.albumUrl || sampleFile.url || sampleFile.directUrl || '') : '';
+          if (rawUrl) {
+            navigator.clipboard.writeText(rawUrl).then(() => {
+              const origTitle = btnFolderCopyLink.title;
+              btnFolderCopyLink.title = '✓ Link do álbum copiado!';
+              btnFolderCopyLink.style.color = '#10b981';
+              setTimeout(() => {
+                btnFolderCopyLink.title = origTitle;
+                btnFolderCopyLink.style.color = '#60a5fa';
+              }, 2000);
+            });
+          }
+        };
+      }
+
+      const btnFolderOpenDir = folderCard.querySelector('.btn-folder-open-dir');
+      if (btnFolderOpenDir) {
+        btnFolderOpenDir.onclick = (e) => {
+          e.stopPropagation();
+          const sampleFile = folderItems[0];
+          const pathTarget = sampleFile ? (sampleFile.relativePath || sampleFile.folderName || sampleFile.name) : folderName;
+          window.api.openDownloadsFolder(pathTarget);
+        };
+      }
+
       // Atualiza listener e estado da caixa de seleção do cabeçalho da pasta
       const folderChk = folderCard.querySelector('.queue-folder-checkbox');
       if (folderChk) {
@@ -1794,7 +2078,7 @@ function renderQueue(queue) {
         const isTb = f && (f.id.startsWith('torbox_') || f.torboxType || f.torboxId);
         if (isTb && f.status === 'downloading' && (f.downloadedBytes === 0 || f.downloadedBytes === undefined)) {
           if (f.cloudProgress === undefined) f.cloudProgress = f.progress || 0;
-          if (!f.cloudMessage) f.cloudMessage = `☁️ Torbox baixando na nuvem (${f.cloudProgress}%)...`;
+          if (!f.cloudMessage) f.cloudMessage = `Torbox baixando no servidor (${f.cloudProgress}%)...`;
         }
       });
 
@@ -1802,7 +2086,7 @@ function renderQueue(queue) {
       if (cloudDownloadingItem) {
         const cProg = cloudDownloadingItem.cloudProgress !== undefined ? cloudDownloadingItem.cloudProgress : (cloudDownloadingItem.progress || 0);
         if (badgeSpan) {
-          badgeSpan.textContent = `☁️ Nuvem Torbox (${cProg}%) • Aguardando término no servidor`;
+          badgeSpan.innerHTML = `<img src="assets/torbox_box_logo.png" width="14" height="14" style="vertical-align: middle; margin-right: 4px;"> Torbox (${cProg}%) • Aguardando término no servidor`;
           badgeSpan.style.background = 'rgba(245, 158, 11, 0.18)';
           badgeSpan.style.color = '#fbbf24';
           badgeSpan.style.border = '1px solid rgba(245, 158, 11, 0.5)';
@@ -1855,7 +2139,7 @@ function renderQueue(queue) {
           const isTbItem = item && (item.id.startsWith('torbox_') || item.torboxType || item.torboxId);
           if (item.cloudMessage || item.cloudProgress !== undefined || (isTbItem && (item.downloadedBytes === 0 || item.downloadedBytes === undefined))) {
             const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
-            statusText = `☁️ Torbox baixando na nuvem (${cProg}%)... Aguardando término no servidor para iniciar local`;
+            statusText = `Torbox baixando no servidor (${cProg}%)... Aguardando término para iniciar local`;
             statusClass = 'status-downloading';
             showProgress = true;
           } else {
@@ -1900,6 +2184,9 @@ function renderQueue(queue) {
               ` : ''}
             </div>
             <div class="queue-item-actions">
+              <button class="btn-icon btn-item-copy-link" data-id="${item.id}" title="Copiar link original do download">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
               ${item.status === 'downloading' ? `
                 <button class="btn-icon btn-item-pause" data-id="${item.id}" title="Pausar download">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
@@ -1931,6 +2218,25 @@ function renderQueue(queue) {
           };
         }
 
+        const btnCopyLinkItem = itemRow.querySelector('.btn-item-copy-link');
+        if (btnCopyLinkItem) {
+          btnCopyLinkItem.onclick = (e) => {
+            e.stopPropagation();
+            const rawUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.url || item.directUrl || '';
+            if (rawUrl) {
+              navigator.clipboard.writeText(rawUrl).then(() => {
+                const origTitle = btnCopyLinkItem.title;
+                btnCopyLinkItem.title = '✓ Link copiado!';
+                btnCopyLinkItem.style.color = '#10b981';
+                setTimeout(() => {
+                  btnCopyLinkItem.title = origTitle;
+                  btnCopyLinkItem.style.color = '';
+                }, 2000);
+              });
+            }
+          };
+        }
+
         const btnPause = itemRow.querySelector('.btn-item-pause');
         if (btnPause) btnPause.onclick = (e) => { e.stopPropagation(); window.api.pauseDownload(item.id); };
 
@@ -1956,6 +2262,7 @@ function renderQueue(queue) {
   };
 
   renderEntriesToContainer(activeEntries, activeBody);
+  renderEntriesToContainer(torboxEntries, torboxBody);
   renderEntriesToContainer(completedEntries, completedBody);
 }
 
@@ -2074,7 +2381,7 @@ function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
     let label = getStatusLabel(item.status, hasActiveDownloading);
     if (item.cloudMessage || item.cloudProgress !== undefined) {
       const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
-      label = `☁️ Nuvem (${cProg}%)`;
+      label = `Torbox (${cProg}%)`;
     }
     if (spanStatus.textContent !== label) {
       spanStatus.textContent = label;
@@ -2231,7 +2538,7 @@ function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
     let label = getStatusLabel(item.status, hasActiveDownloading);
     if (item.cloudMessage || item.cloudProgress !== undefined) {
       const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
-      label = `☁️ Nuvem (${cProg}%)`;
+      label = `Torbox (${cProg}%)`;
     }
     if (spanStatus.textContent !== label) {
       spanStatus.textContent = label;
@@ -2310,6 +2617,45 @@ function updateQueueItemActions(divActions, item) {
     divActions.appendChild(btnPause);
   }
 
+  // Botão Copiar Link Original e Botão Abrir no Navegador
+  const originalUrlToCopy = item.originalUrl || item.sourceUrl || item.bunkrPageUrl || item.url || '';
+  if (originalUrlToCopy) {
+    const btnOpenBrowser = document.createElement('button');
+    btnOpenBrowser.className = 'btn-action';
+    btnOpenBrowser.innerHTML = `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+      </svg>
+    `;
+    btnOpenBrowser.title = 'Abrir Página do Arquivo no Navegador';
+    btnOpenBrowser.onclick = (e) => {
+      e.stopPropagation();
+      window.api.openExternalUrl(originalUrlToCopy);
+    };
+    divActions.appendChild(btnOpenBrowser);
+
+    const btnCopyLink = document.createElement('button');
+    btnCopyLink.className = 'btn-action';
+    btnCopyLink.innerHTML = `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    `;
+    btnCopyLink.title = 'Copiar Link Original';
+    btnCopyLink.onclick = (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(originalUrlToCopy).then(() => {
+        showCustomAlert(`Link original copiado:\n${originalUrlToCopy}`, 'Link Copiado');
+      }).catch(err => {
+        console.error('Erro ao copiar link:', err);
+      });
+    };
+    divActions.appendChild(btnCopyLink);
+  }
+
   const btnCancel = document.createElement('button');
   btnCancel.className = 'btn-action btn-action-danger';
   btnCancel.innerHTML = `
@@ -2339,7 +2685,48 @@ function getStatusLabel(status) {
   }
 }
 
-// Botoes globais da fila
+// Gerenciamento de Sub-Abas da Fila ("Em Andamento" vs "Concluídos")
+let currentQueueSubtab = 'active';
+let lastQueueData = [];
+
+const subtabActiveBtn = document.getElementById('subtab-active');
+const subtabTorboxBtn = document.getElementById('subtab-torbox');
+const subtabCompletedBtn = document.getElementById('subtab-completed');
+
+function switchQueueSubtab(targetSubtab) {
+  currentQueueSubtab = targetSubtab;
+
+  const buttons = [
+    { id: 'active', btn: subtabActiveBtn },
+    { id: 'torbox', btn: subtabTorboxBtn },
+    { id: 'completed', btn: subtabCompletedBtn }
+  ];
+
+  buttons.forEach(({ id, btn }) => {
+    if (!btn) return;
+    if (targetSubtab === id) {
+      btn.classList.add('active');
+      btn.style.background = 'rgba(59, 130, 246, 0.2)';
+      btn.style.borderColor = 'var(--primary-color, #3b82f6)';
+      btn.style.color = '#fff';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = 'transparent';
+      btn.style.borderColor = 'rgba(255,255,255,0.1)';
+      btn.style.color = 'var(--text-muted, #94a3b8)';
+    }
+  });
+
+  if (lastQueueData) {
+    renderQueue(lastQueueData);
+  }
+}
+
+if (subtabActiveBtn) subtabActiveBtn.addEventListener('click', () => switchQueueSubtab('active'));
+if (subtabTorboxBtn) subtabTorboxBtn.addEventListener('click', () => switchQueueSubtab('torbox'));
+if (subtabCompletedBtn) subtabCompletedBtn.addEventListener('click', () => switchQueueSubtab('completed'));
+
+// Botoes globais da fila (Ações restritas à aba atualmente selecionada)
 btnOpenDir.addEventListener('click', () => {
   window.api.openDownloadsFolder();
 });
@@ -2350,47 +2737,71 @@ btnClearCompleted.addEventListener('click', () => {
 
 btnClearAll.addEventListener('click', async () => {
   if (selectedQueueItemIds.size > 0) {
-    const count = selectedQueueItemIds.size;
-    if (await showCustomConfirm(`Deseja remover os ${count} item(ns) selecionado(s) da fila de downloads?`, 'Remover Selecionados')) {
-      await window.api.cancelDownloads(Array.from(selectedQueueItemIds));
+    const selectedIds = Array.from(selectedQueueItemIds);
+    const count = selectedIds.length;
+    if (await showCustomConfirm(`Deseja remover os ${count} item(ns) selecionado(s) da fila de downloads? (Os arquivos incompletos e pastas serão limpos do disco)`, 'Remover Selecionados')) {
+      await window.api.cancelDownloads(selectedIds);
       selectedQueueItemIds.clear();
     }
   } else {
-    if (await showCustomConfirm('Deseja realmente limpar toda a fila de downloads? Todos os processos ativos serão cancelados.', 'Limpar Fila')) {
-      selectedQueueItemIds.clear();
-      window.api.clearQueue();
+    if (currentQueueSubtab === 'active') {
+      const activeOrIncompleteItems = (lastQueueData || []).filter(item => item.status !== 'completed');
+      if (activeOrIncompleteItems.length === 0) {
+        showCustomAlert('Não há downloads em andamento para limpar.', 'Fila Vazia');
+        return;
+      }
+      if (await showCustomConfirm('Deseja limpar todos os downloads em andamento da fila? Todos os arquivos incompletos e pastas serão removidos do disco.', 'Limpar Em Andamento')) {
+        const incompleteIds = activeOrIncompleteItems.map(i => i.id);
+        await window.api.cancelDownloads(incompleteIds);
+        selectedQueueItemIds.clear();
+      }
+    } else {
+      const completedItems = (lastQueueData || []).filter(item => item.status === 'completed');
+      if (completedItems.length === 0) {
+        showCustomAlert('Não há downloads concluídos para limpar.', 'Fila Vazia');
+        return;
+      }
+      if (await showCustomConfirm('Deseja limpar a lista de downloads concluídos?', 'Limpar Concluídos')) {
+        window.api.clearCompleted();
+      }
     }
   }
 });
 
 if (btnResumeAll) {
   btnResumeAll.addEventListener('click', async () => {
-    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
-      for (const id of selectedQueueItemIds) {
-        await window.api.resumeDownload(id);
+    if (currentQueueSubtab === 'active') {
+      if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+        for (const id of selectedQueueItemIds) {
+          await window.api.resumeDownload(id);
+        }
+      } else {
+        await window.api.resumeAllDownloads();
       }
-    } else {
-      await window.api.resumeAllDownloads();
     }
   });
 }
 
 if (btnPauseAll) {
   btnPauseAll.addEventListener('click', async () => {
-    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
-      for (const id of selectedQueueItemIds) {
-        await window.api.pauseDownload(id);
+    if (currentQueueSubtab === 'active') {
+      if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+        for (const id of selectedQueueItemIds) {
+          await window.api.pauseDownload(id);
+        }
+      } else {
+        await window.api.pauseAllDownloads();
       }
-    } else {
-      await window.api.pauseAllDownloads();
     }
   });
 }
 
 if (btnRestartAll) {
   btnRestartAll.addEventListener('click', async () => {
-    if (await showCustomConfirm('Deseja reiniciar todos os downloads pendentes ou com falhas?', 'Reiniciar Pendentes')) {
-      await window.api.restartQueue();
+    if (currentQueueSubtab === 'active') {
+      if (await showCustomConfirm('Reiniciar o download de todos os arquivos da fila em andamento?', 'Reiniciar Fila')) {
+        await window.api.restartQueue();
+      }
     }
   });
 }
@@ -2415,7 +2826,7 @@ function saveSelectedTorboxFileIds() {
 
 let currentTorboxStatusFilter = localStorage.getItem('nexus_torbox_status_filter') || 'all';
 let currentTorboxTypeFilter = localStorage.getItem('nexus_torbox_type_filter') || 'all';
-let currentTorboxSort = localStorage.getItem('nexus_torbox_sort') || 'default';
+let currentTorboxSort = localStorage.getItem('nexus_torbox_sort') || 'added';
 let torboxLivePollInterval = null;
 
 let hiddenTorboxFileIds = new Set();
@@ -2492,9 +2903,9 @@ function updateTorboxStatsBar() {
   });
 
   if (btnTotal) btnTotal.textContent = `${totalGroups} DOWNLOADS`;
-  if (btnActive) btnActive.textContent = `${activeCount} active downloads`;
-  if (btnReady) btnReady.textContent = `${readyCount} downloads ready`;
-  if (btnInactive) btnInactive.textContent = `${inactiveCount} inactive downloads`;
+  if (btnActive) btnActive.textContent = `${activeCount} ACTIVE DOWNLOADS`;
+  if (btnReady) btnReady.textContent = `${readyCount} DOWNLOAD READY`;
+  if (btnInactive) btnInactive.textContent = `${inactiveCount} INACTIVE DOWNLOADS`;
 
   [btnTotal, btnActive, btnReady, btnInactive].forEach(b => b && b.classList.remove('active-filter'));
   if (currentTorboxStatusFilter === 'all' && btnTotal) btnTotal.classList.add('active-filter');
@@ -2533,17 +2944,11 @@ function applyTorboxFilters() {
     return true;
   });
 
-  // Aplicação da Ordenação (Sort By)
+  // Aplicação da Ordenação Padrão: Data da Adição (Mais Recentes Primeiro)
   if (currentTorboxSort === 'name') {
     filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   } else if (currentTorboxSort === 'size') {
     filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
-  } else if (currentTorboxSort === 'added') {
-    filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  } else if (currentTorboxSort === 'cached') {
-    filtered.sort((a, b) => new Date(b.cachedAt || 0) - new Date(a.cachedAt || 0));
-  } else if (currentTorboxSort === 'updated') {
-    filtered.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
   } else if (currentTorboxSort === 'progress') {
     filtered.sort((a, b) => (b.progress || 0) - (a.progress || 0));
   } else if (currentTorboxSort === 'ratio') {
@@ -2552,6 +2957,14 @@ function applyTorboxFilters() {
     filtered.sort((a, b) => (b.downloadSpeed || 0) - (a.downloadSpeed || 0));
   } else if (currentTorboxSort === 'speed_ul') {
     filtered.sort((a, b) => (b.uploadSpeed || 0) - (a.uploadSpeed || 0));
+  } else {
+    // Padrão ('added' ou 'default'): Data da adição / IDs mais recentes primeiro
+    filtered.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return (b.torboxId || 0) - (a.torboxId || 0);
+    });
   }
 
   updateTorboxStatsBar();
@@ -2717,7 +3130,7 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
     } else {
       const activeItem = groupItems.find(f => !f.isFinished) || groupItems[0];
       const activeProg = activeItem.progress || 0;
-      headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;">☁️ Baixando (${activeProg}%)</span>`;
+      headerStatusSpan.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; white-space: nowrap; display: inline-block; flex-shrink: 0;"><img src="assets/torbox_box_logo.png" width="13" height="13" style="vertical-align: middle; margin-right: 4px;"> Baixando (${activeProg}%)</span>`;
     }
     const badge = document.createElement('span');
     badge.className = 'badge-cyan folder-group-badge';
@@ -2816,7 +3229,7 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         } else if (file.isInactive) {
           tdStatus.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Inativo</span>`;
         } else {
-          tdStatus.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">☁️ Baixando (${file.progress || 0}%)</span>`;
+          tdStatus.innerHTML = `<span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;"><img src="assets/torbox_box_logo.png" width="13" height="13" style="vertical-align: middle; margin-right: 4px;"> Baixando (${file.progress || 0}%)</span>`;
         }
 
         const tdSize = document.createElement('td');
@@ -3131,6 +3544,7 @@ if (btnAddTorboxSelected) {
       return;
     }
     await window.api.addToQueue(selected);
+    switchQueueSubtab('active');
     switchTab('queue');
   });
 }
@@ -3358,3 +3772,325 @@ window.addEventListener('resize', () => {
   if (typeof applyFooterStatusPosition === 'function') applyFooterStatusPosition();
   if (typeof applyGithubButtonPosition === 'function') applyGithubButtonPosition();
 });
+
+// ==========================================
+// Módulo de Auditoria & Histórico de Hosters
+// ==========================================
+let currentAuditHistoryData = [];
+
+const btnOpenAuditModal = document.getElementById('btn-open-audit-modal');
+const btnCloseAuditModal = document.getElementById('btn-close-audit-modal');
+const modalHosterAudit = document.getElementById('modal-hoster-audit');
+const auditSearchInput = document.getElementById('audit-search-input');
+const auditSortSelect = document.getElementById('audit-sort-select');
+const btnExportAuditLog = document.getElementById('btn-export-audit-log');
+const btnClearAuditHistory = document.getElementById('btn-clear-audit-history');
+const auditTableBody = document.getElementById('audit-table-body');
+const auditEmptyState = document.getElementById('audit-empty-state');
+const auditCountTotal = document.getElementById('audit-count-total');
+const auditCountFiltered = document.getElementById('audit-count-filtered');
+const auditCopyFeedback = document.getElementById('audit-copy-feedback');
+
+async function openAuditModal() {
+  if (!modalHosterAudit) return;
+  modalHosterAudit.style.display = 'flex';
+  if (window.api && window.api.getDownloadHistory) {
+    try {
+      currentAuditHistoryData = await window.api.getDownloadHistory();
+    } catch (e) {
+      currentAuditHistoryData = [];
+    }
+  }
+  refreshAuditTable();
+}
+
+function closeAuditModal() {
+  if (modalHosterAudit) {
+    modalHosterAudit.style.display = 'none';
+  }
+}
+
+function getItemHosterName(item) {
+  if (!item) return 'Desconhecido';
+  const tag = getServiceTag(item);
+  if (tag) {
+    if (tag.hoster) return tag.hoster;
+    return tag.text;
+  }
+  return detectTorboxHoster(item) || 'Download Direto';
+}
+
+function refreshAuditTable() {
+  if (!auditTableBody) return;
+  auditTableBody.innerHTML = '';
+
+  const q = auditSearchInput ? auditSearchInput.value.toLowerCase().trim() : '';
+  const sortMode = auditSortSelect ? auditSortSelect.value : 'recent';
+
+  let list = [...currentAuditHistoryData];
+
+  // Filtro por Nome, Tag ou URL
+  if (q) {
+    list = list.filter(item => {
+      const name = (item.name || '').toLowerCase();
+      const hoster = getItemHosterName(item).toLowerCase();
+      const folder = (item.folderName || '').toLowerCase();
+      const url = (item.url || item.sourceUrl || '').toLowerCase();
+      const fileTag = getFileTypeTag(item).text.toLowerCase();
+      return name.includes(q) || hoster.includes(q) || folder.includes(q) || url.includes(q) || fileTag.includes(q);
+    });
+  }
+
+  // Ordenação (Recente, Tags A-Z, Tags Z-A, Nome A-Z)
+  list.sort((a, b) => {
+    const hosterA = getItemHosterName(a);
+    const hosterB = getItemHosterName(b);
+    if (sortMode === 'tag_asc') {
+      const comp = hosterA.localeCompare(hosterB);
+      if (comp !== 0) return comp;
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    }
+    if (sortMode === 'tag_desc') {
+      const comp = hosterB.localeCompare(hosterA);
+      if (comp !== 0) return comp;
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    }
+    if (sortMode === 'name_asc') {
+      return (a.name || '').localeCompare(b.name || '');
+    }
+    // padrão: recent (mais recentes no topo)
+    return (b.timestamp || 0) - (a.timestamp || 0);
+  });
+
+  if (auditCountTotal) auditCountTotal.textContent = currentAuditHistoryData.length.toString();
+  if (auditCountFiltered) auditCountFiltered.textContent = `${list.length} exibidos`;
+
+  if (list.length === 0) {
+    if (auditEmptyState) auditEmptyState.style.display = 'block';
+    return;
+  }
+  if (auditEmptyState) auditEmptyState.style.display = 'none';
+
+  list.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid rgba(255,255,255,0.06)';
+
+    const sTag = getServiceTag(item);
+    const tagHtml = renderServiceTagHTML(sTag, true);
+
+    const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A';
+    const rawUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.url || item.directUrl || '';
+    const cleanUrl = rawUrl.length > 35 ? rawUrl.substring(0, 35) + '...' : (rawUrl || 'N/A');
+
+    tr.innerHTML = `
+      <td style="padding: 10px 8px; color: #94a3b8; font-size: 11px;">${dateStr}</td>
+      <td style="padding: 10px 8px;">${tagHtml}</td>
+      <td style="padding: 10px 8px; font-weight: 600; color: #fff; word-break: break-all;" title="${item.name}">${item.name}</td>
+      <td style="padding: 10px 8px; color: #cbd5e1;">${item.sizeFormatted || formatBytes(item.size || 0)}</td>
+      <td style="padding: 10px 8px; color: #60a5fa; font-size: 11px; word-break: break-all;">
+        ${rawUrl ? `<a href="#" onclick="event.preventDefault(); if (window.api && window.api.openExternalUrl) window.api.openExternalUrl('${rawUrl}');" style="color: #60a5fa; text-decoration: none;">${cleanUrl}</a>` : 'N/A'}
+      </td>
+    `;
+    auditTableBody.appendChild(tr);
+  });
+}
+
+function copyAuditLogToClipboard() {
+  if (!currentAuditHistoryData || currentAuditHistoryData.length === 0) {
+    alert('Nenhum histórico de download registrado para exportar.');
+    return;
+  }
+
+  // Agrupa estatísticas por Hoster
+  const hosterStats = new Map();
+  currentAuditHistoryData.forEach(item => {
+    const hName = getItemHosterName(item);
+    hosterStats.set(hName, (hosterStats.get(hName) || 0) + 1);
+  });
+
+  const sortedStats = Array.from(hosterStats.entries()).sort((a, b) => b[1] - a[1]);
+
+  let markdownReport = `### 📊 Relatório de Auditoria de Hosters & Downloads (Nexus Downloader)\n\n`;
+  markdownReport += `- **Data do Log**: ${new Date().toLocaleString('pt-BR')}\n`;
+  markdownReport += `- **Total de Arquivos Registrados**: ${currentAuditHistoryData.length}\n\n`;
+  markdownReport += `#### 🏷️ Resumo por Hoster / Provedor:\n`;
+  sortedStats.forEach(([hName, count]) => {
+    markdownReport += `- **${hName}**: ${count} arquivo(s)\n`;
+  });
+
+  markdownReport += `\n#### 📋 Tabela Completa de Registros:\n`;
+  markdownReport += `| Data | Hoster | Nome do Arquivo | Tamanho | URL de Origem |\n`;
+  markdownReport += `|---|---|---|---|---|\n`;
+
+  currentAuditHistoryData.forEach(item => {
+    const hName = getItemHosterName(item);
+    const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString('pt-BR') : 'N/A';
+    const sizeStr = item.sizeFormatted || formatBytes(item.size || 0);
+    const urlStr = item.sourceUrl || item.url || 'N/A';
+    markdownReport += `| ${dateStr} | ${hName} | ${item.name} | ${sizeStr} | ${urlStr} |\n`;
+  });
+
+  navigator.clipboard.writeText(markdownReport).then(() => {
+    if (auditCopyFeedback) {
+      auditCopyFeedback.style.display = 'inline';
+      setTimeout(() => { auditCopyFeedback.style.display = 'none'; }, 3500);
+    }
+  }).catch(err => {
+    console.error('Erro ao copiar log:', err);
+  });
+}
+
+if (btnOpenAuditModal) btnOpenAuditModal.addEventListener('click', openAuditModal);
+if (btnCloseAuditModal) btnCloseAuditModal.addEventListener('click', closeAuditModal);
+if (modalHosterAudit) {
+  modalHosterAudit.addEventListener('click', (e) => {
+    if (e.target === modalHosterAudit) closeAuditModal();
+  });
+}
+
+if (auditSearchInput) auditSearchInput.addEventListener('input', refreshAuditTable);
+if (auditSortSelect) auditSortSelect.addEventListener('change', refreshAuditTable);
+if (btnExportAuditLog) btnExportAuditLog.addEventListener('click', copyAuditLogToClipboard);
+
+if (btnClearAuditHistory) {
+  btnClearAuditHistory.addEventListener('click', async () => {
+    if (confirm('Tem certeza de que deseja limpar todo o histórico de downloads baixados?')) {
+      if (window.api && window.api.clearDownloadHistory) {
+        await window.api.clearDownloadHistory();
+      }
+      currentAuditHistoryData = [];
+      refreshAuditTable();
+    }
+  });
+}
+
+// ==========================================
+// Módulo de Auditoria & Diagnóstico Multilink
+// ==========================================
+let lastMultilinkSummary = null;
+let accumulatedMultilinkSummary = null;
+
+function updateAccumulatedMultilinkSummary(newSummary) {
+  if (!newSummary) return accumulatedMultilinkSummary;
+
+  if (!accumulatedMultilinkSummary) {
+    accumulatedMultilinkSummary = {
+      totalLinks: newSummary.totalLinks || 0,
+      successCount: newSummary.successCount || 0,
+      errorCount: newSummary.errorCount || 0,
+      results: Array.isArray(newSummary.results) ? [...newSummary.results] : []
+    };
+  } else {
+    const existingResults = accumulatedMultilinkSummary.results || [];
+    const newResults = newSummary.results || [];
+
+    newResults.forEach(nr => {
+      const idx = existingResults.findIndex(r => r.url === nr.url);
+      if (idx >= 0) {
+        existingResults[idx] = nr;
+      } else {
+        existingResults.push(nr);
+      }
+    });
+
+    accumulatedMultilinkSummary.results = existingResults;
+    accumulatedMultilinkSummary.totalLinks = existingResults.length;
+    accumulatedMultilinkSummary.successCount = existingResults.filter(r => r.status === 'success').length;
+    accumulatedMultilinkSummary.errorCount = existingResults.filter(r => r.status === 'error').length;
+  }
+
+  return accumulatedMultilinkSummary;
+}
+
+const scanAuditSummaryBar = document.getElementById('scan-audit-summary-bar');
+const scanAuditIcon = document.getElementById('scan-audit-icon');
+const scanAuditMessage = document.getElementById('scan-audit-message');
+const btnShowFailedLinksDetail = document.getElementById('btn-show-failed-links-detail');
+const modalFailedLinksDetail = document.getElementById('modal-failed-links-detail');
+const btnCloseFailedLinksModal = document.getElementById('btn-close-failed-links-modal');
+const btnDismissFailedModal = document.getElementById('btn-dismiss-failed-modal');
+const failedLinksTableBody = document.getElementById('failed-links-table-body');
+const settingEnableMultilinkAudit = document.getElementById('setting-enable-multilink-audit');
+
+if (settingEnableMultilinkAudit) {
+  settingEnableMultilinkAudit.addEventListener('change', async () => {
+    const config = await window.api.getConfig();
+    config.enableMultilinkAuditAlerts = settingEnableMultilinkAudit.checked;
+    await window.api.setConfig(config);
+  });
+}
+
+async function renderMultilinkAuditSummary(summary) {
+  if (!scanAuditSummaryBar) return;
+  const config = await window.api.getConfig();
+
+  const accSummary = updateAccumulatedMultilinkSummary(summary);
+
+  if (!accSummary || config.enableMultilinkAuditAlerts === false || accSummary.totalLinks < 1) {
+    scanAuditSummaryBar.style.display = 'none';
+    return;
+  }
+
+  lastMultilinkSummary = accSummary;
+  scanAuditSummaryBar.style.display = 'flex';
+
+  if (accSummary.errorCount === 0) {
+    scanAuditSummaryBar.style.background = 'rgba(34, 197, 94, 0.15)';
+    scanAuditSummaryBar.style.border = '1px solid rgba(34, 197, 94, 0.35)';
+    scanAuditSummaryBar.style.color = '#4ade80';
+    if (scanAuditIcon) scanAuditIcon.textContent = '🎉';
+    if (scanAuditMessage) {
+      scanAuditMessage.textContent = `Sucesso! Todos os ${accSummary.totalLinks} links foram escaneados com sucesso (${scannedFiles.length} arquivos prontos para download).`;
+    }
+    if (btnShowFailedLinksDetail) btnShowFailedLinksDetail.style.display = 'none';
+  } else {
+    scanAuditSummaryBar.style.background = 'rgba(245, 158, 11, 0.15)';
+    scanAuditSummaryBar.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+    scanAuditSummaryBar.style.color = '#fbbf24';
+    if (scanAuditIcon) scanAuditIcon.textContent = '⚠️';
+    if (scanAuditMessage) {
+      scanAuditMessage.textContent = `${accSummary.successCount} de ${accSummary.totalLinks} links foram escaneados com sucesso. ${accSummary.errorCount} link(s) apresentaram inconsistência.`;
+    }
+    if (btnShowFailedLinksDetail) btnShowFailedLinksDetail.style.display = 'inline-flex';
+  }
+}
+
+function openFailedLinksModal() {
+  if (!modalFailedLinksDetail || !lastMultilinkSummary) return;
+  if (!failedLinksTableBody) return;
+
+  failedLinksTableBody.innerHTML = '';
+  const failedResults = (lastMultilinkSummary.results || []).filter(r => r.status === 'error');
+
+  failedResults.forEach(res => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid rgba(255,255,255,0.06)';
+
+    const rawUrl = res.url || '';
+    const cleanUrl = rawUrl.length > 40 ? rawUrl.substring(0, 40) + '...' : rawUrl;
+
+    tr.innerHTML = `
+      <td style="padding: 10px 8px; font-weight: 700; color: #fb7185;">${res.hoster || 'Desconhecido'}</td>
+      <td style="padding: 10px 8px; color: #60a5fa; word-break: break-all;" title="${rawUrl}">${cleanUrl}</td>
+      <td style="padding: 10px 8px; color: #f87171; font-weight: 600;">${res.error || 'Erro de conexão/Servidor 404'}</td>
+    `;
+    failedLinksTableBody.appendChild(tr);
+  });
+
+  modalFailedLinksDetail.style.display = 'flex';
+}
+
+function closeFailedLinksModal() {
+  if (modalFailedLinksDetail) {
+    modalFailedLinksDetail.style.display = 'none';
+  }
+}
+
+if (btnShowFailedLinksDetail) btnShowFailedLinksDetail.addEventListener('click', openFailedLinksModal);
+if (btnCloseFailedLinksModal) btnCloseFailedLinksModal.addEventListener('click', closeFailedLinksModal);
+if (btnDismissFailedModal) btnDismissFailedModal.addEventListener('click', closeFailedLinksModal);
+if (modalFailedLinksDetail) {
+  modalFailedLinksDetail.addEventListener('click', (e) => {
+    if (e.target === modalFailedLinksDetail) closeFailedLinksModal();
+  });
+}

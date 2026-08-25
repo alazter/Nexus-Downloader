@@ -352,11 +352,116 @@ async function scanSmartHtmlScraper(urlStr) {
 }
 
 // ----------------------------------------------------
+// MOTOR: PixelDrain API Engine (Suporte a Álbuns/Listas e Arquivos Individuais)
+// ----------------------------------------------------
+async function scanPixelDrain(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string' || !urlStr.includes('pixeldrain.com')) return null;
+
+  // 1. Verifica se é um álbum/lista (/l/{id})
+  const listMatch = urlStr.match(/pixeldrain\.com\/l\/([a-zA-Z0-9_-]+)/i);
+  if (listMatch) {
+    const listId = listMatch[1];
+    console.log(`[PixelDrain Engine] Escaneando álbum/lista ID: ${listId}`);
+    try {
+      const apiRes = await makeHttpRequest(`https://pixeldrain.com/api/list/${listId}`);
+      if (apiRes.statusCode === 200) {
+        const json = JSON.parse(apiRes.bodyText);
+        const folderTitle = (json.title || `PixelDrain_Album_${listId}`).replace(/[\\/:*?"<>|]/g, '_').trim();
+        const filesList = json.files || [];
+        console.log(`[PixelDrain Engine] Álbum "${folderTitle}" possui ${filesList.length} arquivos descompactados.`);
+
+        return filesList.map((f, idx) => {
+          const fId = f.id;
+          const fileName = (f.name || `Arquivo_${idx + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+          const fileSize = f.size || 0;
+          const pageUrl = `https://pixeldrain.com/u/${fId}`;
+          const directUrl = `https://pixeldrain.com/api/file/${fId}`;
+
+          return {
+            id: `pixeldrain_${listId}_${fId}`,
+            fileId: fId,
+            numericId: fId,
+            name: fileName,
+            size: fileSize,
+            sizeFormatted: formatBytes(fileSize),
+            downloadUrl: pageUrl,
+            directUrl: directUrl,
+            sourceUrl: pageUrl,
+            originalUrl: pageUrl,
+            folderName: folderTitle,
+            relativePath: `${folderTitle}/${fileName}`,
+            isHttpDirect: true,
+            pixeldrainListId: listId
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('[PixelDrain Engine] Erro ao consultar API de lista:', e.message);
+    }
+  }
+
+  // 2. Verifica se é um arquivo individual (/u/{id})
+  const fileMatch = urlStr.match(/pixeldrain\.com\/u\/([a-zA-Z0-9_-]+)/i) || urlStr.match(/pixeldrain\.com\/api\/file\/([a-zA-Z0-9_-]+)/i);
+  if (fileMatch) {
+    const fileId = fileMatch[1];
+    console.log(`[PixelDrain Engine] Escaneando arquivo individual ID: ${fileId}`);
+    let fileName = `pixeldrain_${fileId}.bin`;
+    let fileSize = 0;
+
+    try {
+      const infoRes = await makeHttpRequest(`https://pixeldrain.com/api/file/${fileId}/info`);
+      if (infoRes.statusCode === 200) {
+        const info = JSON.parse(infoRes.bodyText);
+        if (info.name) fileName = info.name.replace(/[\\/:*?"<>|]/g, '_');
+        if (info.size) fileSize = info.size;
+      }
+    } catch (e) {}
+
+    const pageUrl = `https://pixeldrain.com/u/${fileId}`;
+    const directUrl = `https://pixeldrain.com/api/file/${fileId}`;
+
+    return [{
+      id: `pixeldrain_${fileId}`,
+      fileId: fileId,
+      numericId: fileId,
+      name: fileName,
+      size: fileSize,
+      sizeFormatted: formatBytes(fileSize),
+      downloadUrl: pageUrl,
+      directUrl: directUrl,
+      sourceUrl: pageUrl,
+      originalUrl: pageUrl,
+      folderName: 'Arquivos Avulsos PixelDrain',
+      relativePath: `Arquivos Avulsos PixelDrain/${fileName}`,
+      isHttpDirect: true
+    }];
+  }
+
+  return null;
+}
+
+// ----------------------------------------------------
 // PIPELINE UNIFICADO COM CACHE ADAPTATIVO POR DOMÍNIO
 // ----------------------------------------------------
 async function scanGenericLink(urlStr, torboxApiKey = null) {
   const domain = getDomain(urlStr);
   console.log(`[Generic Scanner] Processando URL: ${urlStr} (Domínio: ${domain})`);
+
+  // 0. PixelDrain API Engine (Álbuns e Arquivos Únicos)
+  if (urlStr.includes('pixeldrain.com')) {
+    try {
+      const pdFiles = await scanPixelDrain(urlStr);
+      if (pdFiles && pdFiles.length > 0) {
+        if (domain) {
+          domainCache[domain] = 'PixelDrainEngine';
+          saveDomainCache();
+        }
+        return pdFiles;
+      }
+    } catch (e) {
+      console.log('[Generic Scanner] PixelDrain Engine falhou:', e.message);
+    }
+  }
 
   // 1. Verifica se há um motor salvo no cache para este domínio
   const cachedEngine = domain ? domainCache[domain] : null;
@@ -365,7 +470,8 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
     console.log(`[Generic Scanner Cache] Usando atalho de cache para ${domain}: ${cachedEngine}`);
     try {
       let results = null;
-      if (cachedEngine === 'GoFileEngine') results = await scanGoFile(urlStr);
+      if (cachedEngine === 'PixelDrainEngine') results = await scanPixelDrain(urlStr);
+      else if (cachedEngine === 'GoFileEngine') results = await scanGoFile(urlStr);
       else if (cachedEngine === 'SmartHtmlScraper' || domain.includes('turbo.cr') || domain.includes('megaup.net')) results = await scanSmartHtmlScraper(urlStr);
       else if (cachedEngine === 'DirectHttpProbe') results = await scanDirectHttpProbe(urlStr);
 
@@ -440,11 +546,38 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
     console.log('[Generic Scanner] Smart HTML Scraper falhou:', e.message);
   }
 
-  throw new Error(`Não foi possível extrair arquivos do link genérico (${domain || 'desconhecido'}).`);
+  // Etapa D: Fallback Universal para Links Diretos / Web Sites Sem Scraper Específico
+  try {
+    const parsed = new URL(urlStr);
+    let fileName = path.basename(parsed.pathname) || 'Download_Link.bin';
+    if (!/\.[a-zA-Z0-9]{2,5}$/.test(fileName)) {
+      fileName = (domain ? domain.split('.')[0] : 'Download') + '_' + Math.random().toString(36).substring(2, 7) + '.bin';
+    }
+    const cleanFileName = fileName.replace(/[\\/:*?"<>|]/g, '_');
+
+    console.log(`[Generic Scanner] Gerando item de Download Direto Universal para: ${urlStr}`);
+    return [{
+      id: 'generic_' + Math.random().toString(36).substring(2, 9),
+      fileId: 'gen_' + Date.now(),
+      numericId: 'gen_' + Date.now(),
+      name: cleanFileName,
+      size: 0,
+      sizeFormatted: 'Procurando...',
+      downloadUrl: urlStr,
+      directUrl: urlStr,
+      folderName: domain ? domain.toUpperCase() : 'Arquivos Avulsos',
+      relativePath: (domain ? domain.toUpperCase() : 'Arquivos Avulsos') + '/' + cleanFileName,
+      isHttpDirect: true,
+      url: urlStr
+    }];
+  } catch (err) {
+    throw new Error(`Não foi possível processar o link fornecido (${urlStr}): ${err.message}`);
+  }
 }
 
 module.exports = {
   scanGenericLink,
+  scanPixelDrain,
   scanGoFile,
   scanDirectHttpProbe,
   scanSmartHtmlScraper

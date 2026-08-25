@@ -139,9 +139,64 @@ function extractNameFromMagnet(magnetUrl) {
 }
 
 /**
+ * Obtém a contagem real-time de jobs ativos na nuvem do Torbox
+ * (inclui WebDLs e Torrents ativos, tanto do Nexus quanto externos do painel Torbox)
+ */
+async function getTorboxActiveCloudJobsCount(apiKey) {
+  if (!apiKey || !apiKey.trim()) return 0;
+  let activeJobs = 0;
+  try {
+    const webdlRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
+    if (webdlRes && webdlRes.data && Array.isArray(webdlRes.data.data)) {
+      webdlRes.data.data.forEach(w => {
+        const isFinished = !!w.download_finished || w.download_state === 'completed' || (w.progress !== undefined && w.progress >= 1);
+        const isInactive = !!w.inactive || (w.download_state && (w.download_state.toLowerCase().includes('error') || w.download_state.toLowerCase().includes('expired')));
+        if (!isFinished && !isInactive) activeJobs++;
+      });
+    }
+  } catch (e) {}
+
+  try {
+    const torrentRes = await callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey);
+    if (torrentRes && torrentRes.data && Array.isArray(torrentRes.data.data)) {
+      torrentRes.data.data.forEach(t => {
+        const isFinished = !!t.download_finished || t.download_state === 'completed' || (t.progress !== undefined && t.progress >= 1);
+        const isInactive = !!t.inactive || (t.download_state && (t.download_state.toLowerCase().includes('error') || t.download_state.toLowerCase().includes('expired')));
+        if (!isFinished && !isInactive) activeJobs++;
+      });
+    }
+  } catch (e) {}
+
+  return activeJobs;
+}
+
+/**
+ * Aguarda inteligentemente a liberação de uma vaga na nuvem do Torbox
+ * (respeita o limite do plano de 3 downloads simultâneos no Torbox)
+ */
+async function waitForTorboxSlot(apiKey, maxSlots = 3, onStatusUpdate = null, abortSignal = null) {
+  if (!apiKey || !apiKey.trim()) return;
+  const limit = Math.max(1, maxSlots || 3);
+  let active = await getTorboxActiveCloudJobsCount(apiKey);
+
+  let checkCount = 0;
+  while (active >= limit) {
+    if (abortSignal && abortSignal.aborted) break;
+    checkCount++;
+    console.log(`[Torbox Governor] Vagas esgotadas no Torbox (${active}/${limit} ativos na nuvem). Aguardando liberação... (tentativa ${checkCount})`);
+    if (onStatusUpdate && typeof onStatusUpdate === 'function') {
+      onStatusUpdate(`Aguardando vaga no Torbox (${active}/${limit} na nuvem)...`, 0);
+    }
+    await new Promise(r => setTimeout(r, 5000));
+    if (abortSignal && abortSignal.aborted) break;
+    active = await getTorboxActiveCloudJobsCount(apiKey);
+  }
+}
+
+/**
  * Escaneia um link (Magnet/Torrent ou Hoster) via API Key do Torbox
  */
-async function scanTorboxLink(urlStr, apiKey) {
+async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
   console.log('[Torbox Scanner] Escaneando via API Key do Torbox:', urlStr);
 
   if (!apiKey) {
@@ -155,6 +210,7 @@ async function scanTorboxLink(urlStr, apiKey) {
     const payload = new URLSearchParams();
     payload.append('magnet', urlStr.trim());
 
+    await waitForTorboxSlot(apiKey, 3, onStatusUpdate);
     console.log('[Torbox Scanner] Adicionando Magnet Link à API do Torbox...');
     const createRes = await callTorboxApi('/torrents/createtorrent', 'POST', apiKey, payload);
 
@@ -249,18 +305,17 @@ async function scanTorboxLink(urlStr, apiKey) {
     return resultList;
   } else {
     // 2. Processa Hoster Link (Web Download - 1fichier, Rapidgator, Pixeldrain, Mega, etc.)
-    const cleanUrlStr = urlStr.trim().split('#')[0];
-    console.log('[Torbox Scanner] Processando Hoster Link (URL limpa):', cleanUrlStr);
+    const cleanUrlStr = urlStr.trim();
+    console.log('[Torbox Scanner] Processando Hoster Link:', cleanUrlStr);
 
-    // 2.1 Verifica PRIMEIRO se a WebDL do link completo/álbum já existe na conta do usuário
+    let existing = null;
     try {
       const listRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
       const myWebdls = (listRes.data && listRes.data.data) ? listRes.data.data : [];
       const targetClean = cleanUrlStr.toLowerCase();
-      const targetFull = urlStr.trim().toLowerCase();
 
       // Procura em primeiro lugar uma WebDL ATIVA do álbum completo (com a matriz de arquivos)
-      let existing = myWebdls.find(w => {
+      existing = myWebdls.find(w => {
         if (!w.original_url || w.download_state === 'expired' || w.download_state === 'failed' || w.inactive) return false;
         const wOrig = w.original_url.trim().toLowerCase();
         const matches = wOrig === targetClean || wOrig.includes(targetClean) || targetClean.includes(wOrig);
@@ -274,51 +329,62 @@ async function scanTorboxLink(urlStr, apiKey) {
           return wOrig === targetClean || wOrig.includes(targetClean) || targetClean.includes(wOrig);
         });
       }
-
-      if (existing) {
-        console.log(`[Torbox Scanner] WebDL pré-existente encontrada na conta do Torbox! ID: ${existing.id} (${existing.name})`);
-        return buildWebdlResultList(existing, apiKey, cleanUrlStr);
-      }
     } catch (e) {
       console.warn('[Torbox Scanner] Não foi possível consultar lista prévia de WebDLs:', e.message);
     }
 
-    // 2.2 Se não existir previamente, envia a URL limpa para o Torbox desproteger e baixar a pasta/álbum inteira
-    const payload = new URLSearchParams();
-    payload.append('link', cleanUrlStr);
+    let targetWebdl = existing;
 
-    console.log('[Torbox Scanner] Criando Web Download no Torbox para URL limpa:', cleanUrlStr);
-    const createRes = await callTorboxApi('/webdl/createwebdownload', 'POST', apiKey, payload);
+    if (!targetWebdl) {
+      // 2.2 Se não existir previamente, envia a URL limpa para o Torbox desproteger e baixar a pasta/álbum inteira
+      const payload = new URLSearchParams();
+      payload.append('link', cleanUrlStr);
 
-    if (createRes.statusCode !== 200 && createRes.statusCode !== 201) {
-      try {
-        const listRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
-        const myWebdls = (listRes.data && listRes.data.data) ? listRes.data.data : [];
-        const targetClean = cleanUrlStr.toLowerCase();
-        const existing = myWebdls.find(w => (w.original_url && w.original_url.toLowerCase().includes(targetClean)) || (w.name && targetClean.includes(w.name.toLowerCase())));
-        if (existing) {
-          return buildWebdlResultList(existing, apiKey, cleanUrlStr);
+      await waitForTorboxSlot(apiKey, 3, onStatusUpdate);
+      console.log('[Torbox Scanner] Criando Web Download no Torbox para URL limpa:', cleanUrlStr);
+      const createRes = await callTorboxApi('/webdl/createwebdownload', 'POST', apiKey, payload);
+
+      if (createRes.statusCode !== 200 && createRes.statusCode !== 201) {
+        try {
+          const listRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
+          const myWebdls = (listRes.data && listRes.data.data) ? listRes.data.data : [];
+          const targetClean = cleanUrlStr.toLowerCase();
+          targetWebdl = myWebdls.find(w => (w.original_url && w.original_url.toLowerCase().includes(targetClean)) || (w.name && targetClean.includes(w.name.toLowerCase())));
+        } catch (e) {}
+
+        if (!targetWebdl) {
+          const detail = (createRes.data && createRes.data.detail) ? createRes.data.detail : 'Falha ao desproteger link no Torbox';
+          throw new Error(detail);
         }
-      } catch (e) {}
-
-      const detail = (createRes.data && createRes.data.detail) ? createRes.data.detail : 'Falha ao desproteger link no Torbox';
-      throw new Error(detail);
+      } else {
+        const webData = createRes.data.data || {};
+        targetWebdl = webData;
+      }
     }
 
-    const webData = createRes.data.data || {};
-    const webdlId = webData.webdownload_id || webData.webdl_id || webData.id;
+    const webdlId = targetWebdl.id || targetWebdl.webdownload_id;
 
-    let currentWebdl = webData;
-    try {
-      const listRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
-      const myWebdls = (listRes.data && listRes.data.data) ? listRes.data.data : [];
-      const found = myWebdls.find(w => w.id === webdlId || w.webdownload_id === webdlId);
-      if (found) currentWebdl = found;
-    } catch (e) {
-      console.warn('[Torbox Scanner] Não foi possível buscar detalhes da lista webdl recém-criada:', e.message);
+    // Aguarda até 5 segundos caso a lista de arquivos da pasta/álbum do MEGA/Hoster esteja sendo indexada no Torbox
+    if (webdlId && (!targetWebdl.files || !Array.isArray(targetWebdl.files) || targetWebdl.files.length <= 1)) {
+      console.log('[Torbox Scanner] Aguardando indexação da matriz de arquivos da pasta/álbum no Torbox...');
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const listRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
+          const myWebdls = (listRes.data && listRes.data.data) ? listRes.data.data : [];
+          const found = myWebdls.find(w => w.id === webdlId || w.webdownload_id === webdlId);
+          if (found) {
+            targetWebdl = found;
+            if (found.files && Array.isArray(found.files) && found.files.length > 1) {
+              console.log(`[Torbox Scanner] Matriz de ${found.files.length} arquivos descompactados da pasta obtida com sucesso!`);
+              break;
+            }
+          }
+        } catch (e) {}
+      }
     }
 
-    return buildWebdlResultList(currentWebdl, apiKey, cleanUrlStr);
+    return buildWebdlResultList(targetWebdl, apiKey, cleanUrlStr);
   }
 }
 
@@ -483,7 +549,7 @@ async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'torrent', to
 
         console.log(`[Torbox Resolver] Progresso na nuvem Torbox: ${percent}% (Concluído: ${isFinished})`);
         if (onStatusUpdate && typeof onStatusUpdate === 'function') {
-          onStatusUpdate(`☁️ Torbox baixando na nuvem (${percent}%)...`, percent);
+          onStatusUpdate(`Torbox baixando no servidor (${percent}%)...`, percent);
         }
 
         // Se o torrent foi concluído na nuvem, atualiza o ID do arquivo se estivesse como 0/indefinido
@@ -710,5 +776,7 @@ module.exports = {
   testTorboxApiKey,
   scanTorboxLink,
   resolveTorboxDirectUrl,
-  fetchTorboxUserDownloads
+  fetchTorboxUserDownloads,
+  getTorboxActiveCloudJobsCount,
+  waitForTorboxSlot
 };

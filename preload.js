@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('api', {
   openDownloadsFolder: (itemPath) => ipcRenderer.invoke('open-downloads-folder', itemPath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
+  clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
 
   // Autenticação
   checkAuth: () => ipcRenderer.invoke('check-auth'),

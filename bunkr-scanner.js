@@ -11,7 +11,7 @@ function isBunkrUrl(urlStr) {
 }
 
 /**
- * Utilitário de requisição HTTP GET retornando Texto/HTML
+ * Utilitário de requisição HTTP GET retornando Texto/HTML (com timeout de 5s)
  */
 function fetchText(targetUrl, options = {}) {
   return new Promise((resolve, reject) => {
@@ -37,6 +37,12 @@ function fetchText(targetUrl, options = {}) {
         res.on('data', chunk => data += chunk);
         res.on('end', () => resolve(data));
       });
+
+      req.setTimeout(5000, () => {
+        try { req.destroy(); } catch (e) {}
+        reject(new Error(`Timeout HTTP GET em ${targetUrl}`));
+      });
+
       req.on('error', reject);
     } catch (e) {
       reject(e);
@@ -45,7 +51,7 @@ function fetchText(targetUrl, options = {}) {
 }
 
 /**
- * Utilitário de requisição HTTP POST para JSON
+ * Utilitário de requisição HTTP POST para JSON (com timeout de 5s)
  */
 function postJson(targetUrl, bodyData, options = {}) {
   return new Promise((resolve, reject) => {
@@ -76,6 +82,12 @@ function postJson(targetUrl, bodyData, options = {}) {
           }
         });
       });
+
+      req.setTimeout(5000, () => {
+        try { req.destroy(); } catch (e) {}
+        reject(new Error(`Timeout HTTP POST em ${targetUrl}`));
+      });
+
       req.on('error', reject);
       req.write(postPayload);
       req.end();
@@ -100,10 +112,15 @@ function formatBytes(bytes, decimals = 2) {
 /**
  * Resolve os detalhes de um arquivo individual Bunkr a partir do ID da página
  */
-async function getBunkrFileDetails(fileId, folderName) {
+async function getBunkrFileDetails(fileId, folderName, baseDomain = 'https://bunkr.ph') {
   try {
-    const pageUrl = `https://bunkr.cr/f/${fileId}`;
+    const pageUrl = `${baseDomain}/f/${fileId}`;
     const html = await fetchText(pageUrl);
+
+    if (html.includes('Resource not found') || html.includes('404 Not Found')) {
+      console.warn(`[Bunkr] Arquivo ${fileId} indisponível no servidor.`);
+      return null;
+    }
 
     // Extrai o nome do arquivo
     let filename = `bunkr_${fileId}`;
@@ -146,7 +163,9 @@ async function getBunkrFileDetails(fileId, folderName) {
       size: sizeInBytes,
       sizeFormatted: formatBytes(sizeInBytes),
       isHttpDirect: true,
-      bunkrPageUrl: pageUrl
+      bunkrPageUrl: pageUrl,
+      sourceUrl: pageUrl,
+      url: pageUrl
     };
   } catch (err) {
     console.error(`[Bunkr] Erro ao resolver arquivo ${fileId}:`, err.message);
@@ -166,126 +185,174 @@ async function getBunkrFileDetails(fileId, folderName) {
 
 /**
  * Obtém a URL final assinada e os cookies de autorização para um arquivo Bunkr
+ * (Algoritmo adaptado do BunkrDownloader 1.3.0)
  */
-async function resolveBunkrDirectUrl(numericId, fileId) {
+async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
   try {
-    const idToUse = numericId || fileId;
-    if (!idToUse) throw new Error('ID do arquivo não informado');
-    const pageUrl = `https://bunkr.cr/f/${fileId || idToUse}`;
+    const fileSlug = fileId || numericId;
+    if (!fileSlug) throw new Error('ID/Slug do arquivo não informado');
 
-    // 1. Obter metadados via API POST
-    const meta = await postJson('https://dl.bunkr.cr/api/_001_v2', { id: idToUse });
-    if (!meta || !meta.path) {
-      throw new Error('Metadados da API Bunkr inválidos');
+    let pageUrl = pageUrlInput;
+    if (!pageUrl || typeof pageUrl !== 'string' || !pageUrl.startsWith('http')) {
+      pageUrl = `https://bunkr.ph/f/${fileSlug}`;
     }
 
-    // 2. Obter assinaturas token e ex
-    const rawPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
-    const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(rawPath)}`;
+    let baseUrl = null;
+    let originalName = null;
+    let dataFileId = null;
+
+    // 1. Tentar extrair jsCDN diretamente do HTML da página do arquivo (como no BunkrDownloader 1.3.0)
+    try {
+      const html = await fetchText(pageUrl);
+      if (html) {
+        const jsCdnMatch = html.match(/var\s+jsCDN\s*=\s*["']([^"']+)["']/);
+        if (jsCdnMatch && jsCdnMatch[1]) {
+          baseUrl = jsCdnMatch[1].replace(/\\\/|\\/g, '/');
+        }
+        const fileIdMatch = html.match(/data-file-id=["']([^"']+)["']/);
+        if (fileIdMatch && fileIdMatch[1]) {
+          dataFileId = fileIdMatch[1];
+        }
+      }
+    } catch (e) {
+      console.warn('[Bunkr Scanner] Não foi possível ler o HTML da página, tentando via API POST...', e.message);
+    }
+
+    // 2. Se jsCDN não foi encontrado no HTML, consulta a API POST _001_v2 (fallback BunkrDownloader 1.3.0)
+    if (!baseUrl) {
+      const targetId = dataFileId || idToUse;
+      const meta = await postJson('https://dl.bunkr.cr/api/_001_v2', { id: targetId });
+      if (meta && meta.mediafiles && meta.path) {
+        const cleanMediaHost = meta.mediafiles.endsWith('/') ? meta.mediafiles.slice(0, -1) : meta.mediafiles;
+        const cleanPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
+        baseUrl = `${cleanMediaHost}${cleanPath}`;
+        if (meta.original) originalName = meta.original;
+      }
+    }
+
+    if (!baseUrl) {
+      throw new Error('Não foi possível obter a URL base do CDN para o arquivo Bunkr');
+    }
+
+    // 3. Extrair o slug da mídia e assinar via glb-apisign API (BunkrDownloader 1.3.0)
+    const p = new URL(baseUrl);
+    const mediaSlug = p.pathname.split('/').pop();
+    const mediaPath = `/storage/media/${mediaSlug}`;
+
+    const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(mediaPath)}`;
     const signData = await fetchText(signUrl).then(data => JSON.parse(data));
 
-    // 3. Montar URL do CDN
-    let mediaHost = meta.mediafiles || 'https://get.bunkrr.su';
-    const cleanHost = mediaHost.endsWith('/') ? mediaHost.slice(0, -1) : mediaHost;
-    const cleanPath = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
-
-    const finalUrl = new URL(cleanHost + cleanPath);
-    if (meta.original) finalUrl.searchParams.set('n', meta.original);
+    const finalUrl = new URL(baseUrl);
+    if (originalName) finalUrl.searchParams.set('n', originalName);
     if (signData && signData.token) {
       finalUrl.searchParams.set('token', signData.token);
       finalUrl.searchParams.set('ex', signData.ex);
     }
 
-    const cdnUrlStr = finalUrl.toString();
-    const cookieJar = [];
+    return {
+      directUrl: finalUrl.toString(),
+      cookieHeader: '',
+      referer: 'https://dl.bunkrr.cr/'
+    };
 
-    // 4. Testar resposta inicial do CDN e capturar cookies
-    const https = require('https');
-    const http = require('http');
+    let cookieJar = [];
 
-    const rawReq = (u, opts = {}) => new Promise((res, rej) => {
-      const p = new URL(u);
-      const tr = p.protocol === 'https:' ? https : http;
-      let chunks = [];
-      let bytesRead = 0;
-      const maxBytes = 64 * 1024; // Apenas os primeiros 64KB para verificar desafios HTML/JS
+    // 4. Testar resposta inicial do CDN e capturar cookies (com proteção anti-timeout)
+    try {
+      const https = require('https');
+      const http = require('http');
 
-      const req = tr.request({
-        hostname: p.hostname,
-        port: p.port || (p.protocol === 'https:' ? 443 : 80),
-        path: p.pathname + p.search,
-        method: opts.method || 'GET',
-        rejectUnauthorized: false,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          ...(opts.headers || {})
-        }
-      }, response => {
-        let isDone = false;
-        const finish = () => {
-          if (isDone) return;
-          isDone = true;
-          const buf = Buffer.concat(chunks);
-          let text = '';
-          try { text = buf.toString('utf8'); } catch (e) {}
-          res({ statusCode: response.statusCode, headers: response.headers, text });
-        };
+      const rawReq = (u, opts = {}) => new Promise((res, rej) => {
+        const p = new URL(u);
+        const tr = p.protocol === 'https:' ? https : http;
+        let chunks = [];
+        let bytesRead = 0;
+        const maxBytes = 64 * 1024; // Apenas os primeiros 64KB para verificar desafios HTML/JS
 
-        response.on('data', c => {
-          if (bytesRead < maxBytes) {
-            chunks.push(c);
-            bytesRead += c.length;
-            if (bytesRead >= maxBytes) {
-              try { req.destroy(); } catch (e) {}
-              finish();
-            }
+        const req = tr.request({
+          hostname: p.hostname,
+          port: p.port || (p.protocol === 'https:' ? 443 : 80),
+          path: p.pathname + p.search,
+          method: opts.method || 'GET',
+          rejectUnauthorized: false,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+            ...(opts.headers || {})
           }
+        }, response => {
+          let isDone = false;
+          const finish = () => {
+            if (isDone) return;
+            isDone = true;
+            const buf = Buffer.concat(chunks);
+            let text = '';
+            try { text = buf.toString('utf8'); } catch (e) {}
+            res({ statusCode: response.statusCode, headers: response.headers, text });
+          };
+
+          response.on('data', c => {
+            if (bytesRead < maxBytes) {
+              chunks.push(c);
+              bytesRead += c.length;
+              if (bytesRead >= maxBytes) {
+                try { req.destroy(); } catch (e) {}
+                finish();
+              }
+            }
+          });
+          response.on('end', finish);
+          response.on('close', finish);
         });
-        response.on('end', finish);
-        response.on('close', finish);
+
+        req.setTimeout(5000, () => {
+          try { req.destroy(); } catch (e) {}
+          rej(new Error('Timeout no pré-flight do Bunkr'));
+        });
+
+        req.on('error', err => {
+          if (chunks.length > 0) {
+            const buf = Buffer.concat(chunks);
+            let text = '';
+            try { text = buf.toString('utf8'); } catch (e) {}
+            return res({ statusCode: 200, headers: {}, text });
+          }
+          rej(err);
+        });
+
+        if (opts.body) req.write(opts.body);
+        req.end();
       });
 
-      req.on('error', err => {
-        if (chunks.length > 0) {
-          const buf = Buffer.concat(chunks);
-          let text = '';
-          try { text = buf.toString('utf8'); } catch (e) {}
-          return res({ statusCode: 200, headers: {}, text });
-        }
-        rej(err);
-      });
-
-      if (opts.body) req.write(opts.body);
-      req.end();
-    });
-
-    const firstGet = await rawReq(cdnUrlStr, { headers: { 'Referer': pageUrl } });
-    if (firstGet.headers['set-cookie']) {
-      firstGet.headers['set-cookie'].forEach(c => cookieJar.push(c.split(';')[0]));
-    }
-
-    // 5. Se veio o desafio js_probe, envia o POST de conclusão
-    const nonceMatch = firstGet.text.match(/nonce:\s*"([^"]+)"/);
-    const pathMatch = firstGet.text.match(/path:\s*"([^"]+)"/);
-
-    if (nonceMatch && pathMatch) {
-      const nonce = nonceMatch[1];
-      const chPath = pathMatch[1];
-
-      const challengeRes = await rawReq(`${cleanHost}/_challenge/complete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Referer': cdnUrlStr,
-          'Cookie': cookieJar.join('; ')
-        },
-        body: JSON.stringify({ nonce, path: chPath })
-      });
-
-      if (challengeRes.headers['set-cookie']) {
-        challengeRes.headers['set-cookie'].forEach(c => cookieJar.push(c.split(';')[0]));
+      const firstGet = await rawReq(cdnUrlStr, { headers: { 'Referer': pageUrl } });
+      if (firstGet.headers['set-cookie']) {
+        firstGet.headers['set-cookie'].forEach(c => cookieJar.push(c.split(';')[0]));
       }
+
+      // 5. Se veio o desafio js_probe, envia o POST de conclusão
+      const nonceMatch = firstGet.text && firstGet.text.match(/nonce:\s*"([^"]+)"/);
+      const pathMatch = firstGet.text && firstGet.text.match(/path:\s*"([^"]+)"/);
+
+      if (nonceMatch && pathMatch) {
+        const nonce = nonceMatch[1];
+        const chPath = pathMatch[1];
+
+        const challengeRes = await rawReq(`${cleanHost}/_challenge/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': cdnUrlStr,
+            'Cookie': cookieJar.join('; ')
+          },
+          body: JSON.stringify({ nonce, path: chPath })
+        });
+
+        if (challengeRes.headers['set-cookie']) {
+          challengeRes.headers['set-cookie'].forEach(c => cookieJar.push(c.split(';')[0]));
+        }
+      }
+    } catch (errProbe) {
+      console.warn('[Bunkr Resolver] Pré-flight ignorado por timeout/erro, usando URL direta com token:', errProbe.message);
     }
 
     return {
@@ -306,8 +373,11 @@ async function scanBunkrLink(urlStr) {
   console.log('[Bunkr] Iniciando escaneamento de:', urlStr);
   const files = [];
 
+  const domainMatch = urlStr.match(/(https?:\/\/[^/]+)/i);
+  const baseDomain = domainMatch ? domainMatch[1] : 'https://bunkr.ph';
+
   // Verifica se é um álbum (/a/{albumId})
-  const albumMatch = urlStr.match(/\/a\/([a-zA-Z0-9]+)/);
+  const albumMatch = urlStr.match(/\/a\/([a-zA-Z0-9_-]+)/);
   if (albumMatch) {
     const albumId = albumMatch[1];
     const fileIds = [];
@@ -316,7 +386,7 @@ async function scanBunkrLink(urlStr) {
     let folderName = `Bunkr_Album_${albumId}`;
 
     while (hasMorePages) {
-      const pageUrl = page === 1 ? `https://bunkr.cr/a/${albumId}` : `https://bunkr.cr/a/${albumId}?page=${page}`;
+      const pageUrl = page === 1 ? `${baseDomain}/a/${albumId}` : `${baseDomain}/a/${albumId}?page=${page}`;
       console.log(`[Bunkr] Escaneando página ${page} do álbum ${albumId}...`);
       const pageHtml = await fetchText(pageUrl);
 
@@ -331,13 +401,13 @@ async function scanBunkrLink(urlStr) {
         folderName = folderName.replace(/[\\/:*?"<>|]/g, '_').trim();
       }
 
-      const fileRegex = /href="(?:\.\.\/|\/)?(?:f|v|i)\/([a-zA-Z0-9]+)"/g;
+      const fileRegex = /href="(?:\.\.\/|\/)?(?:f|v|i|d)\/([^"/?#]+)"/gi;
       let match;
       let newFilesOnPage = 0;
       while ((match = fileRegex.exec(pageHtml)) !== null) {
-        const fileId = match[1];
-        if (!fileIds.includes(fileId) && fileId !== albumId) {
-          fileIds.push(fileId);
+        const rawSlug = decodeURIComponent(match[1]).trim();
+        if (rawSlug && !fileIds.includes(rawSlug) && rawSlug !== albumId && !rawSlug.includes('file.slug')) {
+          fileIds.push(rawSlug);
           newFilesOnPage++;
         }
       }
@@ -357,19 +427,20 @@ async function scanBunkrLink(urlStr) {
     for (let i = 0; i < fileIds.length; i += BATCH_SIZE) {
       const batch = fileIds.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
-        batch.map(fileId => getBunkrFileDetails(fileId, folderName))
+        batch.map(fileId => getBunkrFileDetails(fileId, folderName, baseDomain))
       );
-      files.push(...batchResults);
+      files.push(...batchResults.filter(Boolean));
     }
+  } else {
     // É um arquivo individual (/f/{id}, /v/{id}, /i/{id}, /d/{id} ou final da URL)
-    const fileMatch = urlStr.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || urlStr.match(/bunkr\.[^/]+\/([a-zA-Z0-9_-]+)/i);
+    const fileMatch = urlStr.match(/\/(?:f|v|i|d)\/([^"/?#]+)/i) || urlStr.match(/bunkr\.[^/]+\/([^"/?#]+)/i);
     let fileId = fileMatch ? fileMatch[1] : null;
     if (!fileId && urlStr.includes('/')) {
       const parts = urlStr.split(/[/?#]/).filter(Boolean);
       fileId = parts.pop();
     }
     if (fileId && fileId.length >= 3) {
-      const singleFile = await getBunkrFileDetails(fileId, 'Bunkr_Downloads');
+      const singleFile = await getBunkrFileDetails(fileId, 'Arquivos Avulsos Bunkr', baseDomain);
       if (singleFile) files.push(singleFile);
     }
   }

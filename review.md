@@ -1,6 +1,29 @@
 # Nexus Downloader - Diário de Bordo & Registro de Alterações (review.md)
 
-**Última Atualização:** 23/08/2026
+**Última Atualização:** 25/08/2026
+
+---
+
+## 8. Sessão de 25/08/2026 - Renovação do Ecossistema TorBox Cloud, Estatísticas de Conta e Otimização nos Scanners
+
+### Alterações e Implementações do Dia
+
+#### 1. Gerenciador Completo e Estatísticas da Nuvem TorBox (`torbox-scanner.js`, `main.js`, `renderer/`)
+- **Problema:** A aba do TorBox não permitia visualizar dados da conta (plano, uso de banda, armazenamento) e carecia de ações diretas de gerenciamento da nuvem.
+- **Solução:** 
+  - Integrado o logo oficial em alta resolução (`renderer/assets/torbox_box_logo.png`).
+  - Desenvolvida interface com cartões estatísticos em tempo real (Tipo de Plano, Banda Consumida, Armazenamento Usado, Expiração da Conta e Status do Serviço).
+  - Adicionados filtros avançados (Torrents, Usenet, WebDL), campo de busca por texto e ações de exclusão/download direto na nuvem.
+
+#### 2. Otimizações no Scanner Bunkr e Suporte a Pixeldrain (`bunkr-scanner.js`, `generic-scanner.js`)
+- **Problema:** Mudanças de CDN no Bunkr e requisições de arquivos diretos em hosts como Pixeldrain necessitavam de melhoria na extração de URLs.
+- **Solução:** 
+  - Atualizadas as rotinas de resolução em `bunkr-scanner.js` com melhor resiliência de buffers.
+  - Aprimorada a detecção de cabeçalhos no `generic-scanner.js` para compatibilidade com Pixeldrain e múltiplos serviços diretos.
+
+#### 3. Expansão de Pontes IPC e Resiliência Backend (`main.js`, `preload.js`)
+- **Problema:** A camada Renderer necessitava de comunicação assíncrona segura com as novas funções da API do TorBox.
+- **Solução:** Adicionados handlers IPC para consulta de dados de conta (`torbox-user-info`), exclusão de itens (`torbox-delete-item`) e adição remota, mantendo o worker HTTP Direct protegido contra exceções.
 
 ---
 
@@ -9,21 +32,10 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Suporte Nativo ao Provedor Send (`send-scanner.js`, `main.js`)
-- **Problema:** Links e pastas da família Send (`send.now`, `send.cm`, `sendit.cloud`, `userscloud.com`, `tusfiles.com`, `tusfiles.net`, `usersfiles.com`) não tinham tratamento de varredura ou extração de pastas `/s/`.
-- **Solução:** 
-  - Criado o módulo `send-scanner.js` para escaneamento de arquivos e pastas compartilhadas do Send, extraindo nome, tamanho e lista de itens.
-  - Integração no `main.js` com suporte a resolução inteligente via TorBox WebDL ou download direto HTTP.
+- **Solução:** Criado o módulo `send-scanner.js` para escaneamento de arquivos e pastas compartilhadas do Send (send.now, send.cm, sendit.cloud, etc.).
 
-#### 2. Integração e Desproteção do 1fichier (`main.js`, `generic-scanner.js`)
-- **Problema:** Links de hospedagem do 1fichier exigiam bypass para capturar links diretos de alta velocidade.
-- **Solução:** Adicionado suporte a links do 1fichier via desprotetor TorBox Hoster e roteamento no motor genérico.
-
-#### 3. Redesenho e Aprimoramento dos Modais de Entrada (`renderer/index.html`, `renderer/css/style.css`, `renderer/js/app.js`)
-- **Problema:** Os modais de inserção de links ("Escanear Links", "Adicionar Torrent") careciam de feedback dinâmico de contagem e suporte a drag & drop.
-- **Solução:** 
-  - Reformulados os modais com caixa de texto com contador de linhas/links em tempo real.
-  - Adicionado suporte a drag & drop de arquivos e colagem rápida de magnet links.
-  - Injetada a badge temática visual `SEND` na fila de downloads e na tabela de resultados do scanner.
+#### 2. Redesenho e Aprimoramento dos Modais de Entrada (`renderer/index.html`, `renderer/css/style.css`, `renderer/js/app.js`)
+- **Solução:** Reformulados os modais com caixa de texto com contador de linhas/links em tempo real e drag & drop.
 
 ---
 
@@ -32,34 +44,25 @@
 ### Alterações e Implementações do Dia
 
 #### 1. Suporte Nativo e Independente ao Drime Cloud (`drime-scanner.js`, `main.js`)
-- **Solução:** Atualizado o módulo `drime-scanner.js` e a integração com o `main.js` para varrer pastas e arquivos compartilhados nativamente (com hashes e episódios `.mkv` individuais).
-
-#### 2. Suporte Independente ao Turbo.cr (`bunkr-scanner.js`, `generic-scanner.js`, `main.js`)
-- **Solução:** Adicionado reconhecimento direto dos domínios do Turbo.cr com resolução resiliente de mídias.
+- **Solução:** Extrator nativo e resolver de arquivos/pastas do Drime Cloud com hashes e episódios `.mkv` individuais.
 
 ---
 
-## 5. Sessão de 21/08/2026 - Arquitetura em 5 Camadas do Auto-Updater (GitHub Releases API + Hot Swap)
+## 1. Sessão de 12/08/2026 a 21/08/2026 - Multiprovedores e Fundação
 
-### Alterações e Implementações do Dia
-
-#### 1. Arquitetura de Auto-Atualização em 5 Camadas (`main.js`, `renderer/js/app.js`, `renderer/index.html`, `renderer/css/style.css`)
-- **Solução:** Desenvolvida a arquitetura completa em 5 camadas (Detecção SemVer, UI Changelog Modal, Stream Download, Hot Swap Handover e Padronização de Publicação).
-
----
-
-## 1. Sessão de 12/08/2026 a 20/08/2026 - Multiprovedores e Fundação
-
-- **Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox e URLs Genéricas**: Suporte completo a múltiplos provedores, auto-resume, motor `net.request`, sanitização no Windows e renderização in-place anti-flickering.
+- **Google Drive, Bunkr, MediaFire, TeraBox, OneDrive, TorBox e URLs Genéricas**: Suporte completo a múltiplos provedores, auto-resume, motor `net.request`, sanitização no Windows e auto-updater em 5 camadas.
 
 ---
 
 ## Arquivos Criados / Modificados (Acumulado)
 
-- **`send-scanner.js`** (Criado): Extrator nativo para a família de domínios Send (send.now, send.cm, sendit.cloud, etc.).
-- **`main.js`** (Modificado): Roteamento do scanner Send, suporte a 1fichier e resiliência no worker HTTP Direct.
-- **`renderer/js/app.js`** (Modificado): Badge `SEND`, modais com contador em tempo real e atualização de fila.
-- **`renderer/css/style.css`** (Modificado): Estilização dos novos modais, badges e contadores de links.
-- **`renderer/index.html`** (Modificado): Estrutura renovada dos modais do scanner e torrent.
-- **`torbox-scanner.js`** (Modificado): Ajustes de tratamento de exceções assíncronas.
+- **`renderer/assets/torbox_box_logo.png`** (Criado): Logo oficial do TorBox integrado à UI.
+- **`torbox-scanner.js`** (Modificado): Mapeamento completo dos endpoints de usuário, estatísticas e gerenciamento remoto do TorBox Cloud.
+- **`bunkr-scanner.js`** (Modificado): Otimização de resiliência e suporte a novas estruturas de CDN.
+- **`generic-scanner.js`** (Modificado): Suporte a Pixeldrain e servidores de hospedagem direta.
+- **`main.js`** (Modificado): Novos handlers IPC da nuvem Torbox e estabilização de requisições assíncronas.
+- **`preload.js`** (Modificado): Exposição de chamadas IPC do Torbox.
+- **`renderer/js/app.js`** (Modificado): Dashboard da nuvem TorBox, cartões estatísticos e filtros avançados.
+- **`renderer/index.html`** (Modificado): Estrutura HTML da aba do TorBox renovada.
+- **`renderer/css/style.css`** (Modificado): Estilização dos cartões estatísticos e tabela do TorBox.
 - **`review.md`** (Atualizado): Documentação oficial do projeto.

@@ -261,6 +261,14 @@ body {
   position: relative;
 }
 
+.nav-item > span:not(.badge) {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .nav-item:hover {
   background-color: var(--bg-tertiary);
   color: var(--text-main);
@@ -278,6 +286,7 @@ body {
   height: 20px;
   opacity: 0.8;
   transition: transform var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .nav-item:hover .nav-icon {
@@ -285,8 +294,6 @@ body {
 }
 
 .badge {
-  position: absolute;
-  right: 16px;
   background-color: var(--accent-primary);
   color: white;
   font-size: 0.75rem;
@@ -294,6 +301,8 @@ body {
   padding: 2px 8px;
   border-radius: 20px;
   box-shadow: 0 0 10px var(--accent-primary-glow);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Auth Card */
