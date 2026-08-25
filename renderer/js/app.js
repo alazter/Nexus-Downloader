@@ -1589,22 +1589,34 @@ function renderQueue(queue) {
     renderQueue(q);
   };
 
-  // Renderiza card ativo no topo
-  if (activeDownloads.length > 0) {
+  // Renderiza card ativo no topo (100% Livre de Piscar / Sem repaints desnecessários)
+  if (activeDownloads.length > 0 && activeDownloadPanel) {
     const active = activeDownloads[0]; // Exibe o primeiro ativo no card principal
+    
     if (activeDownloadPanel.style.display !== 'flex') {
       activeDownloadPanel.style.display = 'flex';
     }
     
-    if (activeDownloadPanel.dataset.activeItemName !== active.name) {
-      activeDownloadPanel.dataset.activeItemName = active.name;
+    // Atualiza título e tags SOMENTE quando o item ativo muda de arquivo (sem re-parse de HTML em loop)
+    if (activeDownloadPanel.dataset.activeItemId !== active.id) {
+      activeDownloadPanel.dataset.activeItemId = active.id;
       const pureFileName = (active.name || '').includes('/') ? active.name.split('/').pop() : active.name;
       const sTag = getServiceTag(active);
       const tag = getFileTypeTag(active);
       const spanServiceTags = renderServiceTagHTML(sTag, false);
       const spanFileTag = `<span style="background: ${tag.bg}; color: ${tag.color}; border: 1px solid ${tag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${tag.text}</span>`;
-      activeFilename.innerHTML = `${spanServiceTags}${spanFileTag}${escapeHtml(pureFileName)}`;
-      activeFilename.title = pureFileName;
+      if (activeFilename) {
+        activeFilename.innerHTML = `${spanServiceTags}${spanFileTag}${escapeHtml(pureFileName)}`;
+        activeFilename.title = pureFileName;
+      }
+      if (btnActivePause) btnActivePause.onclick = () => window.api.pauseDownload(active.id);
+      if (btnActiveCancel) {
+        btnActiveCancel.onclick = async () => {
+          if (await showCustomConfirm(`Cancelar o download do arquivo "${active.name}"?`, 'Cancelar Download')) {
+            window.api.cancelDownload(active.id);
+          }
+        };
+      }
     }
 
     if (active && torboxCloudFiles && torboxCloudFiles.length > 0) {
@@ -1630,12 +1642,13 @@ function renderQueue(queue) {
     if (active.cloudMessage || active.cloudProgress !== undefined) {
       const cProg = active.cloudProgress !== undefined ? active.cloudProgress : (active.progress || 0);
       
-      if (activeBadgeEl) {
+      if (activeBadgeEl && activeBadgeEl.dataset.state !== 'cloud') {
+        activeBadgeEl.dataset.state = 'cloud';
         activeBadgeEl.innerHTML = '<img src="assets/torbox_box_logo.png" width="14" height="14" style="vertical-align: middle; margin-right: 4px;"> AGUARDANDO TORBOX';
         activeBadgeEl.classList.add('cloud-waiting');
       }
 
-      if (activeCloudNotice) {
+      if (activeCloudNotice && activeCloudNotice.style.display !== 'flex') {
         activeCloudNotice.style.display = 'flex';
         activeCloudNotice.innerHTML = `
           <span class="notice-icon" style="display: flex; align-items: center;"><img src="assets/torbox_box_logo.png" width="22" height="22" style="filter: drop-shadow(0 0 6px rgba(167,139,250,0.6));"></span>
@@ -1645,38 +1658,30 @@ function renderQueue(queue) {
           </div>
         `;
       }
-      activeProgressText.innerHTML = `<img src="assets/torbox_box_logo.png" width="14" height="14" style="vertical-align: middle; margin-right: 4px;"> Torbox ${cProg}%`;
-      activeProgressBar.style.width = `${cProg}%`;
-      activeSpeedText.textContent = 'Servidor Torbox Processando';
-      activeEtaText.textContent = 'Aguardando Conclusão';
+      if (activeProgressText) activeProgressText.textContent = `Torbox ${cProg}%`;
+      if (activeProgressBar) activeProgressBar.style.width = `${cProg}%`;
+      if (activeSpeedText) activeSpeedText.textContent = 'Servidor Torbox Processando';
+      if (activeEtaText) activeEtaText.textContent = 'Aguardando Conclusão';
     } else {
-      if (activeBadgeEl) {
+      if (activeBadgeEl && activeBadgeEl.dataset.state !== 'local') {
+        activeBadgeEl.dataset.state = 'local';
         activeBadgeEl.textContent = 'BAIXANDO AGORA';
         activeBadgeEl.classList.remove('cloud-waiting');
       }
-      if (activeCloudNotice) activeCloudNotice.style.display = 'none';
-      activeProgressText.textContent = `${active.progress || 0}%`;
-      activeProgressBar.style.width = `${active.progress || 0}%`;
-      activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
-      activeEtaText.textContent = formatETA(active.eta);
+      if (activeCloudNotice && activeCloudNotice.style.display !== 'none') {
+        activeCloudNotice.style.display = 'none';
+      }
+      if (activeProgressText) activeProgressText.textContent = `${active.progress || 0}%`;
+      if (activeProgressBar) activeProgressBar.style.width = `${active.progress || 0}%`;
+      if (activeSpeedText) activeSpeedText.textContent = `${formatBytes(active.speed)}/s`;
+      if (activeEtaText) activeEtaText.textContent = formatETA(active.eta);
     }
-    activeBytesText.textContent = `${formatBytes(active.downloadedBytes)} / ${formatBytes(active.size)}`;
-
-    // Atualiza botões do painel ativo se o ID mudou
-    if (activeDownloadPanel.dataset.activeId !== active.id) {
-      activeDownloadPanel.dataset.activeId = active.id;
-      btnActivePause.onclick = () => window.api.pauseDownload(active.id);
-      btnActiveCancel.onclick = async () => {
-        if (await showCustomConfirm(`Cancelar o download do arquivo "${active.name}"?`, 'Cancelar Download')) {
-          window.api.cancelDownload(active.id);
-        }
-      };
-    }
-  } else {
+    if (activeBytesText) activeBytesText.textContent = `${formatBytes(active.downloadedBytes)} / ${formatBytes(active.size)}`;
+  } else if (activeDownloadPanel) {
     if (activeDownloadPanel.style.display !== 'none') {
       activeDownloadPanel.style.display = 'none';
     }
-    activeDownloadPanel.dataset.activeId = '';
+    activeDownloadPanel.dataset.activeItemId = '';
   }
 
   // 2. Renderiza lista da fila (Reconciliação In-Place para EVITAR PISCAR no hover)
@@ -1809,14 +1814,26 @@ function renderQueue(queue) {
 
   torboxEntries.sort((a, b) => a[1].localeCompare(b[1]));
 
-  // Ordena itens internos e pastas da aba Concluídos do mais recente ao mais antigo
+  const getCompletedTime = (item) => {
+    if (!item) return 0;
+    if (item.completedAt && typeof item.completedAt === 'number') return item.completedAt;
+    if (item.completedTime && typeof item.completedTime === 'number') return item.completedTime;
+    if (item.finishedAt && typeof item.finishedAt === 'number') return item.finishedAt;
+    if (item.status === 'completed') {
+      item.completedAt = Date.now();
+      return item.completedAt;
+    }
+    return Number(item.timestamp || 0);
+  };
+
+  // Ordena itens internos e pastas da aba Concluídos do mais recente ao mais antigo (último arquivo baixado no topo)
   completedEntries.forEach(entry => {
-    entry[2].sort((a, b) => (b.completedAt || b.timestamp || 0) - (a.completedAt || a.timestamp || 0));
+    entry[2].sort((a, b) => getCompletedTime(b) - getCompletedTime(a));
   });
 
   completedEntries.sort((a, b) => {
-    const maxA = Math.max(...a[2].map(item => item.completedAt || item.timestamp || 0), 0);
-    const maxB = Math.max(...b[2].map(item => item.completedAt || item.timestamp || 0), 0);
+    const maxA = Math.max(...a[2].map(item => getCompletedTime(item)), 0);
+    const maxB = Math.max(...b[2].map(item => getCompletedTime(item)), 0);
     if (maxA !== maxB) return maxB - maxA;
     return a[1].localeCompare(b[1]);
   });
@@ -1973,6 +1990,7 @@ function renderQueue(queue) {
         badgeGroup.className = 'queue-folder-badge-group';
         badgeGroup.innerHTML = `
           <span class="queue-folder-badge">${completedFiles}/${totalFiles} concluídos (${formatBytes(folderDownloadedBytes)} / ${formatBytes(folderTotalBytes)})</span>
+          <div class="queue-folder-status-chips" style="display: inline-flex; align-items: center; gap: 4px; margin: 0 4px;"></div>
           <span class="queue-folder-percent">${folderPercent}%</span>
           <button class="btn-icon btn-folder-copy-link" data-group-key="${groupKey}" title="Copiar link original do álbum" style="margin-left: 6px; margin-right: 2px; padding: 4px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #60a5fa; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -2021,16 +2039,23 @@ function renderQueue(queue) {
         btnFolderCopyLink.onclick = (e) => {
           e.stopPropagation();
           const sampleFile = folderItems[0];
-          const rawUrl = sampleFile ? (sampleFile.sourceUrl || sampleFile.originUrl || sampleFile.albumUrl || sampleFile.url || sampleFile.directUrl || '') : '';
+          const rawUrl = sampleFile ? (sampleFile.bunkrAlbumUrl || sampleFile.albumUrl || sampleFile.bunkrPageUrl || sampleFile.sourceUrl || sampleFile.originUrl || sampleFile.url || sampleFile.directUrl || '') : '';
           if (rawUrl) {
+            if (window.api && window.api.openExternalUrl) {
+              window.api.openExternalUrl(rawUrl);
+            }
             navigator.clipboard.writeText(rawUrl).then(() => {
               const origTitle = btnFolderCopyLink.title;
-              btnFolderCopyLink.title = '✓ Link do álbum copiado!';
+              btnFolderCopyLink.title = '✓ Link copiado e aberto no navegador!';
               btnFolderCopyLink.style.color = '#10b981';
               setTimeout(() => {
                 btnFolderCopyLink.title = origTitle;
                 btnFolderCopyLink.style.color = '#60a5fa';
               }, 2000);
+            }).catch(() => {
+              if (window.api && window.api.openExternalUrl) {
+                window.api.openExternalUrl(rawUrl);
+              }
             });
           }
         };
@@ -2107,6 +2132,47 @@ function renderQueue(queue) {
       }
       if (percentSpan) percentSpan.textContent = `${folderPercent}%`;
       if (progressFill) progressFill.style.width = `${folderPercent}%`;
+
+      // Atualiza os chips de status no cabeçalho da pasta sem recriar o DOM (ex: ⚡ 1 baixando, ⏸️ 3 pausados, ⚠️ 1 com erro, ⏳ 10 aguardando)
+      let statusChipsContainer = folderCard.querySelector('.queue-folder-status-chips');
+      if (!statusChipsContainer) {
+        const badgeGroupEl = folderCard.querySelector('.queue-folder-badge-group');
+        if (badgeGroupEl) {
+          statusChipsContainer = document.createElement('div');
+          statusChipsContainer.className = 'queue-folder-status-chips';
+          statusChipsContainer.style.display = 'inline-flex';
+          statusChipsContainer.style.alignItems = 'center';
+          statusChipsContainer.style.gap = '4px';
+          statusChipsContainer.style.margin = '0 4px';
+          if (percentSpan) {
+            badgeGroupEl.insertBefore(statusChipsContainer, percentSpan);
+          } else {
+            badgeGroupEl.appendChild(statusChipsContainer);
+          }
+        }
+      }
+
+      if (statusChipsContainer) {
+        const downloadingCount = folderItems.filter(f => f.status === 'downloading').length;
+        const pausedCount = folderItems.filter(f => f.status === 'paused').length;
+        const errorCount = folderItems.filter(f => f.status === 'error').length;
+        const pendingCount = folderItems.filter(f => !f.status || f.status === 'pending' || f.status === 'queued' || f.status === 'waiting').length;
+
+        let chipsHTML = '';
+        if (downloadingCount > 0) {
+          chipsHTML += `<span class="folder-status-chip chip-downloading" title="${downloadingCount} arquivo(s) baixando" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⚡ ${downloadingCount} baixando</span>`;
+        }
+        if (pausedCount > 0) {
+          chipsHTML += `<span class="folder-status-chip chip-paused" title="${pausedCount} arquivo(s) pausados" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⏸️ ${pausedCount} pausado${pausedCount > 1 ? 's' : ''}</span>`;
+        }
+        if (errorCount > 0) {
+          chipsHTML += `<span class="folder-status-chip chip-error" title="${errorCount} arquivo(s) com erro" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⚠️ ${errorCount} com erro</span>`;
+        }
+        if (pendingCount > 0 && (downloadingCount > 0 || pausedCount > 0 || errorCount > 0)) {
+          chipsHTML += `<span class="folder-status-chip chip-pending" title="${pendingCount} arquivo(s) aguardando" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 0.72rem; font-weight: 600; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⏳ ${pendingCount} aguardando</span>`;
+        }
+        statusChipsContainer.innerHTML = chipsHTML;
+      }
 
       // Reconcilia e atualiza a lista de itens/arquivos dentro do card da pasta
       const itemsContainer = folderCard.querySelector('.queue-folder-items');
@@ -2222,16 +2288,23 @@ function renderQueue(queue) {
         if (btnCopyLinkItem) {
           btnCopyLinkItem.onclick = (e) => {
             e.stopPropagation();
-            const rawUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.url || item.directUrl || '';
+            const rawUrl = item.bunkrPageUrl || item.originalUrl || item.sourceUrl || item.originUrl || item.albumUrl || item.url || item.downloadUrl || item.directUrl || '';
             if (rawUrl) {
+              if (window.api && window.api.openExternalUrl) {
+                window.api.openExternalUrl(rawUrl);
+              }
               navigator.clipboard.writeText(rawUrl).then(() => {
                 const origTitle = btnCopyLinkItem.title;
-                btnCopyLinkItem.title = '✓ Link copiado!';
+                btnCopyLinkItem.title = '✓ Link copiado e aberto no navegador!';
                 btnCopyLinkItem.style.color = '#10b981';
                 setTimeout(() => {
                   btnCopyLinkItem.title = origTitle;
                   btnCopyLinkItem.style.color = '';
                 }, 2000);
+              }).catch(() => {
+                if (window.api && window.api.openExternalUrl) {
+                  window.api.openExternalUrl(rawUrl);
+                }
               });
             }
           };
@@ -2253,7 +2326,11 @@ function renderQueue(queue) {
         const btnDelete = itemRow.querySelector('.btn-item-delete');
         if (btnDelete) btnDelete.onclick = async (e) => {
           e.stopPropagation();
-          window.api.removeQueueItem(item.id);
+          if (window.api && window.api.cancelDownload) {
+            window.api.cancelDownload(item.id);
+          } else if (window.api && window.api.removeQueueItem) {
+            window.api.removeQueueItem(item.id);
+          }
         };
 
         itemsContainer.appendChild(itemRow);
@@ -2647,8 +2724,11 @@ function updateQueueItemActions(divActions, item) {
     btnCopyLink.title = 'Copiar Link Original';
     btnCopyLink.onclick = (e) => {
       e.stopPropagation();
+      if (window.api && window.api.openExternalUrl) {
+        window.api.openExternalUrl(originalUrlToCopy);
+      }
       navigator.clipboard.writeText(originalUrlToCopy).then(() => {
-        showCustomAlert(`Link original copiado:\n${originalUrlToCopy}`, 'Link Copiado');
+        showCustomAlert(`Link original copiado e aberto no navegador:\n${originalUrlToCopy}`, 'Link Copiado');
       }).catch(err => {
         console.error('Erro ao copiar link:', err);
       });
@@ -3746,6 +3826,11 @@ function initGithubButtonDraggable() {
   }, true);
 }
 
+window.addEventListener('resize', () => {
+  applyFooterStatusPosition();
+  applyGithubButtonPosition();
+});
+
 // ==========================================
 // Inicialização do App
 // ==========================================
@@ -3766,6 +3851,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (e) {}
   }
+
+  // Verificação automática de atualizações no startup (Renderer-side)
+  setTimeout(() => {
+    if (window.api && window.api.checkForUpdates) {
+      console.log('[AutoUpdater] Executando verificação automática no startup (Renderer)...');
+      window.api.checkForUpdates().catch(err => console.warn('[AutoUpdater] Erro ao checar atualização automaticamente:', err));
+    }
+  }, 2000);
 });
 
 window.addEventListener('resize', () => {

@@ -334,6 +334,9 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     updateQueueUI();
+    setTimeout(() => {
+      checkUpdatesAutomaticallyOnStartup().catch(err => console.error('[AutoUpdater] Erro no startup check:', err));
+    }, 1500);
   });
 
   mainWindow.on('close', (event) => {
@@ -463,6 +466,70 @@ function setupAutoUpdater() {
   });
 }
 
+async function checkUpdatesAutomaticallyOnStartup() {
+  console.log('[AutoUpdater] Iniciando verificação automática de atualizações no startup (GitHub API + electron-updater)...');
+  const currentVersion = app.getVersion();
+
+  try {
+    const release = await fetchLatestGitHubRelease();
+    if (release) {
+      cachedLatestRelease = release;
+      const remoteVersion = release.tag_name || release.name || currentVersion;
+      const updateAvailable = isNewerVersion(remoteVersion, currentVersion);
+
+      console.log(`[AutoUpdater] Startup Check: Versão local=v${currentVersion}, Remota=v${remoteVersion.replace(/^v/i, '')}, Disponível=${updateAvailable}`);
+
+      if (updateAvailable) {
+        if (Notification.isSupported()) {
+          try {
+            new Notification({
+              title: '⚡ Nexus Downloader',
+              body: `Nova versão v${remoteVersion.replace(/^v/i, '')} disponível! Clique para abrir e atualizar.`,
+              icon: path.join(__dirname, 'renderer', 'icon.png')
+            }).show();
+          } catch (e) {}
+        }
+
+        const payload = {
+          status: 'available',
+          updateAvailable: true,
+          currentVersion,
+          version: remoteVersion.replace(/^v/i, ''),
+          title: release.name || `⚡ Nova Versão v${remoteVersion.replace(/^v/i, '')} Disponível`,
+          body: release.body || 'Melhorias de desempenho e correções gerais de estabilidade.',
+          publishedAt: release.published_at,
+          assets: release.assets || [],
+          msg: `Nova versão v${remoteVersion.replace(/^v/i, '')} disponível!`
+        };
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater-status', payload);
+        }
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoUpdater] Startup Check via GitHub Releases falhou:', err.message);
+  }
+
+  // Fallback para electron-updater se GitHub API não detectar
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (result && result.updateInfo && isNewerVersion(result.updateInfo.version, currentVersion)) {
+      console.log('[AutoUpdater] Startup Check via electron-updater: Atualização encontrada:', result.updateInfo.version);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updater-status', {
+          status: 'available',
+          version: result.updateInfo.version,
+          msg: `Nova versão v${result.updateInfo.version} disponível!`
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoUpdater] Startup Check via electron-updater falhou:', err.message);
+  }
+}
+
 // Inicializa a janela quando o app estiver pronto
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
@@ -475,8 +542,13 @@ app.whenReady().then(() => {
   // Configura e verifica atualizações automaticamente
   setupAutoUpdater();
   setTimeout(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(err => console.error('[AutoUpdater] erro inicial:', err));
-  }, 4000);
+    checkUpdatesAutomaticallyOnStartup().catch(err => console.error('[AutoUpdater] Erro no startup check:', err));
+  }, 3000);
+
+  // Re-verifica periodicamente a cada 4 horas enquanto o app estiver em execução
+  setInterval(() => {
+    checkUpdatesAutomaticallyOnStartup().catch(err => console.error('[AutoUpdater] Erro no periodic check:', err));
+  }, 4 * 60 * 60 * 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

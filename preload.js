@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('api', {
   resumeDownload: (fileId) => ipcRenderer.invoke('resume-download', fileId),
   cancelDownload: (fileId) => ipcRenderer.invoke('cancel-download', fileId),
   cancelDownloads: (fileIds) => ipcRenderer.invoke('cancel-downloads', fileIds),
+  removeQueueItem: (fileId) => ipcRenderer.invoke('cancel-download', fileId),
+  removeQueueItems: (fileIds) => ipcRenderer.invoke('cancel-downloads', fileIds),
   clearCompleted: () => ipcRenderer.invoke('clear-completed'),
   clearQueue: () => ipcRenderer.invoke('clear-queue'),
   pauseAllDownloads: () => ipcRenderer.invoke('pause-all-downloads'),
