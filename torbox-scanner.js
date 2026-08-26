@@ -210,7 +210,7 @@ async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
     const payload = new URLSearchParams();
     payload.append('magnet', urlStr.trim());
 
-    await waitForTorboxSlot(apiKey, 3, onStatusUpdate);
+
     console.log('[Torbox Scanner] Adicionando Magnet Link à API do Torbox...');
     const createRes = await callTorboxApi('/torrents/createtorrent', 'POST', apiKey, payload);
 
@@ -340,7 +340,7 @@ async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
       const payload = new URLSearchParams();
       payload.append('link', cleanUrlStr);
 
-      await waitForTorboxSlot(apiKey, 3, onStatusUpdate);
+
       console.log('[Torbox Scanner] Criando Web Download no Torbox para URL limpa:', cleanUrlStr);
       const createRes = await callTorboxApi('/webdl/createwebdownload', 'POST', apiKey, payload);
 

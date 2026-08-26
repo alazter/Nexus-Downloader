@@ -430,7 +430,19 @@
                 <span class="badge" id="badge-subtab-completed" style="background: rgba(255,255,255,0.1); color: var(--text-muted, #94a3b8); border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: 700;">0</span>
               </button>
             </div>
-            <div class="queue-header-title">
+            <div class="queue-header-title" style="display: flex; align-items: center; gap: 16px;">
+              <!-- Filtro Interno da Aba Concluídos -->
+              <div id="completed-filter-container" style="display: none; align-items: center; gap: 8px;">
+                <label for="completed-sort-select" style="font-size: 12px; color: var(--text-muted, #94a3b8); font-weight: 600; white-space: nowrap;">Filtro:</label>
+                <select id="completed-sort-select" style="padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15, 23, 42, 0.85); color: #4ade80; font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s ease;">
+                  <option value="recent_desc" selected>⏱️ Mais recentes</option>
+                  <option value="recent_asc">⌛ Mais antigos</option>
+                  <option value="name_asc">🔤 Nome (A - Z)</option>
+                  <option value="name_desc">🔤 Nome (Z - A)</option>
+                  <option value="size_desc">📦 Maior Tamanho</option>
+                </select>
+              </div>
+
               <span style="font-size: 13px; color: var(--text-muted, #94a3b8);">Total na Fila: <strong id="queue-total-count" style="color: #fff;">0</strong></span>
             </div>
           </div>
@@ -512,7 +524,7 @@
 
             <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
               <label class="setting-label">⚡ Limite de Downloads Simultâneos por Serviço / Hoster</label>
-              <span class="setting-hint setting-hint-block">Define quantos arquivos podem ser baixados em paralelo no mesmo site. Por padrão (1 por vez), o Nexus baixa apenas 1 arquivo do mesmo hoster por vez para evitar bloqueio 503 por IP, liberando vagas simultâneas para outros serviços distintos.</span>
+              <span class="setting-hint setting-hint-block">Define quantos arquivos podem ser baixados em paralelo no mesmo site. A sua configuração selecionada nos cartões abaixo substitui o padrão (1 por vez) e define o limite exato de cada hoster para evitar bloqueio 503 por IP.</span>
 
               <div class="mode-settings-grid">
                 <div class="setting-service-card">
@@ -529,7 +541,7 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
-                    <span style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Bunkr</span>
+                    <span style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Bunkr</span>
                     <strong>Bunkr</strong>
                   </div>
                   <select id="setting-service-max-bunkr" class="service-select">
@@ -565,10 +577,22 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
-                    <span style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Vik1ngFile</span>
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Vik1ngFile</span>
                     <strong>Vik1ngFile</strong>
                   </div>
                   <select id="setting-service-max-vik1ngfile" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">GoFile</span>
+                    <strong>GoFile</strong>
+                  </div>
+                  <select id="setting-service-max-gofile" class="service-select">
                     <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
                     <option value="2">2 arquivos por vez</option>
                     <option value="3">3 arquivos por vez (Máximo)</option>
@@ -601,22 +625,10 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
-                    <span style="background: rgba(20, 184, 166, 0.18); color: #2dd4bf; border: 1px solid rgba(20, 184, 166, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">PixelDrain</span>
+                    <span style="background: rgba(249, 115, 22, 0.18); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">PixelDrain</span>
                     <strong>PixelDrain</strong>
                   </div>
                   <select id="setting-service-max-pixeldrain" class="service-select">
-                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
-                    <option value="2">2 arquivos por vez</option>
-                    <option value="3">3 arquivos por vez (Máximo)</option>
-                  </select>
-                </div>
-
-                <div class="setting-service-card">
-                  <div class="service-card-header">
-                    <span style="background: rgba(234, 179, 8, 0.18); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">GoFile</span>
-                    <strong>GoFile</strong>
-                  </div>
-                  <select id="setting-service-max-gofile" class="service-select">
                     <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
                     <option value="2">2 arquivos por vez</option>
                     <option value="3">3 arquivos por vez (Máximo)</option>
@@ -655,7 +667,7 @@
 
                 <div class="setting-service-card">
                   <div class="service-card-header">
-                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Bunkr</span>
+                    <span style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Bunkr</span>
                     <strong>Bunkr</strong>
                   </div>
                   <select id="setting-mode-bunkr" class="service-select">
@@ -681,6 +693,28 @@
                     <strong>TeraBox</strong>
                   </div>
                   <select id="setting-mode-terabox" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Vik1ngFile</span>
+                    <strong>Vik1ngFile</strong>
+                  </div>
+                  <select id="setting-mode-vik1ngfile" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">GoFile</span>
+                    <strong>GoFile</strong>
+                  </div>
+                  <select id="setting-mode-gofile" class="service-select">
                     <option value="single">Conexão Única (Estável)</option>
                     <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
                   </select>
@@ -879,7 +913,7 @@
 
                 <div class="torbox-switch-card">
                   <div class="torbox-switch-info">
-                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Bunkr</span>
+                    <span style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Bunkr</span>
                     <div class="torbox-switch-details">
                       <span class="torbox-switch-title">Bunkr</span>
                       <span class="torbox-switch-sub">bunkr.cr / bunkr.site</span>
@@ -916,6 +950,34 @@
                   <div class="toggle-switch">
                     <input type="checkbox" id="setting-torbox-service-terabox">
                     <label for="setting-torbox-service-terabox"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Vik1ngFile</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Vik1ngFile</span>
+                      <span class="torbox-switch-sub">vik1ngfile.site / vikingfile.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-vik1ngfile">
+                    <label for="setting-torbox-service-vik1ngfile"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">GoFile</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">GoFile</span>
+                      <span class="torbox-switch-sub">gofile.io</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-gofile">
+                    <label for="setting-torbox-service-gofile"></label>
                   </div>
                 </div>
 
@@ -1164,10 +1226,17 @@
         <div class="update-notice-text glow-pulse" id="update-notice" style="display: none;">Nova versão disponível</div>
       </div>
 
-      <div class="main-footer-status">
-        <div class="auth-status-container">
+      <div class="main-footer-status" style="display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-right: 16px;">
+        <!-- Indicador Google API -->
+        <div class="auth-status-container" id="gdrive-status-badge" style="display: flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08);">
           <div class="status-indicator disconnected" id="auth-indicator"></div>
-          <span class="status-text" id="auth-status-text">Conta Desconectada</span>
+          <span class="status-text" id="auth-status-text" style="font-size: 11px; font-weight: 600; color: #cbd5e1;">Google API Desconectada</span>
+        </div>
+
+        <!-- Indicador Torbox API -->
+        <div class="auth-status-container" id="torbox-status-badge" style="display: flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08);">
+          <div class="status-indicator disconnected" id="torbox-status-indicator"></div>
+          <span class="status-text" id="torbox-status-text" style="font-size: 11px; font-weight: 600; color: #cbd5e1;">Torbox API Desconectada</span>
         </div>
       </div>
     </footer>

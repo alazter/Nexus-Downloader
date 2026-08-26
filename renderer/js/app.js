@@ -224,54 +224,48 @@ async function updateFooterStatus() {
     const auth = await window.api.checkAuth();
     const config = await window.api.getConfig();
 
-    const gdriveConnected = auth && auth.connected;
-    const torboxConnected = config && config.torboxApiKey && config.torboxEnabled;
+    const gdriveConnected = !!(auth && auth.connected);
+    const torboxConnected = !!(config && config.torboxApiKey && config.torboxApiKey.trim().length > 0 && config.torboxEnabled);
 
-    const container = document.getElementById('footer-status-container') || document.querySelector('.auth-status-container');
-    const indicator = document.getElementById('footer-status-indicator') || document.getElementById('auth-indicator');
-    const textSpan = document.getElementById('footer-status-text') || document.getElementById('auth-status-text');
+    // 1. Indicador do Google Drive
+    const gdriveIndicator = document.getElementById('auth-indicator');
+    const gdriveText = document.getElementById('auth-status-text');
 
-    if (!container || !indicator || !textSpan) return;
-
-    let targetService = 'gdrive';
-    let isConnected = false;
-    let label = '';
-
-    if (gdriveConnected && torboxConnected) {
-      // Cenário 1: Ambos conectados -> Alterna a cada 4s
-      targetService = currentFooterServiceIndex % 2 === 0 ? 'gdrive' : 'torbox';
-      isConnected = true;
-      label = targetService === 'gdrive' ? 'Google Drive: Conectado' : 'Torbox API: Conectada';
-      currentFooterServiceIndex++;
-    } else if (!gdriveConnected && !torboxConnected) {
-      // Cenário 3: Ambos desconectados -> Alterna a cada 4s
-      targetService = currentFooterServiceIndex % 2 === 0 ? 'gdrive' : 'torbox';
-      isConnected = false;
-      label = targetService === 'gdrive' ? 'Google Drive: Desconectado' : 'Torbox API: Desconectada';
-      currentFooterServiceIndex++;
-    } else if (!gdriveConnected && torboxConnected) {
-      // Cenário 2A: Apenas Google Drive desconectado -> Trava no Google Drive
-      targetService = 'gdrive';
-      isConnected = false;
-      label = 'Google Drive: Desconectado';
-    } else {
-      // Cenário 2B: Apenas Torbox desconectado -> Trava no Torbox
-      targetService = 'torbox';
-      isConnected = false;
-      label = 'Torbox API: Desconectada';
+    if (gdriveIndicator && gdriveText) {
+      if (gdriveConnected) {
+        gdriveIndicator.className = 'status-indicator connected';
+        gdriveIndicator.style.background = '#4ade80';
+        gdriveIndicator.style.boxShadow = '0 0 6px rgba(74, 222, 128, 0.6)';
+        gdriveText.textContent = 'Google API Conectada';
+        gdriveText.style.color = '#4ade80';
+      } else {
+        gdriveIndicator.className = 'status-indicator disconnected';
+        gdriveIndicator.style.background = '#f87171';
+        gdriveIndicator.style.boxShadow = 'none';
+        gdriveText.textContent = 'Google API Desconectada';
+        gdriveText.style.color = '#94a3b8';
+      }
     }
 
-    currentDisplayedService = targetService;
+    // 2. Indicador do Torbox
+    const torboxIndicator = document.getElementById('torbox-status-indicator');
+    const torboxText = document.getElementById('torbox-status-text');
 
-    // Transição suave de opacidade (fade-out / fade-in)
-    container.classList.add('fade-out');
-    setTimeout(() => {
-      indicator.className = `status-indicator ${isConnected ? 'connected' : 'disconnected'}`;
-      textSpan.textContent = label;
-      applyFooterStatusPosition();
-      container.classList.remove('fade-out');
-    }, 300);
-
+    if (torboxIndicator && torboxText) {
+      if (torboxConnected) {
+        torboxIndicator.className = 'status-indicator connected';
+        torboxIndicator.style.background = '#a78bfa';
+        torboxIndicator.style.boxShadow = '0 0 6px rgba(167, 139, 250, 0.6)';
+        torboxText.textContent = 'Torbox API Conectada';
+        torboxText.style.color = '#a78bfa';
+      } else {
+        torboxIndicator.className = 'status-indicator disconnected';
+        torboxIndicator.style.background = '#f87171';
+        torboxIndicator.style.boxShadow = 'none';
+        torboxText.textContent = 'Torbox API Desconectada';
+        torboxText.style.color = '#94a3b8';
+      }
+    }
   } catch (err) {
     console.error('Erro ao atualizar status do rodapé:', err);
   }
@@ -280,7 +274,7 @@ async function updateFooterStatus() {
 function startFooterStatusCycle() {
   if (footerCycleInterval) clearInterval(footerCycleInterval);
   updateFooterStatus();
-  footerCycleInterval = setInterval(updateFooterStatus, 4000);
+  footerCycleInterval = setInterval(updateFooterStatus, 5000);
 }
 
 async function checkAuthStatus() {
@@ -301,17 +295,27 @@ async function checkAuthStatus() {
   }
 }
 
-// Evento de clique no status do rodapé -> Navega diretamente até o card correspondente em Ajustes
-const footerStatusContainer = document.getElementById('footer-status-container') || document.querySelector('.auth-status-container');
-if (footerStatusContainer) {
-  footerStatusContainer.addEventListener('click', () => {
+// Eventos de clique nos badges do rodapé -> Navega diretamente aos Ajustes
+const gdriveBadge = document.getElementById('gdrive-status-badge');
+if (gdriveBadge) {
+  gdriveBadge.style.cursor = 'pointer';
+  gdriveBadge.addEventListener('click', () => {
     switchTab('settings');
     setTimeout(() => {
-      const targetId = currentDisplayedService === 'torbox' ? 'card-torbox-settings' : 'card-gdrive-settings';
-      const targetCard = document.getElementById(targetId);
-      if (targetCard) {
-        targetCard.scrollIntoView({ behavior: 'smooth' });
-      }
+      const targetCard = document.getElementById('card-gdrive-settings');
+      if (targetCard) targetCard.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+  });
+}
+
+const torboxBadge = document.getElementById('torbox-status-badge');
+if (torboxBadge) {
+  torboxBadge.style.cursor = 'pointer';
+  torboxBadge.addEventListener('click', () => {
+    switchTab('settings');
+    setTimeout(() => {
+      const targetCard = document.getElementById('card-torbox-settings');
+      if (targetCard) targetCard.scrollIntoView({ behavior: 'smooth' });
     }, 150);
   });
 }
@@ -595,6 +599,8 @@ async function loadConfig() {
   const elBunkr = document.getElementById('setting-mode-bunkr');
   const elMediaFire = document.getElementById('setting-mode-mediafire');
   const elTeraBox = document.getElementById('setting-mode-terabox');
+  const elVik1ngFile = document.getElementById('setting-mode-vik1ngfile');
+  const elGoFile = document.getElementById('setting-mode-gofile');
   const elOneDrive = document.getElementById('setting-mode-onedrive');
   const elTorbox = document.getElementById('setting-mode-torbox');
   const elDrime = document.getElementById('setting-mode-drime');
@@ -605,6 +611,8 @@ async function loadConfig() {
   if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
   if (elMediaFire) elMediaFire.value = modes.mediafire || 'multi';
   if (elTeraBox) elTeraBox.value = modes.terabox || 'multi';
+  if (elVik1ngFile) elVik1ngFile.value = modes.vik1ngfile || 'multi';
+  if (elGoFile) elGoFile.value = modes.gofile || 'multi';
   if (elOneDrive) elOneDrive.value = modes.onedrive || 'single';
   if (elTorbox) elTorbox.value = modes.torbox || 'multi';
   if (elDrime) elDrime.value = modes.drime || 'multi';
@@ -617,12 +625,12 @@ async function loadConfig() {
   if (settingTorboxEnabled) settingTorboxEnabled.checked = !!config.torboxEnabled;
 
   const torboxServices = config.torboxForServices || {
-    gdrive: false, bunkr: false, mediafire: false, terabox: false, onedrive: false, torbox: true, drime: false, turbo: false, send: true
+    gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true
   };
-  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
     const chk = document.getElementById(`setting-torbox-service-${svc}`);
     if (chk) {
-      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox');
+      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox' || svc === 'gofile' || svc === 'vik1ngfile');
     }
   });
 
@@ -644,7 +652,7 @@ async function loadConfig() {
   }
 
   const serviceMaxObj = config.serviceMaxConcurrent || {};
-  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'drime', 'turbo', 'pixeldrain', 'gofile', 'torbox'].forEach(svc => {
+  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'drime', 'turbo', 'pixeldrain', 'torbox'].forEach(svc => {
     const sel = document.getElementById(`setting-service-max-${svc}`);
     if (sel) {
       sel.value = (serviceMaxObj[svc] !== undefined ? serviceMaxObj[svc] : 1).toString();
@@ -652,7 +660,7 @@ async function loadConfig() {
   });
 }
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'drime', 'turbo', 'pixeldrain', 'gofile', 'torbox'].forEach(svc => {
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'drime', 'turbo', 'pixeldrain', 'torbox'].forEach(svc => {
   const sel = document.getElementById(`setting-service-max-${svc}`);
   if (sel) {
     sel.addEventListener('change', async () => {
@@ -664,25 +672,25 @@ async function loadConfig() {
   }
 });
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(service => {
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(service => {
   const el = document.getElementById(`setting-mode-${service}`);
   if (el) {
     el.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
+      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', vik1ngfile: 'multi', gofile: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
       modes[service] = el.value;
       await window.api.setConfig({ downloadModes: modes });
     });
   }
 });
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
   const chk = document.getElementById(`setting-torbox-service-${svc}`);
   if (chk) {
     chk.addEventListener('change', async () => {
       const config = await window.api.getConfig();
       const currentServices = config.torboxForServices || {
-        gdrive: false, bunkr: false, mediafire: false, terabox: false, onedrive: false, torbox: true, drime: false, turbo: false, send: true
+        gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true
       };
       currentServices[svc] = chk.checked;
       await window.api.setConfig({ torboxForServices: currentServices });
@@ -1496,19 +1504,68 @@ function renderServiceTagHTML(sTag, isTableRow = false) {
 }
 
 function getServiceTag(file) {
-  const id = (file && file.id) || '';
-  const service = (file && file.service) || '';
-  const url = (file && (file.downloadUrl || file.directUrl || file.sourceUrl || file.originalUrl || '')) || '';
+  if (!file) return { text: 'Download Direto', bg: 'rgba(148, 163, 184, 0.18)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.4)' };
 
-  if (id.startsWith('pixeldrain_') || service === 'PixelDrain' || url.includes('pixeldrain.com')) {
-    return { text: 'PixelDrain', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+  const id = String(file.id || '');
+  const service = String((file && file.service) || '');
+  const url = String((file && (file.downloadUrl || file.directUrl || file.sourceUrl || file.originalUrl || file.url || '')) || '').toLowerCase();
+
+  // 1. Google Drive (Exige id gdrive_ ou domínio oficial drive.google.com / docs.google.com)
+  if (id.startsWith('gdrive_') || service === 'Google Drive' || url.includes('drive.google.com') || url.includes('docs.google.com')) {
+    return { text: 'Google Drive', bg: 'rgba(34, 197, 94, 0.18)', color: '#4ade80', border: 'rgba(34, 197, 94, 0.4)' };
   }
+
+  // 2. Bunkr (Exige id bunkr_ ou domínios oficiais Bunkr)
+  if (id.startsWith('bunkr_') || service === 'Bunkr' || url.includes('bunkr') || url.includes('balbums') || url.includes('.cdn.cr')) {
+    return { text: 'Bunkr', bg: 'rgba(99, 102, 241, 0.18)', color: '#818cf8', border: 'rgba(99, 102, 241, 0.4)' };
+  }
+
+  // 3. TeraBox (Exige id terabox_ ou domínios oficiais TeraBox)
+  if (id.startsWith('terabox_') || service === 'TeraBox' || url.includes('terabox') || url.includes('1024tera') || url.includes('freeterabox') || url.includes('gibibox') || url.includes('4funbox')) {
+    return { text: 'TeraBox', bg: 'rgba(255, 170, 0, 0.18)', color: '#ffb703', border: 'rgba(255, 170, 0, 0.4)' };
+  }
+
+  // 4. MediaFire (Exige id mediafire_ ou domínio mediafire.com)
+  if (id.startsWith('mediafire_') || service === 'MediaFire' || url.includes('mediafire.com')) {
+    return { text: 'MediaFire', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
+
+  // 5. Microsoft OneDrive / SharePoint
+  if (id.startsWith('onedrive_') || service === 'Microsoft OneDrive' || url.includes('onedrive') || url.includes('1drv.ms') || url.includes('sharepoint')) {
+    return { text: 'Microsoft OneDrive', bg: 'rgba(255, 255, 255, 0.18)', color: '#ffffff', border: 'rgba(255, 255, 255, 0.4)' };
+  }
+
+  // 6. Send
+  if (id.startsWith('send_') || service === 'Send' || url.includes('send.now') || url.includes('send.cm') || url.includes('sendit.cloud')) {
+    return { text: 'Send', bg: 'rgba(236, 72, 153, 0.18)', color: '#f472b6', border: 'rgba(236, 72, 153, 0.4)' };
+  }
+
+  // 7. PixelDrain
+  if (id.startsWith('pixeldrain_') || service === 'PixelDrain' || url.includes('pixeldrain.com')) {
+    return { text: 'PixelDrain', bg: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: 'rgba(249, 115, 22, 0.4)' };
+  }
+
+  // 8. Drime Cloud
   if (id.startsWith('drime_') || service === 'Drime Cloud' || url.includes('drime.cloud')) {
     return { text: 'Drime Cloud', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
   }
-  if (id.startsWith('turbo_') || service === 'Turbo.cr' || (url.includes('turbocdn.st') && !file.torboxType)) {
+
+  // 9. Turbo.cr
+  if (id.startsWith('turbo_') || service === 'Turbo.cr' || url.includes('turbo.cr') || url.includes('turbocdn.st')) {
     return { text: 'Turbo.cr', bg: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: 'rgba(244, 63, 94, 0.4)' };
   }
+
+  // 10. Vik1ngFile
+  if (id.startsWith('vik1ng_') || service === 'Vik1ngFile' || url.includes('vik1ngfile') || url.includes('vikingfile')) {
+    return { text: 'Vik1ngFile', bg: 'rgba(168, 85, 247, 0.18)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.4)' };
+  }
+
+  // 11. GoFile
+  if (id.startsWith('gofile_') || service === 'GoFile' || url.includes('gofile.io') || url.includes('gofile')) {
+    return { text: 'GoFile', bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.4)' };
+  }
+
+  // 12. Torbox / Torrent / Debrid
   if (id.startsWith('torbox_') || (file && file.torboxType) || url.includes('tb-cdn') || service === 'Torrent' || url.startsWith('magnet:') || url.endsWith('.torrent')) {
     const isTorrent = (file && file.torboxType === 'torrent') || service === 'Torrent' || id.includes('torrent') || !!(file && file.hash) || (url && (url.startsWith('magnet:') || url.endsWith('.torrent')));
     const hosterName = detectTorboxHoster(file);
@@ -1522,37 +1579,44 @@ function getServiceTag(file) {
       result.hoster = 'Torrent';
       result.hosterTag = {
         text: 'Torrent',
-        bg: 'rgba(59, 130, 246, 0.18)',
-        color: '#60a5fa',
-        border: 'rgba(59, 130, 246, 0.4)'
+        bg: 'rgba(234, 179, 8, 0.18)',
+        color: '#facc15',
+        border: 'rgba(234, 179, 8, 0.4)'
       };
     } else if (hosterName) {
       result.hoster = hosterName;
+      const hTag = getServiceTag({ service: hosterName, url: file && (file.sourceUrl || file.originalUrl || file.url || '') });
       result.hosterTag = {
         text: hosterName,
-        bg: 'rgba(236, 72, 153, 0.18)',
-        color: '#f472b6',
-        border: 'rgba(236, 72, 153, 0.4)'
+        bg: hTag.bg,
+        color: hTag.color,
+        border: hTag.border
       };
     }
     return result;
   }
-  if (id.startsWith('terabox_')) {
-    return { text: 'TeraBox', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
+
+  // 12. Provedor Web / Link Genérico (Extrai o nome real do domínio de qualquer outro link)
+  let hostName = service && service !== 'Google Drive' ? service : '';
+  if (!hostName) {
+    try {
+      if (url && url.startsWith('http')) {
+        const parsed = new URL(url);
+        const host = parsed.hostname.replace(/^www\./i, '');
+        const parts = host.split('.');
+        if (parts.length >= 2) {
+          const domainName = parts[parts.length - 2];
+          if (domainName && domainName.length > 2) {
+            hostName = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+          }
+        }
+      }
+    } catch (e) {}
   }
-  if (id.startsWith('onedrive_') || (file && file.oneDriveUrl && file.oneDriveUrl.includes('sharepoint'))) {
-    return { text: 'Microsoft OneDrive', bg: 'rgba(255, 255, 255, 0.18)', color: '#ffffff', border: 'rgba(255, 255, 255, 0.4)' };
-  }
-  if (id.startsWith('send_') || service === 'Send' || url.includes('send.now') || url.includes('send.cm')) {
-    return { text: 'Send', bg: 'rgba(236, 72, 153, 0.18)', color: '#f472b6', border: 'rgba(236, 72, 153, 0.4)' };
-  }
-  if (id.startsWith('mediafire_')) {
-    return { text: 'MediaFire', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
-  }
-  if (id.startsWith('bunkr_')) {
-    return { text: 'Bunkr', bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.4)' };
-  }
-  return { text: 'Google Drive', bg: 'rgba(34, 197, 94, 0.18)', color: '#4ade80', border: 'rgba(34, 197, 94, 0.4)' };
+
+  if (!hostName) hostName = 'Download Direto';
+
+  return { text: hostName, bg: 'rgba(148, 163, 184, 0.18)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.4)' };
 }
 
 function getItemSortRank(item) {
@@ -1819,23 +1883,67 @@ function renderQueue(queue) {
     if (item.completedAt && typeof item.completedAt === 'number') return item.completedAt;
     if (item.completedTime && typeof item.completedTime === 'number') return item.completedTime;
     if (item.finishedAt && typeof item.finishedAt === 'number') return item.finishedAt;
-    if (item.status === 'completed') {
-      item.completedAt = Date.now();
-      return item.completedAt;
+    if (item.addedAt && typeof item.addedAt === 'number') return item.addedAt;
+    if (item.timestamp && typeof item.timestamp === 'number') return item.timestamp;
+    if (item.id) {
+      const match = String(item.id).match(/\d+/g);
+      if (match && match.length > 0) {
+        const num = Number(match[0]);
+        if (num > 1000000) return num;
+      }
     }
-    return Number(item.timestamp || 0);
+    return 0;
   };
 
-  // Ordena itens internos e pastas da aba Concluídos do mais recente ao mais antigo (último arquivo baixado no topo)
+  const getFileSize = (item) => Number(item.size || item.fileSize || 0);
+
+  // Exibe/oculta o seletor de filtro interno da aba Concluídos
+  const completedFilterContainer = document.getElementById('completed-filter-container');
+  if (completedFilterContainer) {
+    completedFilterContainer.style.display = currentQueueSubtab === 'completed' ? 'flex' : 'none';
+  }
+
+  // Ordena itens internos e pastas da aba Concluídos de acordo com o filtro selecionado
   completedEntries.forEach(entry => {
-    entry[2].sort((a, b) => getCompletedTime(b) - getCompletedTime(a));
+    entry[2].sort((a, b) => {
+      if (currentCompletedSortMode === 'recent_desc') {
+        return getCompletedTime(b) - getCompletedTime(a);
+      } else if (currentCompletedSortMode === 'recent_asc') {
+        return getCompletedTime(a) - getCompletedTime(b);
+      } else if (currentCompletedSortMode === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '');
+      } else if (currentCompletedSortMode === 'name_desc') {
+        return (b.name || '').localeCompare(a.name || '');
+      } else if (currentCompletedSortMode === 'size_desc') {
+        return getFileSize(b) - getFileSize(a);
+      }
+      return getCompletedTime(b) - getCompletedTime(a);
+    });
   });
 
   completedEntries.sort((a, b) => {
+    if (currentCompletedSortMode === 'recent_desc') {
+      const maxA = Math.max(...a[2].map(item => getCompletedTime(item)), 0);
+      const maxB = Math.max(...b[2].map(item => getCompletedTime(item)), 0);
+      if (maxA !== maxB) return maxB - maxA;
+      return a[1].localeCompare(b[1]);
+    } else if (currentCompletedSortMode === 'recent_asc') {
+      const minA = Math.min(...a[2].map(item => getCompletedTime(item)), Infinity);
+      const minB = Math.min(...b[2].map(item => getCompletedTime(item)), Infinity);
+      if (minA !== minB) return minA - minB;
+      return a[1].localeCompare(b[1]);
+    } else if (currentCompletedSortMode === 'name_asc') {
+      return a[1].localeCompare(b[1]);
+    } else if (currentCompletedSortMode === 'name_desc') {
+      return b[1].localeCompare(a[1]);
+    } else if (currentCompletedSortMode === 'size_desc') {
+      const totalA = a[2].reduce((sum, item) => sum + getFileSize(item), 0);
+      const totalB = b[2].reduce((sum, item) => sum + getFileSize(item), 0);
+      return totalB - totalA;
+    }
     const maxA = Math.max(...a[2].map(item => getCompletedTime(item)), 0);
     const maxB = Math.max(...b[2].map(item => getCompletedTime(item)), 0);
-    if (maxA !== maxB) return maxB - maxA;
-    return a[1].localeCompare(b[1]);
+    return maxB - maxA;
   });
 
   lastQueueData = queue;
@@ -2767,11 +2875,23 @@ function getStatusLabel(status) {
 
 // Gerenciamento de Sub-Abas da Fila ("Em Andamento" vs "Concluídos")
 let currentQueueSubtab = 'active';
+let currentCompletedSortMode = 'recent_desc'; // Padrão: mais recente no topo
 let lastQueueData = [];
 
 const subtabActiveBtn = document.getElementById('subtab-active');
 const subtabTorboxBtn = document.getElementById('subtab-torbox');
 const subtabCompletedBtn = document.getElementById('subtab-completed');
+const completedSortSelect = document.getElementById('completed-sort-select');
+
+if (completedSortSelect) {
+  completedSortSelect.value = currentCompletedSortMode;
+  completedSortSelect.addEventListener('change', () => {
+    currentCompletedSortMode = completedSortSelect.value || 'recent_desc';
+    if (lastQueueData) {
+      renderQueue(lastQueueData);
+    }
+  });
+}
 
 function switchQueueSubtab(targetSubtab) {
   currentQueueSubtab = targetSubtab;

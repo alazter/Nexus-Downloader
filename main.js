@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker, Menu, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker, Menu, Tray, nativeImage, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -6,6 +6,7 @@ const http = require('http');
 const https = require('https');
 const url = require('url');
 const { google } = require('googleapis');
+const child_process = require('child_process');
 const { isBunkrUrl, scanBunkrLink, resolveBunkrDirectUrl } = require('./bunkr-scanner');
 const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
 const { isTeraBoxUrl, scanTeraBoxLink, resolveTeraBoxDirectUrl } = require('./terabox-scanner');
@@ -13,8 +14,15 @@ const { isOneDriveUrl, scanOneDriveLink, resolveOneDriveDirectUrl } = require('.
 const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, fetchTorboxUserDownloads, getTorboxActiveCloudJobsCount, waitForTorboxSlot } = require('./torbox-scanner');
 const { isDrimeUrl, scanDrimeLink } = require('./drime-scanner');
 const { isTurboUrl, scanTurboLink, resolveTurboDirectUrl } = require('./turbo-scanner');
-const { scanGenericLink } = require('./generic-scanner');
+const { scanGenericLink, scanGoFile } = require('./generic-scanner');
 const { isSendUrl, scanSendLink, resolveSendDirectUrl } = require('./send-scanner');
+const { isVikingFileUrl, scanVikingFileLink, resolveVikingFileDirectUrl } = require('./vikingfile-scanner');
+
+function isGoFileUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  const u = urlStr.toLowerCase();
+  return u.includes('gofile.io') || u.includes('gofile');
+}
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -96,6 +104,8 @@ let config = {
     bunkr: 'multi',
     mediafire: 'multi',
     terabox: 'multi',
+    vik1ngfile: 'multi',
+    gofile: 'multi',
     onedrive: 'single',
     torbox: 'multi',
     drime: 'multi',
@@ -110,6 +120,8 @@ let config = {
     bunkr: false,
     mediafire: false,
     terabox: false,
+    vik1ngfile: true,
+    gofile: true,
     onedrive: false,
     torbox: true,
     drime: false,
@@ -283,6 +295,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 680,
     frame: true,
+    show: true,
     titleBarStyle: 'default',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -290,12 +303,22 @@ function createWindow() {
       contextIsolation: true,
       backgroundThrottling: false // Impede redução de velocidade da rede/timers quando o monitor apaga
     },
-    icon: path.join(__dirname, 'renderer', 'icon.png') // Opcional
+    icon: path.join(__dirname, 'renderer', 'icon.png')
   };
 
   if (typeof winState.x === 'number' && typeof winState.y === 'number') {
-    winOptions.x = winState.x;
-    winOptions.y = winState.y;
+    try {
+      const displays = screen.getAllDisplays();
+      const isVisible = displays.some(d => {
+        const b = d.bounds;
+        return winState.x >= b.x - 100 && winState.x <= b.x + b.width - 100 &&
+               winState.y >= b.y - 100 && winState.y <= b.y + b.height - 100;
+      });
+      if (isVisible) {
+        winOptions.x = winState.x;
+        winOptions.y = winState.y;
+      }
+    } catch (e) {}
   }
 
   mainWindow = new BrowserWindow(winOptions);
@@ -303,6 +326,9 @@ function createWindow() {
   if (winState.isMaximized) {
     mainWindow.maximize();
   }
+
+  mainWindow.show();
+  mainWindow.focus();
 
   let saveStateTimeout = null;
   const saveWindowState = () => {
@@ -756,7 +782,7 @@ function updateQueueUI() {
       directUrl: item.directUrl || item.url || item.sendUrl || item.downloadUrl || null,
       numericId: item.numericId || null,
       fileId: item.fileId || null,
-      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_')))
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('gofile_') || item.id.startsWith('vik1ng_') || item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_')))
     }));
     mainWindow.webContents.send('queue-updated', serializedQueue);
   }
@@ -1052,10 +1078,54 @@ function downloadBunkrFile(queueItem) {
           directUrl = queueItem.directUrl || (queueItem.fileId ? `https://pixeldrain.com/api/file/${queueItem.fileId}` : queueItem.downloadUrl);
           referer = 'https://pixeldrain.com/';
         }
-      } else if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
-        console.log(`[MediaFire Worker] Utilizando link direto do MediaFire para "${queueItem.name}"...`);
-        directUrl = queueItem.url || directUrl;
-        referer = 'https://www.mediafire.com/';
+      } else if (queueItem.id && (queueItem.id.startsWith('vik1ng_') || isVikingFileUrl(queueItem.url))) {
+        console.log(`[Vik1ngFile Worker] Resolvendo URL direta de alta velocidade para "${queueItem.name}"...`);
+        const targetPageUrl = queueItem.sourceUrl || queueItem.url || queueItem.downloadUrl || '';
+        const useTorbox = isTorboxEnabledForService('vik1ngfile');
+        
+        if (useTorbox && config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
+          try {
+            console.log(`[Vik1ngFile Worker] Desprotegendo via Torbox API: ${targetPageUrl}`);
+            const tbFiles = await scanTorboxLink(targetPageUrl, config.torboxApiKey);
+            if (tbFiles && tbFiles.length > 0 && tbFiles[0].directUrl) {
+              directUrl = tbFiles[0].directUrl;
+              referer = 'https://torbox.app/';
+            }
+          } catch (e) {
+            console.warn('[Vik1ngFile Worker] Torbox falhou, tentando resolução nativa:', e.message);
+          }
+        }
+        
+        if (!directUrl) {
+          const vkInfo = await resolveVikingFileDirectUrl(targetPageUrl);
+          directUrl = vkInfo.directUrl || queueItem.url || targetPageUrl;
+          referer = targetPageUrl || 'https://vik1ngfile.site/';
+        }
+      } else if (queueItem.id && (queueItem.id.startsWith('gofile_') || isGoFileUrl(queueItem.url))) {
+        console.log(`[GoFile Worker] Resolvendo URL direta de alta velocidade para "${queueItem.name}"...`);
+        const targetPageUrl = queueItem.sourceUrl || queueItem.url || queueItem.downloadUrl || '';
+        const useTorbox = isTorboxEnabledForService('gofile');
+        
+        if (useTorbox && config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
+          try {
+            console.log(`[GoFile Worker] Desprotegendo via Torbox API: ${targetPageUrl}`);
+            const tbFiles = await scanTorboxLink(targetPageUrl, config.torboxApiKey);
+            if (tbFiles && tbFiles.length > 0) {
+              const matched = tbFiles.find(f => f.name === queueItem.name || f.fileId === queueItem.fileId) || tbFiles[0];
+              if (matched && matched.directUrl) {
+                directUrl = matched.directUrl;
+                referer = 'https://torbox.app/';
+              }
+            }
+          } catch (e) {
+            console.warn('[GoFile Worker] Torbox falhou, tentando resolução nativa:', e.message);
+          }
+        }
+        
+        if (!directUrl) {
+          directUrl = queueItem.directUrl || queueItem.downloadUrl || queueItem.url || targetPageUrl;
+          referer = targetPageUrl || 'https://gofile.io/';
+        }
       } else if (queueItem.id && (queueItem.id.startsWith('send_') || queueItem.sendUrl)) {
         console.log(`[Send Worker] Resolvendo URL direta do Send para "${queueItem.name}"...`);
         const fileCode = queueItem.numericId || (queueItem.sendUrl ? queueItem.sendUrl.split('/').pop() : '');
@@ -1984,6 +2054,26 @@ function detectHosterNameFromUrl(url) {
   return 'Download Direto';
 }
 
+async function scanTorboxWithFastTimeout(link, apiKey, timeoutMs = 2500) {
+  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) return null;
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Torbox scan timeout (2.5s)')), timeoutMs);
+  });
+
+  try {
+    const res = await Promise.race([
+      scanTorboxLink(link, apiKey),
+      timeoutPromise
+    ]);
+    clearTimeout(timeoutId);
+    return res;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    return null;
+  }
+}
+
 async function scanSingleUrl(link) {
   // 0. Links do TeraBox
   if (isTeraBoxUrl(link)) {
@@ -1993,10 +2083,8 @@ async function scanSingleUrl(link) {
   // 0.1. Links do MediaFire
   if (isMediaFireUrl(link)) {
     if (isTorboxEnabledForService('mediafire')) {
-      try {
-        const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
-        if (tbFiles && tbFiles.length > 0) return tbFiles;
-      } catch (e) {}
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanMediaFireLink(link);
   }
@@ -2004,12 +2092,19 @@ async function scanSingleUrl(link) {
   // 0.15. Links do Send
   if (isSendUrl(link)) {
     if (isTorboxEnabledForService('send')) {
-      try {
-        const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
-        if (tbFiles && tbFiles.length > 0) return tbFiles;
-      } catch (e) {}
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanSendLink(link);
+  }
+
+  // 0.16. Links do GoFile
+  if (isGoFileUrl(link)) {
+    if (isTorboxEnabledForService('gofile')) {
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      if (tbFiles && tbFiles.length > 0) return tbFiles;
+    }
+    return await scanGoFile(link);
   }
 
   // 0.2. Links do Microsoft OneDrive / SharePoint
@@ -2025,6 +2120,15 @@ async function scanSingleUrl(link) {
   // 0.22. Links do Turbo.cr
   if (isTurboUrl(link)) {
     return await scanTurboLink(link);
+  }
+
+  // 0.23. Links do Vik1ngFile
+  if (isVikingFileUrl(link)) {
+    if (isTorboxEnabledForService('vik1ngfile')) {
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      if (tbFiles && tbFiles.length > 0) return tbFiles;
+    }
+    return await scanVikingFileLink(link);
   }
 
   // 0.3. Links do Bunkr (Escaneia nativamente via scanBunkrLink para garantir slugs e URLs diretas exclusivas por arquivo)
@@ -2078,10 +2182,8 @@ async function scanSingleUrl(link) {
   else if (domainStr.includes('1fichier')) hosterKey = '1fichier';
 
   if (hosterKey !== 'generic' && isTorboxEnabledForService(hosterKey)) {
-    try {
-      const tbFiles = await scanTorboxLink(link, config.torboxApiKey);
-      if (tbFiles && tbFiles.length > 0) return tbFiles;
-    } catch (err) {}
+    const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+    if (tbFiles && tbFiles.length > 0) return tbFiles;
   }
 
   // 2. Fallback Universal: Motor Genérico
@@ -2799,14 +2901,109 @@ ipcMain.handle('download-update', async () => {
   }
 });
 
+function executeUpgradeAndReplaceExecutable(newInstallerPath) {
+  const currentExePath = process.execPath;
+  const desktopDir = app.getPath('desktop');
+  const tempDir = app.getPath('temp');
+  const batScriptPath = path.join(tempDir, 'nexus_update_replace.bat');
+  const psScriptPath = path.join(tempDir, 'nexus_update_shortcut.ps1');
+
+  console.log(`[AutoUpdater] Iniciando substituição do executável antigo pelo novo:`);
+  console.log(`[AutoUpdater] Executável Atual: ${currentExePath}`);
+  console.log(`[AutoUpdater] Novo Executável: ${newInstallerPath}`);
+  console.log(`[AutoUpdater] Área de Trabalho: ${desktopDir}`);
+
+  const isSetup = path.basename(newInstallerPath).toLowerCase().includes('setup');
+
+  if (isSetup) {
+    try {
+      app.releaseSingleInstanceLock();
+      const child = child_process.spawn(newInstallerPath, ['/S'], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+      setTimeout(() => { app.quit(); }, 800);
+      return;
+    } catch (e) {
+      console.error('[AutoUpdater] Erro ao executar o Setup NSIS:', e);
+      shell.openPath(newInstallerPath);
+      setTimeout(() => { app.quit(); }, 800);
+      return;
+    }
+  }
+
+  // Para executáveis portáteis: substituição direta do arquivo antigo + atalhos da área de trabalho
+  const psScriptContent = `$desktopPath = "${desktopDir.replace(/\\/g, '\\\\')}"
+$currentExe = "${currentExePath.replace(/\\/g, '\\\\')}"
+$wsh = New-Object -ComObject WScript.Shell
+
+# Limpa atalhos antigos com nomes de versões anteriores no Desktop
+Get-ChildItem -Path $desktopPath -Filter "*Nexus*Downloader*.lnk" | ForEach-Object {
+  try { Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+# Cria/substitui o novo atalho oficial 'Nexus Downloader.lnk' apontando para o executável atualizado
+$shortcut = $wsh.CreateShortcut("$desktopPath\\Nexus Downloader.lnk")
+$shortcut.TargetPath = $currentExe
+$shortcut.WorkingDirectory = [System.IO.Path]::GetDirectoryName($currentExe)
+$shortcut.IconLocation = "$currentExe,0"
+$shortcut.Description = "Nexus Downloader"
+$shortcut.Save()
+`;
+
+  try {
+    fs.writeFileSync(psScriptPath, psScriptContent, 'utf8');
+  } catch (err) {
+    console.error('[AutoUpdater] Erro ao criar script PS de atalhos:', err);
+  }
+
+  const batScriptContent = `@echo off
+chcp 65001 >nul
+timeout /t 2 /nobreak >nul
+taskkill /F /PID ${process.pid} >nul 2>&1
+
+:: Substitui o executável antigo pelo novo baixado
+copy /Y "${newInstallerPath}" "${currentExePath}" >nul 2>&1
+
+:: Executa o script PowerShell para recriar o atalho da área de trabalho
+powershell -NoProfile -ExecutionPolicy Bypass -File "${psScriptPath}" >nul 2>&1
+
+:: Limpa o arquivo temporário
+del /F /Q "${newInstallerPath}" >nul 2>&1
+del /F /Q "${psScriptPath}" >nul 2>&1
+
+:: Relança a aplicação a partir do novo arquivo atualizado
+start "" "${currentExePath}"
+del /F /Q "%~f0" >nul 2>&1
+exit
+`;
+
+  try {
+    fs.writeFileSync(batScriptPath, batScriptContent, 'utf8');
+    app.releaseSingleInstanceLock();
+
+    const subProcess = child_process.spawn('cmd.exe', ['/c', batScriptPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    subProcess.unref();
+
+    setTimeout(() => {
+      app.quit();
+    }, 500);
+  } catch (err) {
+    console.error('[AutoUpdater] Erro ao disparar script de substituição:', err);
+    shell.openPath(newInstallerPath);
+    setTimeout(() => { app.quit(); }, 500);
+  }
+}
+
 ipcMain.handle('restart-and-install', () => {
   if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
     try {
-      app.releaseSingleInstanceLock();
-      shell.openPath(downloadedInstallerPath);
-      setTimeout(() => {
-        app.quit();
-      }, 500);
+      executeUpgradeAndReplaceExecutable(downloadedInstallerPath);
       return;
     } catch (e) {
       console.error('[AutoUpdater] Erro ao abrir executável atualizado:', e);
