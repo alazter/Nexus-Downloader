@@ -21,9 +21,9 @@ function fetchText(targetUrl, options = {}) {
       const reqOptions = {
         rejectUnauthorized: false,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Referer': 'https://bunkr.cr/',
+          'Referer': 'https://dl.bunkrr.cr/',
           ...options.headers
         }
       };
@@ -65,8 +65,9 @@ function postJson(targetUrl, bodyData, options = {}) {
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(postPayload),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          'Referer': 'https://dl.bunkr.cr/',
+          'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0',
+          'Accept-Encoding': 'gzip, deflate',
+          'Referer': 'https://dl.bunkrr.cr/',
           ...options.headers
         }
       };
@@ -201,7 +202,7 @@ async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
     let originalName = null;
     let dataFileId = null;
 
-    // 1. Tentar extrair jsCDN diretamente do HTML da página do arquivo (como no BunkrDownloader 1.3.0)
+    // 1. Tentar extrair jsCDN ou link direto diretamente do HTML da página do arquivo
     try {
       const html = await fetchText(pageUrl);
       if (html) {
@@ -213,20 +214,33 @@ async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
         if (fileIdMatch && fileIdMatch[1]) {
           dataFileId = fileIdMatch[1];
         }
+
+        if (!baseUrl) {
+          const directHrefMatch = html.match(/href=["'](https?:\/\/[^"']*(?:cdn|media|storage|get)\.[^"']+)["']/i) ||
+                                 html.match(/src=["'](https?:\/\/[^"']*(?:cdn|media|storage)\.[^"']+)["']/i) ||
+                                 html.match(/href=["'](https?:\/\/dl\.bunkr\.[^"']+)["']/i);
+          if (directHrefMatch && directHrefMatch[1]) {
+            baseUrl = directHrefMatch[1];
+          }
+        }
       }
     } catch (e) {
       console.warn('[Bunkr Scanner] Não foi possível ler o HTML da página, tentando via API POST...', e.message);
     }
 
-    // 2. Se jsCDN não foi encontrado no HTML, consulta a API POST _001_v2 (fallback BunkrDownloader 1.3.0)
+    // 2. Se jsCDN/link direto não foi encontrado no HTML, consulta a API POST _001_v2 (fallback BunkrDownloader 1.3.0)
     if (!baseUrl) {
-      const targetId = dataFileId || idToUse;
-      const meta = await postJson('https://dl.bunkr.cr/api/_001_v2', { id: targetId });
-      if (meta && meta.mediafiles && meta.path) {
-        const cleanMediaHost = meta.mediafiles.endsWith('/') ? meta.mediafiles.slice(0, -1) : meta.mediafiles;
-        const cleanPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
-        baseUrl = `${cleanMediaHost}${cleanPath}`;
-        if (meta.original) originalName = meta.original;
+      try {
+        const targetId = dataFileId || numericId || fileId || fileSlug;
+        const meta = await postJson('https://dl.bunkr.cr/api/_001_v2', { id: targetId });
+        if (meta && meta.mediafiles && meta.path) {
+          const cleanMediaHost = meta.mediafiles.endsWith('/') ? meta.mediafiles.slice(0, -1) : meta.mediafiles;
+          const cleanPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
+          baseUrl = `${cleanMediaHost}${cleanPath}`;
+          if (meta.original) originalName = meta.original;
+        }
+      } catch (errPost) {
+        console.warn('[Bunkr Scanner] Erro ao consultar API POST _001_v2:', errPost.message);
       }
     }
 
@@ -234,26 +248,46 @@ async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
       throw new Error('Não foi possível obter a URL base do CDN para o arquivo Bunkr');
     }
 
+    // Se já possuir token assinado na URL
+    try {
+      const p = new URL(baseUrl);
+      if (p.searchParams.has('token') && p.searchParams.has('ex')) {
+        return {
+          directUrl: baseUrl,
+          cookieHeader: '',
+          referer: 'https://dl.bunkrr.cr/'
+        };
+      }
+    } catch (e) {}
+
     // 3. Extrair o slug da mídia e assinar via glb-apisign API (BunkrDownloader 1.3.0)
-    const p = new URL(baseUrl);
-    const mediaSlug = p.pathname.split('/').pop();
-    const mediaPath = `/storage/media/${mediaSlug}`;
+    try {
+      const p = new URL(baseUrl);
+      const mediaSlug = p.pathname.split('/').pop();
+      const mediaPath = `/storage/media/${mediaSlug}`;
 
-    const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(mediaPath)}`;
-    const signData = await fetchText(signUrl).then(data => JSON.parse(data));
+      const signUrl = `https://glb-apisign.cdn.cr/sign?path=${encodeURIComponent(mediaPath)}`;
+      const signData = await fetchText(signUrl).then(data => JSON.parse(data));
 
-    const finalUrl = new URL(baseUrl);
-    if (originalName) finalUrl.searchParams.set('n', originalName);
-    if (signData && signData.token) {
-      finalUrl.searchParams.set('token', signData.token);
-      finalUrl.searchParams.set('ex', signData.ex);
+      const finalUrl = new URL(baseUrl);
+      if (originalName) finalUrl.searchParams.set('n', originalName);
+      if (signData && signData.token) {
+        finalUrl.searchParams.set('token', signData.token);
+        finalUrl.searchParams.set('ex', signData.ex);
+      }
+
+      return {
+        directUrl: finalUrl.toString(),
+        cookieHeader: '',
+        referer: 'https://dl.bunkrr.cr/'
+      };
+    } catch (eSign) {
+      return {
+        directUrl: baseUrl,
+        cookieHeader: '',
+        referer: 'https://dl.bunkrr.cr/'
+      };
     }
-
-    return {
-      directUrl: finalUrl.toString(),
-      cookieHeader: '',
-      referer: 'https://dl.bunkrr.cr/'
-    };
 
     let cookieJar = [];
 

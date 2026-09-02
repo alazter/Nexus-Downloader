@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   setConfig: (config) => ipcRenderer.invoke('set-config', config),
   testTorboxApiKey: (apiKey) => ipcRenderer.invoke('test-torbox-api-key', apiKey),
   getTorboxUserDownloads: () => ipcRenderer.invoke('get-torbox-user-downloads'),
+  controlTorboxItem: (id, type, action) => ipcRenderer.invoke('torbox-control-item', { id, type, action }),
   selectDownloadDir: () => ipcRenderer.invoke('select-download-dir'),
   openDownloadsFolder: (itemPath) => ipcRenderer.invoke('open-downloads-folder', itemPath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),

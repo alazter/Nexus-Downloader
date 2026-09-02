@@ -677,7 +677,7 @@ async function loadConfig() {
   if (el) {
     el.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', vik1ngfile: 'multi', gofile: 'multi', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
+      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', vik1ngfile: 'multi', gofile: 'single', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
       modes[service] = el.value;
       await window.api.setConfig({ downloadModes: modes });
     });
@@ -1072,7 +1072,7 @@ function renderResults() {
 
       const badge = document.createElement('span');
       badge.className = 'badge-cyan folder-group-badge';
-      badge.textContent = `${groupItems.length} arquivo(s) • ${formatBytes(totalGroupSize)}`;
+      badge.textContent = `${groupItems.length} arquivo(s) • ${totalGroupSize > 0 ? formatBytes(totalGroupSize) : 'Tamanho no Download'}`;
 
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'folder-group-toggle';
@@ -1139,7 +1139,7 @@ function renderResults() {
         tdPath.title = file.relativePath || file.name;
 
         const tdSize = document.createElement('td');
-        tdSize.textContent = formatBytes(file.size);
+        tdSize.textContent = file.size > 0 ? formatBytes(file.size) : (file.sizeFormatted && file.sizeFormatted !== '0 Bytes' && file.sizeFormatted !== '0 B' ? file.sizeFormatted : 'Tamanho no Download');
 
         row.appendChild(tdCheck);
         row.appendChild(tdName);
@@ -1207,7 +1207,7 @@ function renderResults() {
       tdPath.title = file.relativePath || file.name;
       
       const tdSize = document.createElement('td');
-      tdSize.textContent = formatBytes(file.size);
+      tdSize.textContent = file.size > 0 ? formatBytes(file.size) : (file.sizeFormatted && file.sizeFormatted !== '0 Bytes' && file.sizeFormatted !== '0 B' ? file.sizeFormatted : 'Tamanho no Download');
       
       row.appendChild(tdCheck);
       row.appendChild(tdName);
@@ -1254,7 +1254,7 @@ function updateSelectionSummary() {
   });
 
   if (selectedCountText) {
-    selectedCountText.textContent = `${selectedCount} arquivos selecionados (${formatBytes(selectedSize)})`;
+    selectedCountText.textContent = `${selectedCount} arquivos selecionados (${selectedSize > 0 ? formatBytes(selectedSize) : 'Tamanho no Download'})`;
   }
 
   if (btnAddSelected) {
@@ -1353,6 +1353,45 @@ if (window.api && window.api.onQueueUpdated) {
 const collapsedFolders = new Set();
 const expandedFolders = new Set();
 const selectedQueueItemIds = new Set();
+const sectionCollapseState = {
+  active: false,
+  torbox: false,
+  completed: false
+};
+
+function toggleSectionCollapse(sectionName) {
+  const isCurrentlyCollapsed = !!sectionCollapseState[sectionName];
+  sectionCollapseState[sectionName] = !isCurrentlyCollapsed;
+
+  if (!sectionCollapseState[sectionName]) {
+    collapsedFolders.clear();
+  } else {
+    expandedFolders.clear();
+  }
+
+  updateSectionCollapseButtonsUI(sectionName);
+  if (lastQueueData) {
+    renderQueue(lastQueueData);
+  }
+}
+
+function updateSectionCollapseButtonsUI(sectionName) {
+  const btn = document.getElementById(`btn-collapse-${sectionName}-sec`);
+  if (!btn) return;
+
+  const isCollapsed = !!sectionCollapseState[sectionName];
+  const textSpan = btn.querySelector('span');
+  const svgElem = btn.querySelector('svg');
+
+  if (textSpan) {
+    textSpan.textContent = isCollapsed ? 'Expandir Pastas' : 'Recolher Pastas';
+  }
+  if (svgElem) {
+    svgElem.innerHTML = isCollapsed
+      ? '<polyline points="6 9 12 15 18 9"></polyline>'
+      : '<polyline points="18 15 12 9 6 15"></polyline>';
+  }
+}
 
 function getFileTypeTag(item) {
   const name = (item && item.name ? item.name : '').toLowerCase();
@@ -1775,11 +1814,18 @@ function renderQueue(queue) {
     folderMap.get(groupKey).items.push(item);
   });
 
-  // Helper para identificar se um item está pendente/processando na nuvem Torbox
+  // Helper para identificar se um item está aguardando/processando exclusivamente na nuvem Torbox antes de baixar no PC
   const isTorboxPendingItem = (item) => {
     if (!item || item.status === 'completed') return false;
-    if (item.cloudMessage || (item.cloudProgress !== undefined && item.cloudProgress < 100)) return true;
-    if (item.torboxType || (item.id && item.id.startsWith('torbox_')) || item.torboxId) return true;
+    // Se o item já está sendo transferido/baixado localmente no PC, ele vai para a aba Em Progresso (Em Andamento)
+    if (item.status === 'downloading') return false;
+
+    // Se estiver explicitamente processando/gerando link na nuvem do Torbox
+    if (item.isCloudProcessing || item.isCloudDownloading) return true;
+    if (item.cloudMessage && !item.cloudMessage.toLowerCase().includes('concluído')) return true;
+    if (item.cloudProgress !== undefined && item.cloudProgress < 100) return true;
+    if (item.cloudStatus && (item.cloudStatus.includes('Em Fila') || item.cloudStatus.includes('Baixando') || item.cloudStatus.includes('Processando'))) return true;
+
     return false;
   };
 
@@ -1794,10 +1840,21 @@ function renderQueue(queue) {
           <span>⚡ Em Progresso e Fila Ativa</span>
           <span class="queue-section-count" id="queue-active-count">0</span>
         </div>
+        <button class="btn btn-outline btn-sm" id="btn-collapse-active-sec" title="Recolher/Expandir pastas em progresso" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+          <span>Recolher Pastas</span>
+        </button>
       </div>
       <div class="queue-section-body" id="queue-active-body"></div>
     `;
     queueItemsList.appendChild(activeSection);
+
+    const btnCollapseActive = activeSection.querySelector('#btn-collapse-active-sec');
+    if (btnCollapseActive) {
+      btnCollapseActive.onclick = () => toggleSectionCollapse('active');
+    }
   }
 
   let torboxSection = queueItemsList.querySelector('#queue-torbox-section');
@@ -1810,10 +1867,21 @@ function renderQueue(queue) {
           <span><img src="assets/torbox_box_logo.png" width="18" height="18" style="vertical-align: middle; margin-right: 6px; filter: drop-shadow(0 0 4px rgba(167,139,250,0.5));"> Aguardando / Processando no Torbox</span>
           <span class="queue-section-count" id="queue-torbox-count" style="background: rgba(167, 139, 250, 0.2); color: #a78bfa;">0</span>
         </div>
+        <button class="btn btn-outline btn-sm" id="btn-collapse-torbox-sec" title="Recolher/Expandir pastas no Torbox" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px; border-color: rgba(167,139,250,0.3); color: #a78bfa;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+          <span>Recolher Pastas</span>
+        </button>
       </div>
       <div class="queue-section-body" id="queue-torbox-body"></div>
     `;
     queueItemsList.appendChild(torboxSection);
+
+    const btnCollapseTorbox = torboxSection.querySelector('#btn-collapse-torbox-sec');
+    if (btnCollapseTorbox) {
+      btnCollapseTorbox.onclick = () => toggleSectionCollapse('torbox');
+    }
   }
 
   let completedSection = queueItemsList.querySelector('#queue-completed-section');
@@ -1826,12 +1894,20 @@ function renderQueue(queue) {
           <span>✅ Downloads Concluídos</span>
           <span class="queue-section-count" id="queue-completed-count">0</span>
         </div>
-        <button class="btn btn-outline-success btn-sm" id="btn-clear-completed-sec" title="Limpar downloads concluídos" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          <span>Limpar Concluídos</span>
-        </button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-outline btn-sm" id="btn-collapse-completed-sec" title="Recolher/Expandir pastas concluídas" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            <span>Recolher Pastas</span>
+          </button>
+          <button class="btn btn-outline-success btn-sm" id="btn-clear-completed-sec" title="Limpar downloads concluídos" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Limpar Concluídos</span>
+          </button>
+        </div>
       </div>
       <div class="queue-section-body" id="queue-completed-body"></div>
     `;
@@ -1840,6 +1916,10 @@ function renderQueue(queue) {
     const btnClearCompletedSec = completedSection.querySelector('#btn-clear-completed-sec');
     if (btnClearCompletedSec) {
       btnClearCompletedSec.onclick = () => window.api.clearCompleted();
+    }
+    const btnCollapseCompletedSec = completedSection.querySelector('#btn-collapse-completed-sec');
+    if (btnCollapseCompletedSec) {
+      btnCollapseCompletedSec.onclick = () => toggleSectionCollapse('completed');
     }
   }
 
@@ -1853,19 +1933,18 @@ function renderQueue(queue) {
   const completedEntries = [];
 
   folderMap.forEach(({ serviceName, folderName, items: folderItems }, groupKey) => {
-    const completedItems = folderItems.filter(f => f.status === 'completed');
-    if (completedItems.length > 0) {
-      completedEntries.push([groupKey, folderName, completedItems]);
-    }
+    const completedCount = folderItems.filter(f => f.status === 'completed').length;
+    const isFolderAllCompleted = completedCount === folderItems.length;
 
-    const torboxItems = folderItems.filter(f => f.status !== 'completed' && isTorboxPendingItem(f));
-    if (torboxItems.length > 0) {
-      torboxEntries.push([groupKey, folderName, torboxItems]);
-    }
-
-    const activeItems = folderItems.filter(f => f.status !== 'completed' && !isTorboxPendingItem(f));
-    if (activeItems.length > 0) {
-      activeEntries.push([groupKey, folderName, activeItems]);
+    if (isFolderAllCompleted) {
+      completedEntries.push([groupKey, folderName, folderItems]);
+    } else {
+      const isAllPendingTorbox = folderItems.every(f => f.status !== 'completed' && isTorboxPendingItem(f));
+      if (isAllPendingTorbox) {
+        torboxEntries.push([groupKey, folderName, folderItems]);
+      } else {
+        activeEntries.push([groupKey, folderName, folderItems]);
+      }
     }
   });
 
@@ -1880,16 +1959,28 @@ function renderQueue(queue) {
 
   const getCompletedTime = (item) => {
     if (!item) return 0;
-    if (item.completedAt && typeof item.completedAt === 'number') return item.completedAt;
-    if (item.completedTime && typeof item.completedTime === 'number') return item.completedTime;
-    if (item.finishedAt && typeof item.finishedAt === 'number') return item.finishedAt;
-    if (item.addedAt && typeof item.addedAt === 'number') return item.addedAt;
-    if (item.timestamp && typeof item.timestamp === 'number') return item.timestamp;
-    if (item.id) {
-      const match = String(item.id).match(/\d+/g);
-      if (match && match.length > 0) {
-        const num = Number(match[0]);
-        if (num > 1000000) return num;
+    const candidates = [
+      item.completedAt,
+      item.completedTime,
+      item.finishedAt,
+      item.addedAt,
+      item.timestamp,
+      item.createdAt
+    ];
+
+    for (const val of candidates) {
+      if (val !== undefined && val !== null && val !== '') {
+        if (typeof val === 'number' && !isNaN(val) && val > 0) {
+          return val < 10000000000 ? val * 1000 : val;
+        }
+        if (typeof val === 'string') {
+          const parsed = Date.parse(val);
+          if (!isNaN(parsed) && parsed > 0) return parsed;
+          const num = Number(val);
+          if (!isNaN(num) && num > 0) {
+            return num < 10000000000 ? num * 1000 : num;
+          }
+        }
       }
     }
     return 0;
@@ -2029,7 +2120,7 @@ function renderQueue(queue) {
   }
 
   // Função interna auxiliar para renderizar os cartões em cada container de seção
-  const renderEntriesToContainer = (entries, container) => {
+  const renderEntriesToContainer = (entries, container, sectionName = 'active') => {
     // Remove cartões de pasta que não estão mais presentes em 'entries'
     const validKeys = new Set(entries.map(([key]) => key));
     Array.from(container.querySelectorAll('.queue-folder-card')).forEach(card => {
@@ -2056,8 +2147,14 @@ function renderQueue(queue) {
       const hasActiveOrPausedItem = folderItems.some(f => f.status === 'downloading' || f.status === 'paused' || f.status === 'pending');
 
       let isCollapsed = false;
-      if (collapsedFolders.has(groupKey) || collapsedFolders.has(folderName)) {
-        isCollapsed = true;
+      const isSecCollapsed = sectionName && !!sectionCollapseState[sectionName];
+
+      if (isSecCollapsed || collapsedFolders.has(groupKey) || collapsedFolders.has(folderName)) {
+        if (expandedFolders.has(groupKey) || expandedFolders.has(folderName)) {
+          isCollapsed = false;
+        } else {
+          isCollapsed = true;
+        }
       } else if (expandedFolders.has(groupKey) || expandedFolders.has(folderName)) {
         isCollapsed = false;
       } else {
@@ -2349,7 +2446,7 @@ function renderQueue(queue) {
               </div>
               <div class="queue-item-sub">
                 <span class="queue-item-status ${statusClass}">${statusText}</span>
-                <span class="queue-item-size">${formatBytes(item.downloadedBytes || 0)} / ${formatBytes(item.size || 0)}</span>
+                <span class="queue-item-size">${formatBytes(item.downloadedBytes || 0)} / ${item.size > 0 ? formatBytes(item.size) : (item.sizeFormatted && item.sizeFormatted !== '0 Bytes' && item.sizeFormatted !== '0 B' ? item.sizeFormatted : 'Tamanho ao Iniciar')}</span>
               </div>
               ${showProgress ? `
                 <div class="queue-item-progress-track">
@@ -2446,9 +2543,9 @@ function renderQueue(queue) {
     });
   };
 
-  renderEntriesToContainer(activeEntries, activeBody);
-  renderEntriesToContainer(torboxEntries, torboxBody);
-  renderEntriesToContainer(completedEntries, completedBody);
+  renderEntriesToContainer(activeEntries, activeBody, 'active');
+  renderEntriesToContainer(torboxEntries, torboxBody, 'torbox');
+  renderEntriesToContainer(completedEntries, completedBody, 'completed');
 }
 
 function createQueueItemElement(item, hasActiveDownloading = false) {
@@ -2926,6 +3023,13 @@ if (subtabActiveBtn) subtabActiveBtn.addEventListener('click', () => switchQueue
 if (subtabTorboxBtn) subtabTorboxBtn.addEventListener('click', () => switchQueueSubtab('torbox'));
 if (subtabCompletedBtn) subtabCompletedBtn.addEventListener('click', () => switchQueueSubtab('completed'));
 
+const btnCollapseAllFolders = document.getElementById('btn-collapse-all-folders');
+if (btnCollapseAllFolders) {
+  btnCollapseAllFolders.addEventListener('click', () => {
+    toggleCollapseAllFolders();
+  });
+}
+
 // Botoes globais da fila (Ações restritas à aba atualmente selecionada)
 btnOpenDir.addEventListener('click', () => {
   window.api.openDownloadsFolder();
@@ -2970,36 +3074,45 @@ btnClearAll.addEventListener('click', async () => {
 
 if (btnResumeAll) {
   btnResumeAll.addEventListener('click', async () => {
-    if (currentQueueSubtab === 'active') {
-      if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
-        for (const id of selectedQueueItemIds) {
-          await window.api.resumeDownload(id);
-        }
-      } else {
-        await window.api.resumeAllDownloads();
+    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+      const idsToResume = Array.from(selectedQueueItemIds);
+      for (const id of idsToResume) {
+        await window.api.resumeDownload(id);
       }
+      selectedQueueItemIds.clear();
+      updateQueueSelectionSummary();
+    } else {
+      await window.api.resumeAllDownloads();
     }
   });
 }
 
 if (btnPauseAll) {
   btnPauseAll.addEventListener('click', async () => {
-    if (currentQueueSubtab === 'active') {
-      if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
-        for (const id of selectedQueueItemIds) {
-          await window.api.pauseDownload(id);
-        }
-      } else {
-        await window.api.pauseAllDownloads();
+    if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+      const idsToPause = Array.from(selectedQueueItemIds);
+      for (const id of idsToPause) {
+        await window.api.pauseDownload(id);
       }
+      selectedQueueItemIds.clear();
+      updateQueueSelectionSummary();
+    } else {
+      await window.api.pauseAllDownloads();
     }
   });
 }
 
 if (btnRestartAll) {
   btnRestartAll.addEventListener('click', async () => {
-    if (currentQueueSubtab === 'active') {
-      if (await showCustomConfirm('Reiniciar o download de todos os arquivos da fila em andamento?', 'Reiniciar Fila')) {
+    if (await showCustomConfirm('Deseja reiniciar a fila de downloads?', 'Reiniciar Fila')) {
+      if (selectedQueueItemIds && selectedQueueItemIds.size > 0) {
+        const idsToRestart = Array.from(selectedQueueItemIds);
+        for (const id of idsToRestart) {
+          await window.api.resumeDownload(id);
+        }
+        selectedQueueItemIds.clear();
+        updateQueueSelectionSummary();
+      } else {
         await window.api.restartQueue();
       }
     }
@@ -3011,17 +3124,10 @@ if (btnRestartAll) {
 // ==========================================
 let torboxCloudFiles = [];
 let selectedTorboxFileIds = new Set();
-try {
-  const savedSelected = localStorage.getItem('nexus_selected_torbox_ids');
-  if (savedSelected) {
-    JSON.parse(savedSelected).forEach(id => selectedTorboxFileIds.add(id));
-  }
-} catch (e) {}
+localStorage.removeItem('nexus_selected_torbox_ids');
 
 function saveSelectedTorboxFileIds() {
-  try {
-    localStorage.setItem('nexus_selected_torbox_ids', JSON.stringify(Array.from(selectedTorboxFileIds)));
-  } catch (e) {}
+  // Seleções são efêmeras da sessão para evitar adicionar arquivos antigos sem o consentimento do usuário
 }
 
 let currentTorboxStatusFilter = localStorage.getItem('nexus_torbox_status_filter') || 'all';
@@ -3074,42 +3180,50 @@ window._setTorboxCloudFilesForTest = (files) => {
 function updateTorboxStatsBar() {
   const btnTotal = document.getElementById('btn-filter-total');
   const btnActive = document.getElementById('btn-filter-active');
+  const btnQueued = document.getElementById('btn-filter-queued');
   const btnReady = document.getElementById('btn-filter-ready');
   const btnInactive = document.getElementById('btn-filter-inactive');
 
   const visibleFiles = torboxCloudFiles.filter(f => showHiddenTorboxFiles || !hiddenTorboxFileIds.has(f.id));
 
-  const groupsMap = new Map();
+  // Agrupa arquivos pelo ID de job do Torbox (torboxType + torboxId) para contar jobs exatamente como no site
+  const jobMap = new Map();
   visibleFiles.forEach(f => {
-    const k = f.folderName || 'Downloads Torbox';
-    if (!groupsMap.has(k)) groupsMap.set(k, []);
-    groupsMap.get(k).push(f);
+    const jobId = `${f.torboxType || 'torrent'}_${f.torboxId}`;
+    if (!jobMap.has(jobId)) jobMap.set(jobId, []);
+    jobMap.get(jobId).push(f);
   });
 
-  const totalGroups = groupsMap.size;
+  const totalJobs = jobMap.size;
 
   let activeCount = 0;
+  let queuedCount = 0;
   let readyCount = 0;
   let inactiveCount = 0;
 
-  groupsMap.forEach(groupItems => {
-    if (groupItems.some(f => f.isInactive)) {
+  jobMap.forEach(jobFiles => {
+    const sample = jobFiles[0];
+    if (jobFiles.some(f => f.isQueued || f.cloudStatus === 'Em Fila')) {
+      queuedCount++;
+    } else if (jobFiles.some(f => f.isInactive)) {
       inactiveCount++;
-    } else if (groupItems.every(f => f.isFinished)) {
+    } else if (jobFiles.every(f => f.isFinished)) {
       readyCount++;
     } else {
       activeCount++;
     }
   });
 
-  if (btnTotal) btnTotal.textContent = `${totalGroups} DOWNLOADS`;
+  if (btnTotal) btnTotal.textContent = `${totalJobs} DOWNLOADS`;
   if (btnActive) btnActive.textContent = `${activeCount} ACTIVE DOWNLOADS`;
+  if (btnQueued) btnQueued.textContent = `${queuedCount} QUEUED DOWNLOADS`;
   if (btnReady) btnReady.textContent = `${readyCount} DOWNLOAD READY`;
   if (btnInactive) btnInactive.textContent = `${inactiveCount} INACTIVE DOWNLOADS`;
 
-  [btnTotal, btnActive, btnReady, btnInactive].forEach(b => b && b.classList.remove('active-filter'));
+  [btnTotal, btnActive, btnQueued, btnReady, btnInactive].forEach(b => b && b.classList.remove('active-filter'));
   if (currentTorboxStatusFilter === 'all' && btnTotal) btnTotal.classList.add('active-filter');
   if (currentTorboxStatusFilter === 'active' && btnActive) btnActive.classList.add('active-filter');
+  if (currentTorboxStatusFilter === 'queued' && btnQueued) btnQueued.classList.add('active-filter');
   if (currentTorboxStatusFilter === 'ready' && btnReady) btnReady.classList.add('active-filter');
   if (currentTorboxStatusFilter === 'inactive' && btnInactive) btnInactive.classList.add('active-filter');
 }
@@ -3131,7 +3245,8 @@ function applyTorboxFilters() {
     }
 
     if (currentTorboxStatusFilter === 'ready' && !file.isFinished) return false;
-    if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive)) return false;
+    if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive || file.isQueued)) return false;
+    if (currentTorboxStatusFilter === 'queued' && !file.isQueued && file.cloudStatus !== 'Em Fila') return false;
     if (currentTorboxStatusFilter === 'inactive' && !file.isInactive) return false;
 
     if (currentTorboxTypeFilter === 'torrent' && file.torboxType !== 'torrent') return false;
@@ -3387,8 +3502,8 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
           <th width="40"></th>
           <th>Nome do Arquivo</th>
           <th>Status Nuvem</th>
-          <th width="120">Tamanho</th>
-          <th width="90">Ação</th>
+          <th width="110">Tamanho</th>
+          <th width="380">Controles e Ações Torbox</th>
         </tr>
       </thead>
     `;
@@ -3426,6 +3541,8 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         const tdStatus = document.createElement('td');
         if (file.isFinished) {
           tdStatus.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Ready (100%)</span>`;
+        } else if (file.isQueued || file.cloudStatus === 'Em Fila') {
+          tdStatus.innerHTML = `<span style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">⌛ Em Fila (Queued)</span>`;
         } else if (file.isInactive) {
           tdStatus.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Inativo</span>`;
         } else {
@@ -3436,17 +3553,190 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         tdSize.textContent = formatBytes(file.size);
 
         const tdAction = document.createElement('td');
+        tdAction.style.whiteSpace = 'nowrap';
+
+        const btnGroup = document.createElement('div');
+        btnGroup.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap;';
+
+        // 1. Botão Baixar
         const dlBtn = document.createElement('button');
         dlBtn.className = 'btn btn-sm btn-success';
-        dlBtn.style.padding = '3px 8px';
-        dlBtn.style.fontSize = '0.75rem';
+        dlBtn.style.cssText = 'padding: 3px 8px; font-size: 0.75rem; border-radius: 4px;';
+        dlBtn.title = 'Enviar arquivo para a fila de downloads do Nexus';
         dlBtn.innerHTML = '⬇️ Baixar';
         dlBtn.onclick = async (e) => {
           e.stopPropagation();
           await window.api.addToQueue([file]);
           switchTab('queue');
         };
-        tdAction.appendChild(dlBtn);
+        btnGroup.appendChild(dlBtn);
+
+        // 2. Botão Share (Compartilhar Link)
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'btn btn-sm btn-outline';
+        shareBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+        shareBtn.title = 'Compartilhar / Copiar Link Direto do Torbox';
+        shareBtn.innerHTML = '🔗 Share';
+        shareBtn.onclick = (e) => {
+          e.stopPropagation();
+          const targetUrl = file.downloadUrl || file.directUrl || file.sourceUrl || '';
+          if (targetUrl) {
+            navigator.clipboard.writeText(targetUrl);
+            showCustomAlert('Link de compartilhamento do Torbox copiado com sucesso!', 'Torbox Cloud');
+          }
+        };
+        btnGroup.appendChild(shareBtn);
+
+        // Se for um item em QUEUED (Fila de Espera no Torbox):
+        if (file.isQueued || file.cloudStatus === 'Em Fila') {
+          // Botão Force Start
+          const forceBtn = document.createElement('button');
+          forceBtn.className = 'btn btn-sm btn-warning';
+          forceBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; color: #1e293b; font-weight: 700;';
+          forceBtn.title = 'Forçar Início Imediato no Servidor Torbox';
+          forceBtn.innerHTML = '⚡ Force Start';
+          forceBtn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              forceBtn.disabled = true;
+              const res = await window.api.controlTorboxItem(file.torboxId, file.torboxType, 'force_start');
+              if (res.success) {
+                showCustomAlert('Ordem para forçar início enviada ao servidor Torbox!', 'Torbox Cloud');
+                loadTorboxDownloads(true);
+              } else {
+                showCustomAlert('Aviso: ' + (res.error || 'Falha ao forçar início'), 'Torbox Cloud');
+              }
+            } catch (err) {
+              showCustomAlert('Erro: ' + err.message, 'Torbox Cloud');
+            } finally {
+              forceBtn.disabled = false;
+            }
+          };
+          btnGroup.appendChild(forceBtn);
+
+          // Botão Delete Queued
+          const delQBtn = document.createElement('button');
+          delQBtn.className = 'btn btn-sm btn-outline-danger';
+          delQBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          delQBtn.title = 'Excluir da Fila do Torbox';
+          delQBtn.innerHTML = '🗑️ Deletar';
+          delQBtn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              delQBtn.disabled = true;
+              const res = await window.api.controlTorboxItem(file.torboxId, file.torboxType, 'delete');
+              if (res.success) {
+                showCustomAlert('Item removido da fila do Torbox!', 'Torbox Cloud');
+                loadTorboxDownloads(true);
+              } else {
+                showCustomAlert('Erro: ' + (res.error || 'Falha ao deletar'), 'Torbox Cloud');
+              }
+            } catch (err) {
+              showCustomAlert('Erro: ' + err.message, 'Torbox Cloud');
+            } finally {
+              delQBtn.disabled = false;
+            }
+          };
+          btnGroup.appendChild(delQBtn);
+        } else {
+          // Para ACTIVE DOWNLOADS / Ready / Inactive:
+
+          if (file.torboxType === 'torrent') {
+            // Reannounce
+            const reannBtn = document.createElement('button');
+            reannBtn.className = 'btn btn-sm btn-outline';
+            reannBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            reannBtn.title = 'Reanunciar aos Trackers';
+            reannBtn.innerHTML = '📢 Reannounce';
+            reannBtn.onclick = async (e) => {
+              e.stopPropagation();
+              try {
+                reannBtn.disabled = true;
+                const res = await window.api.controlTorboxItem(file.torboxId, 'torrent', 'reannounce');
+                if (res.success) {
+                  showCustomAlert('Ordem de reanúncio enviada aos trackers!', 'Torbox Cloud');
+                } else {
+                  showCustomAlert('Erro: ' + (res.error || 'Falha ao reanunciar'), 'Torbox Cloud');
+                }
+              } catch (err) {
+                showCustomAlert('Erro: ' + err.message, 'Torbox Cloud');
+              } finally {
+                reannBtn.disabled = false;
+              }
+            };
+            btnGroup.appendChild(reannBtn);
+
+            // Check Health
+            const healthBtn = document.createElement('button');
+            healthBtn.className = 'btn btn-sm btn-outline';
+            healthBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            healthBtn.title = 'Verificar Saúde do Torrent';
+            healthBtn.innerHTML = '🏥 Health';
+            healthBtn.onclick = (e) => {
+              e.stopPropagation();
+              showCustomAlert(`Saúde do Torrent (ID ${file.torboxId}):\n• Status: ${file.cloudStatus || 'Ativo'}\n• Seeds: ${file.seeds || 0}\n• Peers: ${file.peers || 0}\n• Ratio: ${file.ratio || 0}\n• Progresso: ${file.progress || 0}%`, 'Saúde do Torrent');
+            };
+            btnGroup.appendChild(healthBtn);
+
+            // Copy Short Magnet
+            const magnetBtn = document.createElement('button');
+            magnetBtn.className = 'btn btn-sm btn-outline';
+            magnetBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            magnetBtn.title = 'Copiar Magnet Link curto';
+            magnetBtn.innerHTML = '🧲 Magnet';
+            magnetBtn.onclick = (e) => {
+              e.stopPropagation();
+              const mag = file.magnetUrl || (file.hash ? `magnet:?xt=urn:btih:${file.hash}` : '');
+              if (mag) {
+                navigator.clipboard.writeText(mag);
+                showCustomAlert('Magnet Link copiado para a área de transferência!', 'Torbox Cloud');
+              } else {
+                showCustomAlert('Magnet Link indisponível para este torrent.', 'Torbox Cloud');
+              }
+            };
+            btnGroup.appendChild(magnetBtn);
+          }
+
+          // Copy Name
+          const copyNameBtn = document.createElement('button');
+          copyNameBtn.className = 'btn btn-sm btn-outline';
+          copyNameBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          copyNameBtn.title = 'Copiar Nome Completo';
+          copyNameBtn.innerHTML = '📋 Nome';
+          copyNameBtn.onclick = (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(file.name || '');
+            showCustomAlert('Nome do arquivo copiado!', 'Torbox Cloud');
+          };
+          btnGroup.appendChild(copyNameBtn);
+
+          // Delete Torrent / Download
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn btn-sm btn-outline-danger';
+          delBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          delBtn.title = 'Excluir do Servidor Torbox';
+          delBtn.innerHTML = '🗑️ Deletar';
+          delBtn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              delBtn.disabled = true;
+              const res = await window.api.controlTorboxItem(file.torboxId, file.torboxType, 'delete');
+              if (res.success) {
+                showCustomAlert('Item excluído da nuvem Torbox com sucesso!', 'Torbox Cloud');
+                loadTorboxDownloads(true);
+              } else {
+                showCustomAlert('Erro ao excluir: ' + (res.error || 'Falha no servidor'), 'Torbox Cloud');
+              }
+            } catch (err) {
+              showCustomAlert('Erro: ' + err.message, 'Torbox Cloud');
+            } finally {
+              delBtn.disabled = false;
+            }
+          };
+          btnGroup.appendChild(delBtn);
+        }
+
+        tdAction.appendChild(btnGroup);
 
         row.appendChild(tdCheck);
         row.appendChild(tdName);
@@ -3653,6 +3943,14 @@ if (btnFilterActive) {
   });
 }
 
+const btnFilterQueued = document.getElementById('btn-filter-queued');
+if (btnFilterQueued) {
+  btnFilterQueued.addEventListener('click', () => {
+    const nextStatus = currentTorboxStatusFilter === 'queued' ? 'all' : 'queued';
+    selectCategoryFilesAndFilter(nextStatus);
+  });
+}
+
 const btnFilterReady = document.getElementById('btn-filter-ready');
 if (btnFilterReady) {
   btnFilterReady.addEventListener('click', () => {
@@ -3744,6 +4042,9 @@ if (btnAddTorboxSelected) {
       return;
     }
     await window.api.addToQueue(selected);
+    selectedTorboxFileIds.clear();
+    updateTorboxSelectionSummary();
+    applyTorboxFilters();
     switchQueueSubtab('active');
     switchTab('queue');
   });

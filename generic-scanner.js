@@ -115,13 +115,11 @@ function makeHttpRequest(urlStr, options = {}) {
 let gofileAccountToken = null;
 
 async function getGoFileAccountToken() {
-  if (gofileAccountToken) return gofileAccountToken;
   try {
     const res = await makeHttpRequest('https://api.gofile.io/accounts', { method: 'POST' });
     const json = JSON.parse(res.bodyText);
     if (json.status === 'ok' && json.data && json.data.token) {
-      gofileAccountToken = json.data.token;
-      return gofileAccountToken;
+      return json.data.token;
     }
   } catch (e) {}
   return 'wt=4fd6a892dcd6'; // Fallback token publico
@@ -136,6 +134,9 @@ async function scanGoFileFolder(contentId, folderPath = '', token = null) {
   const json = JSON.parse(res.bodyText);
 
   if (json.status !== 'ok' || !json.data) {
+    if (json.status === 'error-notPremium') {
+      throw new Error('Este conteúdo no GoFile é exclusivo para contas Premium do GoFile (error-notPremium). Para baixar pelo Nexus, ative a chave do Torbox nos Ajustes.');
+    }
     throw new Error(json.status || 'Falha ao acessar GoFile API');
   }
 
@@ -175,8 +176,27 @@ async function scanGoFile(urlStr) {
 
   const contentId = match[1];
   console.log(`[GoFile Engine] Escaneando conteúdo ID: ${contentId}`);
-  const files = await scanGoFileFolder(contentId);
-  return files;
+  try {
+    const files = await scanGoFileFolder(contentId);
+    if (files && files.length > 0) return files;
+  } catch (errGo) {
+    console.warn(`[GoFile Engine] Aviso ao escanear ${contentId}:`, errGo.message);
+  }
+
+  // Fallback no estilo MediaFire: Adiciona o item à fila para resolução e download no momento da execução
+  return [{
+    id: `gofile_${contentId}`,
+    fileId: contentId,
+    name: `gofile_${contentId}`,
+    size: 0,
+    sizeFormatted: 'Desconhecido',
+    relativePath: `GoFile_Downloads/gofile_${contentId}`,
+    folderName: 'GoFile_Downloads',
+    isHttpDirect: true,
+    bunkrPageUrl: urlStr,
+    sourceUrl: urlStr,
+    url: urlStr
+  }];
 }
 
 // ----------------------------------------------------
@@ -356,9 +376,10 @@ async function scanSmartHtmlScraper(urlStr) {
 // ----------------------------------------------------
 async function scanPixelDrain(urlStr) {
   if (!urlStr || typeof urlStr !== 'string' || !urlStr.includes('pixeldrain.com')) return null;
+  const cleanUrl = urlStr.split('#')[0].trim();
 
   // 1. Verifica se é um álbum/lista (/l/{id})
-  const listMatch = urlStr.match(/pixeldrain\.com\/l\/([a-zA-Z0-9_-]+)/i);
+  const listMatch = cleanUrl.match(/pixeldrain\.com\/l\/([a-zA-Z0-9_-]+)/i);
   if (listMatch) {
     const listId = listMatch[1];
     console.log(`[PixelDrain Engine] Escaneando álbum/lista ID: ${listId}`);
@@ -401,7 +422,7 @@ async function scanPixelDrain(urlStr) {
   }
 
   // 2. Verifica se é um arquivo individual (/u/{id})
-  const fileMatch = urlStr.match(/pixeldrain\.com\/u\/([a-zA-Z0-9_-]+)/i) || urlStr.match(/pixeldrain\.com\/api\/file\/([a-zA-Z0-9_-]+)/i);
+  const fileMatch = cleanUrl.match(/pixeldrain\.com\/u\/([a-zA-Z0-9_-]+)/i) || cleanUrl.match(/pixeldrain\.com\/api\/file\/([a-zA-Z0-9_-]+)/i);
   if (fileMatch) {
     const fileId = fileMatch[1];
     console.log(`[PixelDrain Engine] Escaneando arquivo individual ID: ${fileId}`);
