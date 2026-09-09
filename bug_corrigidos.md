@@ -707,3 +707,29 @@ Caso algum download do Torbox volte a apresentar erro 416 ou interrompa no iníc
    - Criadas as regras CSS completas para `.queue-item-row`, `.queue-item-main`, `.queue-item-title-line`, `.queue-item-sub` e `.btn-icon`.
    - `.queue-item-main` recebeu `display: flex; align-items: center; justify-content: space-between; gap: 12px;`, alinhando perfeitamente o checkbox à esquerda, o título e status ao centro e os botões de ação à direita.
    - `.queue-item-title-line` alinha a tag do tipo do arquivo (ex: `.video`) na mesma linha do nome da mídia, com layout responsivo e elegante.
+
+---
+
+## Bug 26: Detecção e Roteamento de Links PixelDrain e Hosters WebDL via Torbox para a Aba "Aguardando Torbox" e Auto-Download Local pós-Nuvem
+
+### Causa Raiz Identificada e Corrigida
+1. **Conflito de Prioridade no Discriminador de Serviço (`main.js`)**:
+   - `getItemServiceKey(item)` verificava chaves do `pixeldrain_` antes de checar se o item era do Torbox (`torbox_` / `item.torboxType`), causando identificação incorreta.
+2. **Timeout Curto na Criação de WebDLs (`main.js`)**:
+   - `scanTorboxWithFastTimeout` operava com timeout de apenas 2.5s, disparando fallback nativo antes de o Torbox processar o link no servidor.
+3. **Ausência de Propriedades de Nuvem em WebDLs Recém-Criadas (`torbox-scanner.js`)**:
+   - `buildWebdlResultList` não preenchia `isFinished`, `isCloudProcessing`, `cloudProgress`, `cloudStatus`, `cloudMessage`.
+4. **Falta de Polling no Resolver Torbox (`torbox-scanner.js`)**:
+   - `resolveTorboxDirectUrl` retornava de imediato o link assinado quando o arquivo ainda estava baixando na nuvem (`isCloudReady === false`), fazendo o worker falhar em arquivo incompleto no servidor.
+5. **Partição Restritiva da Fila na Interface (`renderer/js/app.js`)**:
+   - `isTorboxPendingItem` e `folderMap.forEach` não incluíam pastas com arquivos WebDL na sub-aba "Aguardando Torbox".
+6. **Guard de 60s Abortava Downloads em Nuvem (`main.js`)**:
+   - O temporizador de 60s abortava downloads com 0 bytes antes de o Torbox terminar a transferência nos seus próprios servidores.
+
+### Solução Aplicada
+1. **Priorização Absoluta de Torbox**: `getItemServiceKey(item)` prioriza chaves `torbox_` e `torboxType: 'webdl'`.
+2. **Timeout de 12s no Scanner**: `scanTorboxWithFastTimeout` ampliado para 12s para todos os hosters Torbox.
+3. **Mapeamento Completo de Nuvem**: `buildWebdlResultList` preenche todas as flags de nuvem (`isFinished`, `isCloudProcessing`, `cloudProgress`, `cloudStatus`, `cloudMessage`).
+4. **Loop de Monitoramento Vivo**: `resolveTorboxDirectUrl` faz polling (2.5s até 20 min) emitindo `onStatusUpdate("Torbox baixando no servidor (X%)...", percent)` e solicitando o CDN de alta velocidade assim que concluído na nuvem.
+5. **Roteamento Preciso na Interface**: `isTorboxPendingItem` e `folderMap.forEach` direcionam perfeitamente para a sub-aba **Aguardando Torbox** com a badge dourada `☁️ Torbox (X%) • Aguardando término no servidor` e migram para **Em Andamento** no início do download local.
+6. **Proteção de Inatividade**: Guard de inatividade em `main.js` ignora itens enquanto estiverem em processamento na nuvem (`isTorboxCloudPendingItem`).

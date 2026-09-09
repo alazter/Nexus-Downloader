@@ -1817,14 +1817,16 @@ function renderQueue(queue) {
   // Helper para identificar se um item está aguardando/processando exclusivamente na nuvem Torbox antes de baixar no PC
   const isTorboxPendingItem = (item) => {
     if (!item || item.status === 'completed') return false;
-    // Se o item já está sendo transferido/baixado localmente no PC, ele vai para a aba Em Progresso (Em Andamento)
-    if (item.status === 'downloading') return false;
+    // Se o item já está sendo transferido/baixado localmente no PC (sem pendência na nuvem), vai para Em Andamento
+    if (item.status === 'downloading' && !item.isCloudProcessing && !item.cloudMessage) return false;
 
     // Se estiver explicitamente processando/gerando link na nuvem do Torbox
     if (item.isCloudProcessing || item.isCloudDownloading) return true;
     if (item.cloudMessage && !item.cloudMessage.toLowerCase().includes('concluído')) return true;
     if (item.cloudProgress !== undefined && item.cloudProgress < 100) return true;
-    if (item.cloudStatus && (item.cloudStatus.includes('Em Fila') || item.cloudStatus.includes('Baixando') || item.cloudStatus.includes('Processando'))) return true;
+    if (item.cloudStatus && (item.cloudStatus.includes('Fila') || item.cloudStatus.includes('Baixando') || item.cloudStatus.includes('Processando') || item.cloudStatus.includes('Aguardando'))) return true;
+    if (item.isFinished === false) return true;
+    if ((item.torboxType || (item.id && String(item.id).startsWith('torbox_'))) && item.cloudMessage) return true;
 
     return false;
   };
@@ -1939,8 +1941,11 @@ function renderQueue(queue) {
     if (isFolderAllCompleted) {
       completedEntries.push([groupKey, folderName, folderItems]);
     } else {
-      const isAllPendingTorbox = folderItems.every(f => f.status !== 'completed' && isTorboxPendingItem(f));
-      if (isAllPendingTorbox) {
+      const nonCompleted = folderItems.filter(f => f.status !== 'completed');
+      const hasLocalDownloading = nonCompleted.some(f => f.status === 'downloading' && !isTorboxPendingItem(f));
+      const hasTorboxPending = nonCompleted.some(f => isTorboxPendingItem(f));
+
+      if (hasTorboxPending && !hasLocalDownloading) {
         torboxEntries.push([groupKey, folderName, folderItems]);
       } else {
         activeEntries.push([groupKey, folderName, folderItems]);
@@ -2312,7 +2317,7 @@ function renderQueue(queue) {
         }
       });
 
-      const cloudDownloadingItem = folderItems.find(f => f.status === 'downloading' && (f.cloudMessage || f.cloudProgress !== undefined));
+      const cloudDownloadingItem = folderItems.find(f => (f.cloudMessage || f.cloudProgress !== undefined || isTorboxPendingItem(f)) && f.status !== 'completed');
       if (cloudDownloadingItem) {
         const cProg = cloudDownloadingItem.cloudProgress !== undefined ? cloudDownloadingItem.cloudProgress : (cloudDownloadingItem.progress || 0);
         if (badgeSpan) {
@@ -2418,9 +2423,17 @@ function renderQueue(queue) {
             statusClass = 'status-downloading';
             showProgress = true;
           }
-        } else if (item.status === 'pending') {
-          statusText = 'Aguardando início...';
-          statusClass = 'status-pending';
+        } else if (item.status === 'pending' || !item.status) {
+          const isTbItem = item && (item.id.startsWith('torbox_') || item.torboxType || item.torboxId);
+          if (item.cloudMessage || item.cloudProgress !== undefined || (isTbItem && item.isFinished === false)) {
+            const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
+            statusText = `Torbox baixando no servidor (${cProg}%)... Aguardando término para iniciar local`;
+            statusClass = 'status-downloading';
+            showProgress = true;
+          } else {
+            statusText = 'Aguardando início...';
+            statusClass = 'status-pending';
+          }
         } else if (item.status === 'paused') {
           statusText = `Pausado (${item.progress || 0}%)`;
           statusClass = 'status-paused';

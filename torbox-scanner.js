@@ -326,6 +326,14 @@ async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
     const rawFolderName = (dnName && dnName.length > 2) ? dnName : (currentTorrent.name || torrentData.name || 'Torrent_Download');
     const folderDisplayName = sanitizePathSegment(rawFolderName);
 
+    const stateLower = (currentTorrent.download_state || '').toLowerCase();
+    const rawProg = currentTorrent.progress !== undefined ? currentTorrent.progress : 0;
+    const percent = Math.min(100, Math.round(rawProg <= 1 ? rawProg * 100 : rawProg));
+    const isFinished = !!currentTorrent.download_finished || stateLower === 'completed' || stateLower === 'seeding' || stateLower === 'cached' || percent >= 100;
+    const isCloudProcessing = !isFinished;
+    const cloudStatus = isFinished ? 'Concluído' : `Aguardando Torbox (${percent}%)`;
+    const cloudMessage = isFinished ? null : `Aguardando download nos servidores do Torbox (${percent}%)...`;
+
     if (files.length > 0) {
       files.forEach((f, idx) => {
         let rawName = f.name || f.short_name || `Arquivo_${idx + 1}`;
@@ -349,6 +357,11 @@ async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
           torboxType: 'torrent',
           torboxId: torrentId,
           torboxFileId: fFileId,
+          isFinished: isFinished,
+          isCloudProcessing: isCloudProcessing,
+          cloudProgress: isFinished ? 100 : percent,
+          cloudStatus: cloudStatus,
+          cloudMessage: cloudMessage,
           torboxDownloadUrl: permalinkUrl,
           directUrl: permalinkUrl,
           downloadUrl: permalinkUrl
@@ -378,6 +391,11 @@ async function scanTorboxLink(urlStr, apiKey, onStatusUpdate = null) {
         torboxType: 'torrent',
         torboxId: torrentId,
         torboxFileId: 0,
+        isFinished: isFinished,
+        isCloudProcessing: isCloudProcessing,
+        cloudProgress: isFinished ? 100 : percent,
+        cloudStatus: cloudStatus,
+        cloudMessage: cloudMessage,
         torboxDownloadUrl: permalinkUrl,
         directUrl: permalinkUrl,
         downloadUrl: permalinkUrl
@@ -478,6 +496,14 @@ function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
   const folderDisplayName = sanitizePathSegment(webdlItem.name || 'Hoster_Download');
   const resultList = [];
 
+  const stateLower = (webdlItem.download_state || '').toLowerCase();
+  const rawProg = webdlItem.progress !== undefined ? webdlItem.progress : 0;
+  const percent = Math.min(100, Math.round(rawProg <= 1 ? rawProg * 100 : rawProg));
+  const isFinished = !!webdlItem.download_finished || stateLower === 'completed' || stateLower === 'seeding' || stateLower === 'cached' || percent >= 100;
+  const isCloudProcessing = !isFinished;
+  const cloudStatus = isFinished ? 'Concluído' : `Aguardando Torbox (${percent}%)`;
+  const cloudMessage = isFinished ? null : `Aguardando download nos servidores do Torbox (${percent}%)...`;
+
   // Se a WebDL do Torbox possui múltiplos arquivos descompactados (ex: pasta/álbum Pixeldrain com vídeos .mp4)
   if (webdlItem.files && Array.isArray(webdlItem.files) && webdlItem.files.length > 0) {
     webdlItem.files.forEach((f, idx) => {
@@ -503,6 +529,11 @@ function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
         torboxId: webdlId,
         torboxFileId: fFileId,
         isZipDownload: false,
+        isFinished: isFinished,
+        isCloudProcessing: isCloudProcessing,
+        cloudProgress: isFinished ? 100 : percent,
+        cloudStatus: cloudStatus,
+        cloudMessage: cloudMessage,
         sourceUrl: originalLink || webdlItem.original_url || '',
         originalUrl: originalLink || webdlItem.original_url || '',
         torboxDownloadUrl: permalinkUrl,
@@ -535,6 +566,11 @@ function buildWebdlResultList(webdlItem, apiKey, originalLink = '') {
     torboxId: webdlId,
     torboxFileId: 0,
     isZipDownload: true,
+    isFinished: isFinished,
+    isCloudProcessing: isCloudProcessing,
+    cloudProgress: isFinished ? 100 : percent,
+    cloudStatus: cloudStatus,
+    cloudMessage: cloudMessage,
     sourceUrl: originalLink || webdlItem.original_url || '',
     originalUrl: originalLink || webdlItem.original_url || '',
     torboxDownloadUrl: webdlPermalink,
@@ -593,37 +629,63 @@ async function resolveTorboxDirectUrl(fileId, apiKey, torboxType = 'torrent', to
     return null;
   };
 
-  // 1. Verifica se o item já está 100% concluído na nuvem antes de tentar a CDN
-  let isCloudReady = false;
-  try {
-    const listEndpoint = torboxType === 'torrent' ? '/torrents/mylist?bypass_cache=true' : '/webdl/mylist?bypass_cache=true';
-    const listRes = await callTorboxApi(listEndpoint, 'GET', apiKey);
-    const items = (listRes.data && listRes.data.data) ? listRes.data.data : [];
-    const item = items.find(i => (String(i.id) === String(torboxId) || String(i.torrent_id) === String(torboxId) || String(i.webdownload_id) === String(torboxId)));
-    if (item) {
-      const rawProg = item.progress !== undefined ? item.progress : 0;
-      const percent = Math.min(100, Math.round(rawProg <= 1 ? rawProg * 100 : rawProg));
-      isCloudReady = !!item.download_finished || item.download_state === 'completed' || item.download_state === 'seeding' || item.download_state === 'cached' || percent >= 100;
+  // Monitora o progresso na nuvem do Torbox até que o download no servidor seja concluído (ou até timeout de 20 minutos)
+  const listEndpoint = torboxType === 'torrent' ? '/torrents/mylist?bypass_cache=true' : '/webdl/mylist?bypass_cache=true';
+  const maxPollingAttempts = 480; // 480 * 2.5s = 1200s (20 minutos)
+
+  for (let attempt = 0; attempt < maxPollingAttempts; attempt++) {
+    let isCloudReady = false;
+    let percent = 0;
+    let stateStr = '';
+
+    try {
+      const listRes = await callTorboxApi(listEndpoint, 'GET', apiKey);
+      const items = (listRes.data && listRes.data.data) ? listRes.data.data : [];
+      const item = items.find(i => (String(i.id) === String(torboxId) || String(i.torrent_id) === String(torboxId) || String(i.webdownload_id) === String(torboxId)));
+
+      if (item) {
+        const rawProg = item.progress !== undefined ? item.progress : 0;
+        percent = Math.min(100, Math.round(rawProg <= 1 ? rawProg * 100 : rawProg));
+        stateStr = (item.download_state || '').toLowerCase();
+        isCloudReady = !!item.download_finished || stateStr === 'completed' || stateStr === 'seeding' || stateStr === 'cached' || percent >= 100;
+
+        if (stateStr.includes('error') || stateStr.includes('failed') || stateStr.includes('cancelled')) {
+          throw new Error(`Download falhou nos servidores do Torbox: ${item.download_state || 'Erro no servidor'}`);
+        }
+
+        if (isCloudReady) {
+          if (typeof onStatusUpdate === 'function') {
+            onStatusUpdate('Concluído no Torbox! Gerando link de alta velocidade...', 100);
+          }
+          break;
+        } else {
+          const statusText = `Aguardando download nos servidores do Torbox (${percent}%)...`;
+          if (typeof onStatusUpdate === 'function') {
+            onStatusUpdate(statusText, percent);
+          }
+        }
+      } else if (attempt > 2) {
+        // Se após 3 tentativas o item não foi encontrado na lista, pode já ter sido processado ou ser um ID direto
+        console.log(`[Torbox Resolver] Item ${torboxId} não localizado em mylist, tentando obter CDN diretamente...`);
+        break;
+      }
+    } catch (e) {
+      if (e.message && e.message.includes('falhou nos servidores do Torbox')) {
+        throw e;
+      }
+      console.warn(`[Torbox Resolver] Checagem de status na nuvem (tentativa ${attempt + 1}):`, e.message);
     }
-  } catch (e) {
-    console.warn('[Torbox Resolver] Não foi possível checar lista inicial:', e.message);
+
+    await new Promise(r => setTimeout(r, 2500));
   }
 
-  if (isCloudReady) {
-    let dUrl = await requestDirect(currentFileId);
-    if (dUrl) {
-      return { directUrl: dUrl, referer: 'https://torbox.app/' };
-    }
+  // Nuvem pronta ou item já cached/finalizado: solicita a URL CDN de alta velocidade
+  let dUrl = await requestDirect(currentFileId);
+  if (dUrl) {
+    return { directUrl: dUrl, referer: 'https://torbox.app/' };
   }
 
-  // Se requestDirect não retornou a URL de CDN de imediato ou se a verificação inicial falhou, 
-  // tenta mais 1 vez e faz fallback direto para o link assinado do Torbox com redirect=true
-  let fallbackDUrl = await requestDirect(currentFileId);
-  if (fallbackDUrl) {
-    return { directUrl: fallbackDUrl, referer: 'https://torbox.app/' };
-  }
-
-  // Fallback direto e instantâneo assinado pelo Torbox
+  // Fallback seguro: se a CDN falhar, retorna a URL assinada direta do Torbox com redirect=true
   const fid = (currentFileId !== undefined && currentFileId !== null) ? currentFileId : 0;
   const signedUrl = torboxType === 'torrent'
     ? `https://api.torbox.app/v1/api/torrents/requestdl?token=${encodeURIComponent(apiKey)}&torrent_id=${torboxId}&file_id=${fid}&redirect=true`
@@ -757,16 +819,9 @@ async function fetchTorboxUserDownloads(apiKey) {
       let statusText = isFinished ? 'Concluído' : (isQueued ? 'Em Fila' : (isInactive ? 'Inativo' : `Baixando (${percent}%)`));
       const folderDisplayName = sanitizePathSegment(w.name || `WebDL_${w.id}`);
 
-      const isPixeldrain = (w.original_url && w.original_url.toLowerCase().includes('pixeldrain')) ||
-                           (w.name && w.name.toLowerCase().includes('pixeldrain'));
-
-      if (isPixeldrain || !w.files || !Array.isArray(w.files) || w.files.length <= 1) {
+      if (!w.files || !Array.isArray(w.files) || w.files.length <= 1) {
         let fileName = folderDisplayName;
         if (!/\.[a-zA-Z0-9]{2,4}$/.test(fileName)) {
-          fileName = fileName + '.zip';
-        } else if (isPixeldrain && !fileName.toLowerCase().endsWith('.zip')) {
-          const extIdx = fileName.lastIndexOf('.');
-          if (extIdx > 0) fileName = fileName.substring(0, extIdx);
           fileName = fileName + '.zip';
         }
         const fileSize = w.size || (w.files ? w.files.reduce((acc, f) => acc + (f.size || 0), 0) : 0);

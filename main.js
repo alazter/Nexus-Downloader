@@ -844,6 +844,7 @@ function getItemServiceKey(item) {
   const id = String(item.id || '').toLowerCase();
   const url = String(item.url || item.bunkrPageUrl || item.sourceUrl || item.downloadUrl || item.originalUrl || item.teraboxUrl || '').toLowerCase();
 
+  if (id.startsWith('torbox_') || item.torboxId || item.torboxType) return 'torbox';
   if (id.startsWith('bunkr_') || url.includes('bunkr') || url.includes('balbums')) return 'bunkr';
   if (id.startsWith('mediafire_') || url.includes('mediafire')) return 'mediafire';
   if (id.startsWith('terabox_') || url.includes('terabox') || url.includes('1024tera') || url.includes('freeterabox')) return 'terabox';
@@ -854,14 +855,18 @@ function getItemServiceKey(item) {
   if (id.startsWith('gofile_') || url.includes('gofile')) return 'gofile';
   if (id.startsWith('send_') || url.includes('send.now') || url.includes('send.cm')) return 'send';
   if (id.startsWith('onedrive_') || url.includes('onedrive') || url.includes('1drv.ms') || url.includes('sharepoint')) return 'onedrive';
-  if (id.startsWith('torbox_') || item.torboxId || item.torboxType) return 'torbox';
   return 'gdrive';
 }
 
 function isTorboxCloudPendingItem(item) {
   if (!item || item.status === 'completed') return false;
-  if ((item.cloudMessage || (item.cloudProgress !== undefined && item.cloudProgress < 100)) && (item.downloadedBytes || 0) === 0) {
-    return true;
+  const isTorbox = item.id && (item.id.startsWith('torbox_') || item.torboxId || item.torboxType);
+  if (isTorbox && (item.downloadedBytes || 0) === 0) {
+    if (item.isCloudProcessing || item.isCloudDownloading) return true;
+    if (item.cloudMessage && !item.cloudMessage.toLowerCase().includes('concluído')) return true;
+    if (item.cloudProgress !== undefined && item.cloudProgress < 100) return true;
+    if (item.cloudStatus && (item.cloudStatus.includes('Fila') || item.cloudStatus.includes('Baixando') || item.cloudStatus.includes('Processando') || item.cloudStatus.includes('Aguardando'))) return true;
+    if (!item.isFinished && item.status !== 'downloading') return true;
   }
   return false;
 }
@@ -914,7 +919,7 @@ async function processQueue() {
     updateQueueUI();
 
     let startTimeoutTimer = setTimeout(() => {
-      if (nextItem.status === 'downloading' && (nextItem.downloadedBytes || 0) === 0) {
+      if (nextItem.status === 'downloading' && (nextItem.downloadedBytes || 0) === 0 && !isTorboxCloudPendingItem(nextItem) && !nextItem.isCloudProcessing && !nextItem.cloudMessage) {
         console.warn(`[Queue Guard 60s] Item "${nextItem.name}" não iniciou a transferência em 60s. Abortando e avançando para o próximo...`);
         const downloadData = activeDownloads.get(nextItem.id);
         if (downloadData && downloadData.abortController) {
@@ -1134,7 +1139,12 @@ function downloadBunkrFile(queueItem) {
                 config.torboxApiKey,
                 tbType,
                 tbId,
-                tbFileId
+                tbFileId,
+                (statusMsg, percent) => {
+                  queueItem.cloudProgress = percent;
+                  queueItem.cloudMessage = statusMsg;
+                  updateQueueUI();
+                }
               );
               directUrl = tbInfo.directUrl;
               referer = tbInfo.referer || 'https://torbox.app/';
@@ -2172,11 +2182,11 @@ function detectHosterNameFromUrl(url) {
   return 'Download Direto';
 }
 
-async function scanTorboxWithFastTimeout(link, apiKey, timeoutMs = 8000) {
+async function scanTorboxWithFastTimeout(link, apiKey, timeoutMs = 12000) {
   if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) return null;
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('Torbox scan timeout (8s)')), timeoutMs);
+    timeoutId = setTimeout(() => reject(new Error(`Torbox scan timeout (${timeoutMs / 1000}s)`)), timeoutMs);
   });
 
   try {
@@ -2209,7 +2219,7 @@ async function scanSingleUrl(link) {
   // 0. Links do PixelDrain
   if (isPixelDrainUrl(link)) {
     if (isTorboxEnabledForService('pixeldrain')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanPixelDrainLink(link);
@@ -2218,7 +2228,7 @@ async function scanSingleUrl(link) {
   // 0.05. Links do TeraBox
   if (isTeraBoxUrl(link)) {
     if (isTorboxEnabledForService('terabox')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanTeraBoxLink(link);
@@ -2227,7 +2237,7 @@ async function scanSingleUrl(link) {
   // 0.1. Links do MediaFire
   if (isMediaFireUrl(link)) {
     if (isTorboxEnabledForService('mediafire')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanMediaFireLink(link);
@@ -2236,7 +2246,7 @@ async function scanSingleUrl(link) {
   // 0.15. Links do Send
   if (isSendUrl(link)) {
     if (isTorboxEnabledForService('send')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanSendLink(link);
@@ -2245,7 +2255,7 @@ async function scanSingleUrl(link) {
   // 0.16. Links do GoFile
   if (isGoFileUrl(link)) {
     if (isTorboxEnabledForService('gofile')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 8000);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     try {
@@ -2253,7 +2263,7 @@ async function scanSingleUrl(link) {
     } catch (errGo) {
       if (errGo.message.includes('error-notPremium') && config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
         console.log('[GoFile Scanner] Detectado erro error-notPremium. Tentando desproteger via Torbox fallback...');
-        const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 8000);
+        const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
         if (tbFiles && tbFiles.length > 0) return tbFiles;
       }
       throw errGo;
@@ -2263,7 +2273,7 @@ async function scanSingleUrl(link) {
   // 0.2. Links do Microsoft OneDrive / SharePoint
   if (isOneDriveUrl(link)) {
     if (isTorboxEnabledForService('onedrive')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanOneDriveLink(link);
@@ -2272,7 +2282,7 @@ async function scanSingleUrl(link) {
   // 0.21. Links do Drime Cloud
   if (isDrimeUrl(link)) {
     if (isTorboxEnabledForService('drime')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanDrimeLink(link);
@@ -2281,7 +2291,7 @@ async function scanSingleUrl(link) {
   // 0.22. Links do Turbo.cr
   if (isTurboUrl(link)) {
     if (isTorboxEnabledForService('turbo')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanTurboLink(link);
@@ -2290,7 +2300,7 @@ async function scanSingleUrl(link) {
   // 0.23. Links do Vik1ngFile
   if (isVikingFileUrl(link)) {
     if (isTorboxEnabledForService('vik1ngfile')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanVikingFileLink(link);
@@ -2299,7 +2309,7 @@ async function scanSingleUrl(link) {
   // 0.3. Links do Bunkr
   if (isBunkrUrl(link)) {
     if (isTorboxEnabledForService('bunkr')) {
-      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+      const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
     return await scanBunkrLink(link);
