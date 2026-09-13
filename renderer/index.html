@@ -271,7 +271,7 @@
                     <button class="filter-option active" data-filter-type="all">Todos os Tipos</button>
                     <button class="filter-option" data-filter-type="torrent">Torrents (.torrent)</button>
                     <button class="filter-option" data-filter-type="webdl">WebDL / Hosters</button>
-                    <button class="filter-option" data-filter-type="video">Vídeos (.video)</button>
+                    <button class="filter-option" data-filter-type="video">Vídeos (.Vídeo)</button>
 
                     <div class="filter-group-title" style="margin-top: 10px;">Ordenar Por</div>
                     <button class="filter-option active" data-filter-sort="default">Padrão</button>
@@ -286,8 +286,14 @@
                     <button class="filter-option" data-filter-sort="speed_ul">Velocidade de Upload</button>
 
                     <div class="filter-group-title" style="margin-top: 10px;">Visibilidade & Opções</div>
-                    <button class="filter-option" id="btn-toggle-show-hidden">👁️ Exibir Itens Ocultados</button>
-                    <button class="filter-option" id="btn-reset-torbox-filters" style="color: #fb7185; margin-top: 4px;">🧹 Limpar Filtros para o Padrão</button>
+                    <button class="filter-option" id="btn-toggle-show-hidden" style="display: flex; align-items: center; gap: 6px;">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      <span>Exibir Itens Ocultados</span>
+                    </button>
+                    <button class="filter-option" id="btn-reset-torbox-filters" style="color: #fb7185; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Limpar Filtros para o Padrão</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -363,11 +369,12 @@
           <!-- BARRA DE AUDITORIA E DIAGNÓSTICO MULTILINK -->
           <div id="scan-audit-summary-bar" style="display: none; margin: 12px 16px 14px 16px; padding: 12px 16px; border-radius: 8px; font-size: 13px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 10px;">
-              <span id="scan-audit-icon" style="font-size: 18px;">🎉</span>
+              <span id="scan-audit-icon" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;"></span>
               <span id="scan-audit-message" style="font-weight: 600;"></span>
             </div>
-            <button class="btn btn-sm btn-outline" id="btn-show-failed-links-detail" style="display: none; font-size: 12px; padding: 4px 12px; font-weight: 600; border-radius: 6px;">
-              📋 Ver Detalhes dos Links com Falha
+            <button class="btn btn-sm btn-outline" id="btn-show-failed-links-detail" style="display: none; font-size: 12px; padding: 4px 12px; font-weight: 600; border-radius: 6px; align-items: center; gap: 6px;">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+              <span>Ver Detalhes dos Links com Falha</span>
             </button>
           </div>
 
@@ -437,11 +444,11 @@
               <div id="completed-filter-container" style="display: none; align-items: center; gap: 8px;">
                 <label for="completed-sort-select" style="font-size: 12px; color: var(--text-muted, #94a3b8); font-weight: 600; white-space: nowrap;">Filtro:</label>
                 <select id="completed-sort-select" style="padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15, 23, 42, 0.85); color: #4ade80; font-size: 12px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s ease;">
-                  <option value="recent_desc" selected>⏱️ Mais recentes</option>
-                  <option value="recent_asc">⌛ Mais antigos</option>
-                  <option value="name_asc">🔤 Nome (A - Z)</option>
-                  <option value="name_desc">🔤 Nome (Z - A)</option>
-                  <option value="size_desc">📦 Maior Tamanho</option>
+                  <option value="recent_desc" selected>Mais recentes</option>
+                  <option value="recent_asc">Mais antigos</option>
+                  <option value="name_asc">Nome (A - Z)</option>
+                  <option value="name_desc">Nome (Z - A)</option>
+                  <option value="size_desc">Maior Tamanho</option>
                 </select>
               </div>
 
@@ -525,7 +532,10 @@
             </div>
 
             <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-              <label class="setting-label">⚡ Limite de Downloads Simultâneos por Serviço / Hoster</label>
+              <label class="setting-label" style="display: flex; align-items: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>Limite de Downloads Simultâneos por Serviço / Hoster</span>
+              </label>
               <span class="setting-hint setting-hint-block">Define quantos arquivos podem ser baixados em paralelo no mesmo site. A sua configuração selecionada nos cartões abaixo substitui o padrão (1 por vez) e define o limite exato de cada hoster para evitar bloqueio 503 por IP.</span>
 
               <div class="mode-settings-grid">
@@ -643,6 +653,66 @@
                     <strong>Torbox (Debrid & Torrents)</strong>
                   </div>
                   <select id="setting-service-max-torbox" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(255, 255, 255, 0.18); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">OneDrive</span>
+                    <strong>Microsoft OneDrive</strong>
+                  </div>
+                  <select id="setting-service-max-onedrive" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(236, 72, 153, 0.18); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Send</span>
+                    <strong>Send (send.now / send.cm)</strong>
+                  </div>
+                  <select id="setting-service-max-send" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">MEGA</span>
+                    <strong>MEGA.nz</strong>
+                  </div>
+                  <select id="setting-service-max-mega" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">1Fichier</span>
+                    <strong>1Fichier</strong>
+                  </div>
+                  <select id="setting-service-max-1fichier" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(234, 88, 12, 0.18); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">RapidGator</span>
+                    <strong>RapidGator</strong>
+                  </div>
+                  <select id="setting-service-max-rapidgator" class="service-select">
                     <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
                     <option value="2">2 arquivos por vez</option>
                     <option value="3">3 arquivos por vez (Máximo)</option>
@@ -805,6 +875,17 @@
                     <strong>1Fichier</strong>
                   </div>
                   <select id="setting-mode-1fichier" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(234, 88, 12, 0.18); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">RapidGator</span>
+                    <strong>RapidGator</strong>
+                  </div>
+                  <select id="setting-mode-rapidgator" class="service-select">
                     <option value="single">Conexão Única (Estável)</option>
                     <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
                   </select>
@@ -1094,6 +1175,20 @@
                     <label for="setting-torbox-service-1fichier"></label>
                   </div>
                 </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(234, 88, 12, 0.18); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Rapidgator</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Rapidgator</span>
+                      <span class="torbox-switch-sub">rapidgator.net / rg.to</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-rapidgator" checked>
+                    <label for="setting-torbox-service-rapidgator"></label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1178,7 +1273,7 @@
               </svg>
               Auditoria & Histórico de Hosters Baixados
             </h2>
-            <p class="setting-desc">Visualize todos os arquivos baixados, pesquise por marcas de hosters/tags (ex: Vik1ngFile, Drime, Bunkr, .video, .Zip) e exporte o relatório de diagnóstico diretamente para o chat.</p>
+            <p class="setting-desc">Visualize todos os arquivos baixados, pesquise por marcas de hosters/tags (ex: Vik1ngFile, Drime, Bunkr, .Vídeo, .Zip) e exporte o relatório de diagnóstico diretamente para o chat.</p>
 
             <div style="display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap;">
               <button class="btn btn-primary" id="btn-open-audit-modal" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-weight: 600;">
@@ -1203,6 +1298,81 @@
               </div>
             </div>
           </div>
+
+          <!-- 5. EXTENSÃO PARA NAVEGADOR (CHROME / BRAVE / EDGE) -->
+          <div class="card setting-card" id="card-extension-settings">
+            <h2 class="setting-title">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+              Extensão para Navegador (Chrome / Brave / Edge)
+            </h2>
+            <p class="setting-desc">Instale a extensão oficial do Nexus Downloader no seu navegador para capturar vídeos, álbuns e arquivos de GoFile, Bunkr, Torbox e mídias da web com um único clique.</p>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-install-extension" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-weight: 700;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>Instalar Extensão no Navegador com 1 Clique</span>
+              </button>
+              <div class="auth-status-container" style="display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 12px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4);">
+                <div class="status-indicator connected" style="background: #10b981; box-shadow: 0 0 8px #10b981;"></div>
+                <span style="font-size: 12px; font-weight: 700; color: #6ee7b7;">Servidor Bridge Ativo (Porta 41523)</span>
+              </div>
+            </div>
+
+            <!-- MODO DE MONITORAMENTO PADRÃO DA EXTENSÃO -->
+            <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <label class="setting-label" style="margin-bottom: 4px; display: block;">Modo de Monitoramento da Extensão</label>
+              <span class="setting-hint" style="display: block; margin-bottom: 12px;">Selecione o nível de atuação da extensão nos navegadores conectados.</span>
+
+              <select id="setting-extension-mode" class="service-select" style="max-width: 420px; width: 100%;">
+                <option value="disabled">Desligado (Nenhum monitoramento)</option>
+                <option value="supported" selected>Apenas Sites Suportados Oficialmente (GoFile, Bunkr, GDrive, etc.)</option>
+                <option value="supported_torbox">Sites Suportados + Torbox (Torrents & Debrid)</option>
+                <option value="universal">Monitoramento Universal (Varredura Heurística em Qualquer Site)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 6. TELEMETRIA ANALÍTICA & LOGS LOCAIS -->
+          <div class="card setting-card" id="card-telemetry-settings">
+            <h2 class="setting-title">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+              </svg>
+              Telemetria Analítica & Logs Locais
+            </h2>
+            <p class="setting-desc">Registra automaticamente os 6 dados vitais de cada download (link original, total de arquivos, rota, taxa de conclusão/erros, provedor e velocidade) e salva localmente em formato JSON na pasta <strong>C:\Users\alazt\Documents\GitHub\Projetos\Telemetria\Nexus Downloader</strong> para teste e refinamento contínuo.</p>
+
+            <div class="setting-item" style="margin-top: 14px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                  <label class="setting-label" style="margin-bottom: 2px;">Gravar Telemetria e Logs Analíticos Locais</label>
+                  <span class="setting-hint" style="display: block;">Coleta diagnósticos para análise, identificação de limites e aprimoramento dos motores de download.</span>
+                </div>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="setting-telemetry-enabled" checked>
+                  <label for="setting-telemetry-enabled"></label>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-open-telemetry-folder" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; font-weight: 600;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span>Abrir Pasta de Logs de Telemetria</span>
+              </button>
+              <button class="btn btn-outline" id="btn-sync-telemetry-now" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; font-weight: 600;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+                <span>Sincronizar com Google Drive (Opcional)</span>
+              </button>
+              <span id="telemetry-sync-status" style="font-size: 12px; font-weight: 600; color: #94a3b8;"></span>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -1239,6 +1409,12 @@
         <div class="auth-status-container" id="torbox-status-badge" style="display: flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08);">
           <div class="status-indicator disconnected" id="torbox-status-indicator"></div>
           <span class="status-text" id="torbox-status-text" style="font-size: 11px; font-weight: 600; color: #cbd5e1;">Torbox API Desconectada</span>
+        </div>
+
+        <!-- Indicador Extensão Navegador -->
+        <div class="auth-status-container" id="browser-status-badge" style="display: flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08);">
+          <div class="status-indicator disconnected" id="browser-status-indicator"></div>
+          <span class="status-text" id="browser-status-text" style="font-size: 11px; font-weight: 600; color: #cbd5e1;">Navegador Desconectado</span>
         </div>
       </div>
     </footer>
@@ -1278,7 +1454,10 @@
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
         </div>
-        <h3 id="updater-modal-title">⚡ Nova Versão Disponível</h3>
+        <h3 id="updater-modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span>Nova Versão Disponível</span>
+        </h3>
       </div>
       <div class="updater-modal-body">
         <p id="updater-modal-subtitle" class="updater-subtitle">Uma nova versão do Nexus Downloader está disponível com melhorias e correções.</p>
@@ -1315,12 +1494,16 @@
 
   <!-- MODAL DE AUDITORIA & HISTÓRICO DE HOSTERS -->
   <div class="custom-modal-overlay" id="modal-hoster-audit" style="display: none; align-items: center; justify-content: center; z-index: 100000;">
-    <div class="custom-modal-box" style="max-width: 920px; width: 94%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
+    <div class="custom-modal-box" style="max-width: 1240px; width: 96%; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
       
       <!-- Modal Header -->
       <div style="padding: 16px 20px; background: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 20px;">📊</span>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
           <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #fff;">Histórico & Auditoria de Hosters Baixados</h3>
         </div>
         <button id="btn-close-audit-modal" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1; padding: 4px 8px; border-radius: 6px;">&times;</button>
@@ -1330,7 +1513,7 @@
       <div style="padding: 14px 20px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between;">
         <div style="display: flex; gap: 10px; flex: 1; min-width: 280px;">
           <!-- Field Search Input -->
-          <input type="text" id="audit-search-input" placeholder="🔍 Pesquisar por nome de arquivo ou tag (ex: Vik1ngFile, Drime, Bunkr, .video)..." style="flex: 1; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #fff; font-size: 13px;">
+          <input type="text" id="audit-search-input" placeholder="Pesquisar por nome de arquivo ou tag (ex: Vik1ngFile, Drime, Bunkr, .Vídeo)..." style="flex: 1; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #fff; font-size: 13px;">
           
           <!-- Select Filter Sort by Tag Alphabetical / Date -->
           <select id="audit-sort-select" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: #1e293b; color: #fff; font-size: 13px; cursor: pointer;">
@@ -1361,7 +1544,7 @@
           <thead>
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #94a3b8; text-transform: uppercase; font-size: 11px;">
               <th style="padding: 10px 8px; width: 130px;">Data / Hora</th>
-              <th style="padding: 10px 8px; width: 140px;">Tag do Hoster</th>
+              <th style="padding: 10px 8px; width: 230px; min-width: 220px;">Tag do Hoster</th>
               <th style="padding: 10px 8px;">Nome do Arquivo</th>
               <th style="padding: 10px 8px; width: 90px;">Tamanho</th>
               <th style="padding: 10px 8px; width: 160px;">URL de Origem</th>
@@ -1380,7 +1563,10 @@
       <!-- Footer Info -->
       <div style="padding: 12px 20px; background: #1e293b; border-top: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #94a3b8;">
         <span>Total de registros: <strong id="audit-count-total" style="color: #fff;">0</strong> (<span id="audit-count-filtered">0 exibidos</span>)</span>
-        <span id="audit-copy-feedback" style="color: #4ade80; font-weight: 600; display: none;">✓ Relatório copiado para a área de transferência!</span>
+        <span id="audit-copy-feedback" style="color: #4ade80; font-weight: 600; display: none; align-items: center; gap: 4px;">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Relatório copiado para a área de transferência!
+        </span>
       </div>
 
     </div>
@@ -1391,7 +1577,11 @@
     <div class="custom-modal-box" style="max-width: 700px; width: 92%; max-height: 82vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
       <div style="padding: 16px 20px; background: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 20px;">⚠️</span>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
           <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #fff;">Relatório de Links com Inconsistência</h3>
         </div>
         <button id="btn-close-failed-links-modal" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>

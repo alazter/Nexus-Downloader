@@ -14,15 +14,12 @@ const { isOneDriveUrl, scanOneDriveLink, resolveOneDriveDirectUrl } = require('.
 const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, fetchTorboxUserDownloads, getTorboxActiveCloudJobsCount, waitForTorboxSlot, controlTorboxItem, extractRealReleaseName, extractCleanShowName } = require('./torbox-scanner');
 const { isDrimeUrl, scanDrimeLink } = require('./drime-scanner');
 const { isTurboUrl, scanTurboLink, resolveTurboDirectUrl } = require('./turbo-scanner');
-const { scanGenericLink, scanPixelDrain, scanGoFile } = require('./generic-scanner');
+const { scanGenericLink, scanPixelDrain } = require('./generic-scanner');
 const { isSendUrl, scanSendLink, resolveSendDirectUrl } = require('./send-scanner');
 const { isVikingFileUrl, scanVikingFileLink, resolveVikingFileDirectUrl } = require('./vikingfile-scanner');
-
-function isGoFileUrl(urlStr) {
-  if (!urlStr || typeof urlStr !== 'string') return false;
-  const u = urlStr.toLowerCase();
-  return u.includes('gofile.io') || u.includes('gofile');
-}
+const { isGoFileUrl, scanGoFileLink, resolveGoFileDirectUrl, getGoFileAccountToken } = require('./gofile-scanner');
+const { startBridgeServer, getBridgeActivity } = require('./bridge-server');
+const { initTelemetry, getTelemetryLogsDir, recordDownloadSuccess, recordDownloadFailure, syncWithGoogleDrive } = require('./telemetry-manager');
 
 // Desativa o congelamento de processos/rede do Chromium em segundo plano quando os monitores desligam
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -89,6 +86,8 @@ let config = {
   enableMultilinkAuditAlerts: true,
   showStartDownloadPopup: true,
   minimizeToTray: false,
+  extensionMonitoringMode: 'supported',
+  telemetryEnabled: true,
   downloadMode: 'single', // Legado
   torboxApiKey: '',
   torboxEnabled: false,
@@ -113,7 +112,8 @@ let config = {
     send: 'multi',
     pixeldrain: 'multi',
     mega: 'multi',
-    '1fichier': 'multi'
+    '1fichier': 'multi',
+    rapidgator: 'multi'
   },
   torboxForServices: {
     gdrive: false,
@@ -129,7 +129,8 @@ let config = {
     send: true,
     pixeldrain: true,
     mega: true,
-    '1fichier': true
+    '1fichier': true,
+    rapidgator: true
   },
   serviceMaxConcurrent: {
     gdrive: 1,
@@ -139,9 +140,14 @@ let config = {
     vik1ngfile: 1,
     drime: 1,
     turbo: 1,
+    send: 1,
     pixeldrain: 1,
     gofile: 1,
-    torbox: 3
+    onedrive: 1,
+    torbox: 3,
+    mega: 1,
+    '1fichier': 1,
+    rapidgator: 1
   }
 };
 
@@ -156,12 +162,18 @@ function isTorboxEnabledForService(service) {
   if (!config.torboxEnabled || !config.torboxApiKey || config.torboxApiKey.trim().length === 0) {
     return false;
   }
-  if (!service) return true;
-  const s = service.toLowerCase();
-  if (config.torboxForServices && config.torboxForServices[s] !== undefined) {
-    return !!config.torboxForServices[s];
+  if (!service || typeof service !== 'string') return false;
+  let s = service.toLowerCase().trim();
+  if (s === 'vik1ng' || s === 'vikingfile') s = 'vik1ngfile';
+  if (s === 'onedrive' || s === 'sharepoint' || s === '1drv.ms') s = 'onedrive';
+  if (s === 'send.now' || s === 'send.cm') s = 'send';
+  if (s === 'rapidgator' || s === 'rg.to') s = 'rapidgator';
+  if (s === 'turbo.cr' || s === 'turbo.pw') s = 'turbo';
+
+  if (config.torboxForServices && typeof config.torboxForServices[s] === 'boolean') {
+    return config.torboxForServices[s];
   }
-  return true;
+  return false;
 }
 
 // Carregar configurações salvas
@@ -217,10 +229,10 @@ function saveQueue() {
       fileId: item.fileId || null,
       numericId: item.numericId || null,
       isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_'))),
-      sendUrl: item.sendUrl || item.url || item.directUrl || null,
-      url: item.url || item.sendUrl || item.directUrl || item.downloadUrl || null,
-      directUrl: item.directUrl || item.url || item.sendUrl || item.downloadUrl || null,
-      downloadUrl: item.downloadUrl || item.directUrl || item.url || null,
+      sendUrl: (item.sendUrl && isSendUrl(item.sendUrl)) ? item.sendUrl : (isSendUrl(item.url) ? item.url : null),
+      url: item.url || item.downloadUrl || item.directUrl || null,
+      directUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.directUrl || item.url || item.downloadUrl || null),
+      downloadUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.downloadUrl || item.directUrl || item.url || null),
       mediafireUrl: item.mediafireUrl || null,
       teraboxUrl: item.teraboxUrl || null,
       teraboxDlink: item.teraboxDlink || null,
@@ -229,6 +241,10 @@ function saveQueue() {
       size: item.size,
       relativePath: item.relativePath,
       folderName: item.folderName || 'Downloads',
+      batchId: item.batchId || null,
+      source: item.source || (item.isWeb ? 'extension' : 'portable'),
+      origin: item.origin || item.source || (item.isWeb ? 'extension' : 'portable'),
+      isWeb: !!(item.isWeb || item.source === 'extension' || item.source === 'web' || (item.id && String(item.id).startsWith('ext_'))),
       status: item.status === 'downloading' ? 'pending' : item.status,
       completedAt: item.completedAt || null,
       addedAt: item.addedAt || null,
@@ -248,7 +264,7 @@ function loadQueue() {
       const data = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8'));
       if (Array.isArray(data)) {
         downloadQueue = data.map(item => {
-          let directUrl = item.url || item.directUrl || item.downloadUrl || '';
+          let directUrl = item.directUrl || item.url || item.downloadUrl || '';
           let referer = item.referer || null;
 
           if (item.id && item.id.startsWith('drime_') && !directUrl) {
@@ -261,16 +277,27 @@ function loadQueue() {
             }
           }
 
+          let cleanSendUrl = (item.sendUrl && isSendUrl(item.sendUrl)) ? item.sendUrl : (isSendUrl(item.url) ? item.url : null);
+          if (item.id && item.id.startsWith('bunkr_')) {
+            cleanSendUrl = null;
+            if (directUrl && (directUrl.includes('/f/') || directUrl.includes('/v/') || directUrl.includes('/i/') || directUrl.includes('/d/') || directUrl.includes('bunkr.'))) {
+              directUrl = '';
+            }
+          }
+
           const isInvalidUrlErr = (item.error || '').includes('Invalid URL');
+          const isBunkrPageOrOffErr = (item.error || '').includes('marcado como off-line') || (item.error || '').includes('página HTML em vez do arquivo');
+          const shouldResetError = isInvalidUrlErr || (item.id && item.id.startsWith('bunkr_') && isBunkrPageOrOffErr);
 
           return {
             ...item,
-            url: directUrl || item.url || null,
-            directUrl: directUrl || item.directUrl || null,
+            sendUrl: cleanSendUrl,
+            url: item.url || null,
+            directUrl: directUrl || null,
             referer: referer || item.referer || null,
             folderName: item.folderName || 'Downloads',
-            status: (item.status === 'downloading' || item.status === 'paused' || item.status === 'failed' || isInvalidUrlErr) ? 'pending' : item.status,
-            error: isInvalidUrlErr ? null : item.error,
+            status: (item.status === 'downloading' || item.status === 'paused' || item.status === 'failed' || shouldResetError) ? 'pending' : item.status,
+            error: shouldResetError ? null : item.error,
             speed: 0,
             eta: 0
           };
@@ -508,7 +535,7 @@ async function checkUpdatesAutomaticallyOnStartup() {
         if (Notification.isSupported()) {
           try {
             new Notification({
-              title: '⚡ Nexus Downloader',
+              title: 'Nexus Downloader',
               body: `Nova versão v${remoteVersion.replace(/^v/i, '')} disponível! Clique para abrir e atualizar.`,
               icon: path.join(__dirname, 'renderer', 'icon.png')
             }).show();
@@ -520,7 +547,7 @@ async function checkUpdatesAutomaticallyOnStartup() {
           updateAvailable: true,
           currentVersion,
           version: remoteVersion.replace(/^v/i, ''),
-          title: release.name || `⚡ Nova Versão v${remoteVersion.replace(/^v/i, '')} Disponível`,
+          title: release.name || `Nova Versão v${remoteVersion.replace(/^v/i, '')} Disponível`,
           body: release.body || 'Melhorias de desempenho e correções gerais de estabilidade.',
           publishedAt: release.published_at,
           assets: release.assets || [],
@@ -614,6 +641,140 @@ app.whenReady().then(() => {
 
   // Tenta inicializar o cliente do Google com credenciais existentes
   initGoogleClient();
+
+  // Inicializa a Telemetria e o Bridge Server local para a Extensão
+  try {
+    initTelemetry('C:\\Users\\alazt\\Documents\\GitHub\\Projetos\\Telemetria\\Nexus Downloader');
+    startBridgeServer({
+      getQueue: () => downloadQueue,
+      scanUrl: async (targetUrl) => {
+        try {
+          console.log(`[Bridge Server] Requisitada varredura desktop para URL: ${targetUrl}`);
+          const results = await scanSingleUrl(targetUrl);
+          return results || [];
+        } catch (err) {
+          console.warn(`[Bridge Server] Erro ao varrer link ${targetUrl}:`, err.message);
+          throw err;
+        }
+      },
+      addItemsToQueue: async (items, telemetryEnabled) => {
+        try {
+          const expandedFiles = [];
+          for (const item of items) {
+            const itemUrl = item.url || item.sourceUrl || item.directUrl || '';
+
+            // Se for uma pasta ou álbum que agrupa múltiplos arquivos, expande via scanner nativo
+            const isAlbumOrFolder = itemUrl && (
+              (isBunkrUrl(itemUrl) && itemUrl.includes('/a/')) ||
+              (isMediaFireUrl(itemUrl) && itemUrl.includes('/folder/')) ||
+              (isGoFileUrl(itemUrl) && itemUrl.includes('/d/') && !item.fileId && !item.id?.startsWith('gofile_')) ||
+              (isTeraBoxUrl(itemUrl) && (itemUrl.includes('/s/') || itemUrl.includes('/sharing/')) && !item.teraboxDlink) ||
+              (itemUrl.includes('drive.google.com') && itemUrl.includes('/folders/'))
+            );
+
+            if (isAlbumOrFolder) {
+              try {
+                console.log(`[Bridge Server] Expandindo pasta/álbum do provedor: ${itemUrl}`);
+                const scanned = await scanSingleUrl(itemUrl);
+                if (scanned && scanned.length > 0) {
+                  scanned.forEach(s => {
+                    s.source = 'extension';
+                    s.origin = 'extension';
+                    s.isWeb = true;
+                  });
+                  expandedFiles.push(...scanned);
+                  continue;
+                }
+              } catch (scanErr) {
+                console.warn(`[Bridge Server] Aviso ao expandir URL via scanner: ${scanErr.message}`);
+              }
+            }
+
+            // Arquivo avulso ou link direto da extensão
+            const rawItemUrl = item.url || item.sourceUrl || item.directUrl || '';
+            const bunkrMatch = rawItemUrl.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i);
+            const extractedFileId = item.fileId || item.bunkrSlug || (bunkrMatch ? bunkrMatch[1] : null);
+            const isBunkr = (item.id && String(item.id).startsWith('bunkr_')) || isBunkrUrl(rawItemUrl) || item.service === 'Bunkr';
+            const commonBatchId = item.batchId || (items.length > 1 ? `ext_batch_${Date.now()}` : null);
+            const commonFolder = item.folderName || item.albumTitle || item.albumName || null;
+
+            expandedFiles.push({
+              id: item.id || (extractedFileId ? `bunkr_${extractedFileId}` : `ext_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`),
+              fileId: extractedFileId,
+              numericId: item.numericId || null,
+              name: item.filename || item.name || 'download',
+              url: item.url || rawItemUrl,
+              directUrl: item.directUrl || item.url || rawItemUrl,
+              sourceUrl: item.sourceUrl || item.url || rawItemUrl,
+              downloadUrl: item.downloadUrl || item.directUrl || item.url || rawItemUrl,
+              bunkrPageUrl: isBunkr ? (item.url || item.sourceUrl || rawItemUrl) : null,
+              mediafireUrl: item.mediafireUrl || (isMediaFireUrl(rawItemUrl) ? rawItemUrl : null),
+              size: item.size || 0,
+              sizeFormatted: item.sizeFormatted || '',
+              service: item.service || (isBunkr ? 'Bunkr' : 'Extension'),
+              type: item.type || '.Arquivo',
+              folderName: commonFolder,
+              batchId: commonBatchId,
+              source: 'extension',
+              origin: 'extension',
+              isWeb: true,
+              referer: item.referer || null,
+              cookieHeader: item.cookieHeader || null,
+              isHttpDirect: item.isHttpDirect !== undefined ? item.isHttpDirect : true
+            });
+          }
+
+          if (expandedFiles.length > 0) {
+            console.log(`[Bridge Server] Adicionando ${expandedFiles.length} arquivos à fila de download`);
+            addFilesToQueue(expandedFiles);
+          }
+        } catch (err) {
+          console.error('[Bridge Server] Erro em addItemsToQueue:', err);
+        }
+      },
+      clearCompleted: () => {
+        downloadQueue = downloadQueue.filter(item => item.status !== 'completed' && item.status !== 'failed');
+        saveQueue();
+        updateQueueUI();
+      },
+      cancelAll: () => {
+        downloadQueue.forEach(item => {
+          if (item.status === 'downloading' || item.status === 'pending') {
+            item.status = 'paused';
+          }
+        });
+        for (const [fileId, active] of activeDownloads.entries()) {
+          if (active && active.abortController) {
+            active.abortController.abort();
+          }
+        }
+        activeDownloads.clear();
+        stopPowerSaveBlocker();
+        updateQueueUI();
+      },
+      getConfig: () => config,
+      setConfig: (newCfg) => {
+        config = { ...config, ...newCfg };
+        saveConfig();
+      },
+      getSpeedStats: () => {
+        let totalSpeedBytes = 0;
+        let activeCount = 0;
+        activeDownloads.forEach(act => {
+          if (act && act.queueItem && act.queueItem.speed) {
+            totalSpeedBytes += act.queueItem.speed;
+            activeCount++;
+          }
+        });
+        return {
+          speedMBs: parseFloat((totalSpeedBytes / (1024 * 1024)).toFixed(2)),
+          activeCount
+        };
+      }
+    });
+  } catch (err) {
+    console.error('[Bridge / Telemetry] Erro ao inicializar:', err);
+  }
 
   // Configura e verifica atualizações automaticamente
   setupAutoUpdater();
@@ -816,6 +977,10 @@ function updateQueueUI() {
       size: item.size,
       relativePath: item.relativePath,
       folderName: item.folderName || (item.relativePath ? item.relativePath.split(path.sep)[0] : 'Downloads'),
+      batchId: item.batchId || null,
+      source: item.source || (item.isWeb ? 'extension' : 'portable'),
+      origin: item.origin || item.source || (item.isWeb ? 'extension' : 'portable'),
+      isWeb: !!(item.isWeb || item.source === 'extension' || item.source === 'web' || (item.id && String(item.id).startsWith('ext_'))),
       status: item.status,
       progress: item.progress,
       downloadedBytes: item.downloadedBytes,
@@ -828,9 +993,9 @@ function updateQueueUI() {
       torboxType: item.torboxType,
       torboxId: item.torboxId,
       torboxFileId: item.torboxFileId,
-      sendUrl: item.sendUrl || item.url || item.directUrl || null,
-      url: item.url || item.sendUrl || item.directUrl || item.downloadUrl || null,
-      directUrl: item.directUrl || item.url || item.sendUrl || item.downloadUrl || null,
+      sendUrl: (item.sendUrl && isSendUrl(item.sendUrl)) ? item.sendUrl : (isSendUrl(item.url) ? item.url : null),
+      url: item.url || item.downloadUrl || item.directUrl || null,
+      directUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.directUrl || item.url || item.downloadUrl || null),
       numericId: item.numericId || null,
       fileId: item.fileId || null,
       isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('gofile_') || item.id.startsWith('vik1ng_') || item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_')))
@@ -842,24 +1007,37 @@ function updateQueueUI() {
 function getItemServiceKey(item) {
   if (!item) return 'gdrive';
   const id = String(item.id || '').toLowerCase();
-  const url = String(item.url || item.bunkrPageUrl || item.sourceUrl || item.downloadUrl || item.originalUrl || item.teraboxUrl || '').toLowerCase();
+  const url = String(item.url || item.bunkrPageUrl || item.sourceUrl || item.downloadUrl || item.originalUrl || item.teraboxUrl || item.mediafireUrl || item.oneDriveUrl || item.sendUrl || '').toLowerCase();
 
-  if (id.startsWith('torbox_') || item.torboxId || item.torboxType) return 'torbox';
+  // 1. Identifica primeiro o serviço REAL de origem (hoster) por URL ou prefixo de ID
   if (id.startsWith('bunkr_') || url.includes('bunkr') || url.includes('balbums')) return 'bunkr';
   if (id.startsWith('mediafire_') || url.includes('mediafire')) return 'mediafire';
   if (id.startsWith('terabox_') || url.includes('terabox') || url.includes('1024tera') || url.includes('freeterabox')) return 'terabox';
+  if (id.startsWith('pixeldrain_') || url.includes('pixeldrain')) return 'pixeldrain';
+  if (id.startsWith('gofile_') || url.includes('gofile')) return 'gofile';
   if (id.startsWith('vik1ng_') || id.startsWith('vik1ngfile_') || url.includes('vik1ngfile') || url.includes('vikingfile')) return 'vik1ngfile';
   if (id.startsWith('drime_') || url.includes('drime')) return 'drime';
   if (id.startsWith('turbo_') || url.includes('turbo.cr') || url.includes('turbo.pw')) return 'turbo';
-  if (id.startsWith('pixeldrain_') || url.includes('pixeldrain')) return 'pixeldrain';
-  if (id.startsWith('gofile_') || url.includes('gofile')) return 'gofile';
   if (id.startsWith('send_') || url.includes('send.now') || url.includes('send.cm')) return 'send';
   if (id.startsWith('onedrive_') || url.includes('onedrive') || url.includes('1drv.ms') || url.includes('sharepoint')) return 'onedrive';
+  if (id.startsWith('mega_') || url.includes('mega.nz') || url.includes('mega.co.nz') || url.includes('mega.io')) return 'mega';
+  if (id.startsWith('1fichier_') || url.includes('1fichier')) return '1fichier';
+  if (id.startsWith('rapidgator_') || url.includes('rapidgator') || url.includes('rg.to')) return 'rapidgator';
+
+  // 2. Se for Torrent nativo, Magnet link ou item puro da nuvem Torbox
+  if (id.startsWith('torbox_') || item.torboxId || item.torboxType || url.startsWith('magnet:') || url.includes('api.torbox.app')) return 'torbox';
+
   return 'gdrive';
 }
 
 function isTorboxCloudPendingItem(item) {
   if (!item || item.status === 'completed') return false;
+  const sKey = getItemServiceKey(item);
+  const isTbAllowed = (sKey === 'torbox') 
+    ? (config.torboxEnabled && !!config.torboxApiKey && !!(config.torboxForServices && config.torboxForServices.torbox))
+    : isTorboxEnabledForService(sKey);
+  if (!isTbAllowed) return false;
+
   const isTorbox = item.id && (item.id.startsWith('torbox_') || item.torboxId || item.torboxType);
   if (isTorbox && (item.downloadedBytes || 0) === 0) {
     if (item.isCloudProcessing || item.isCloudDownloading) return true;
@@ -895,9 +1073,10 @@ async function processQueue() {
       if (item.status !== 'pending') return false;
       const sKey = getItemServiceKey(item);
       const activeForService = activeCountsByService[sKey] || 0;
-      const mode = getDownloadMode(sKey);
-      const configuredServiceLimit = (config.serviceMaxConcurrent && config.serviceMaxConcurrent[sKey]) ? parseInt(config.serviceMaxConcurrent[sKey], 10) : 3;
-      const maxAllowedForService = (mode === 'multi') ? Math.max(configuredServiceLimit || 3, 2) : 1;
+      const userLimitRaw = (config.serviceMaxConcurrent && config.serviceMaxConcurrent[sKey] !== undefined)
+        ? parseInt(config.serviceMaxConcurrent[sKey], 10)
+        : (sKey === 'torbox' ? 3 : 1);
+      const maxAllowedForService = Math.max(isNaN(userLimitRaw) ? 1 : userLimitRaw, 1);
 
       if (activeForService >= maxAllowedForService) {
         return false;
@@ -937,6 +1116,12 @@ async function processQueue() {
         nextItem.speed = 0;
         nextItem.eta = 0;
         saveCompletedDownloadToHistory(nextItem);
+        if (config.telemetryEnabled !== false) {
+          try {
+            recordDownloadSuccess(nextItem);
+            if (driveService) syncWithGoogleDrive(driveService).catch(() => {});
+          } catch (e) {}
+        }
         activeDownloads.delete(nextItem.id);
         updateQueueUI();
         processQueue();
@@ -958,6 +1143,12 @@ async function processQueue() {
         if (nextItem.status !== 'paused') {
           nextItem.status = 'failed';
           nextItem.error = err.message || 'Falha no download.';
+          if (config.telemetryEnabled !== false) {
+            try {
+              recordDownloadFailure(nextItem, err);
+              if (driveService) syncWithGoogleDrive(driveService).catch(() => {});
+            } catch (e) {}
+          }
           updateQueueUI();
         }
         activeDownloads.delete(nextItem.id);
@@ -1064,39 +1255,114 @@ function downloadBunkrFile(queueItem) {
         referer = odInfo.referer || 'https://sharepoint.com/';
         cookieHeader = odInfo.cookie || queueItem.oneDriveCookie || '';
       } else if (queueItem.id && (queueItem.id.startsWith('torbox_') || queueItem.torboxType)) {
-        console.log(`[Torbox Worker] Verificando progresso na nuvem e resolvendo CDN para "${queueItem.name}"...`);
-        const tbType = queueItem.torboxType || ((queueItem.id && queueItem.id.includes('_webdl_')) ? 'webdl' : 'torrent');
-        const tbId = queueItem.torboxId || (queueItem.id ? (queueItem.id.match(/\d+/g) || [0])[0] : 0);
-        const tbFileId = queueItem.torboxFileId !== undefined ? queueItem.torboxFileId : 0;
+        const underlyingService = getItemServiceKey(queueItem);
+        const canUseTorbox = (underlyingService === 'torbox')
+          ? (config.torboxEnabled && !!config.torboxApiKey && !!(config.torboxForServices && config.torboxForServices.torbox))
+          : isTorboxEnabledForService(underlyingService);
 
-        const isZip = queueItem.isZipDownload || (queueItem.id && String(queueItem.id).endsWith('_zip'));
-        try {
-          const tbInfo = await resolveTorboxDirectUrl(
-            queueItem.fileId || queueItem.id,
-            config.torboxApiKey,
-            tbType,
-            tbId,
-            tbFileId,
-            (statusMsg, percent) => {
-              queueItem.cloudProgress = percent;
-              queueItem.cloudMessage = statusMsg;
-              updateQueueUI();
-            },
-            isZip
-          );
-          if (tbInfo && tbInfo.directUrl) {
+        if (!canUseTorbox) {
+          console.log(`[Torbox Guard] Integração Torbox para serviço "${underlyingService}" está DESLIGADA. Forçando resolução 100% NATIVA fora do Torbox para "${queueItem.name}"...`);
+          delete queueItem.torboxType;
+          delete queueItem.torboxId;
+          delete queueItem.torboxFileId;
+          delete queueItem.cloudMessage;
+          delete queueItem.cloudProgress;
+          delete queueItem.cloudStatus;
+
+          if (underlyingService === 'bunkr') {
+            console.log(`[Bunkr Worker] Resolvendo URL direta e cookies para "${queueItem.name}" nativamente pelo Nexus...`);
+            const bunkrUrl = queueItem.bunkrPageUrl || queueItem.sourceUrl || queueItem.url || queueItem.originalUrl || (queueItem.fileId ? `https://bunkr.ph/f/${queueItem.fileId}` : '');
+            const bunkrInfo = await resolveBunkrDirectUrl(queueItem.numericId, queueItem.fileId, bunkrUrl);
+            directUrl = bunkrInfo.directUrl || bunkrInfo;
+            referer = bunkrInfo.referer || 'https://dl.bunkrr.cr/';
+            cookieHeader = bunkrInfo.cookieHeader || '';
+          } else if (underlyingService === 'pixeldrain') {
+            console.log(`[PixelDrain Worker] Resolvendo download nativo para "${queueItem.name}"...`);
+            const targetUrl = queueItem.sourceUrl || queueItem.url || queueItem.downloadUrl || '';
+            const extractedId = queueItem.fileId || (targetUrl.match(/\/(?:u|file)\/([a-zA-Z0-9_-]+)/i) || [])[1];
+            directUrl = extractedId ? `https://pixeldrain.com/api/file/${extractedId}` : (queueItem.directUrl || queueItem.downloadUrl);
+            referer = 'https://pixeldrain.com/';
+          } else if (underlyingService === 'mediafire') {
+            console.log(`[MediaFire Worker] Resolvendo link direto CDN nativo para "${queueItem.name}"...`);
+            const mfUrl = queueItem.mediafireUrl || queueItem.sourceUrl || queueItem.url;
+            const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, mfUrl);
+            directUrl = mfInfo.directUrl;
+            referer = mfInfo.referer || 'https://www.mediafire.com/';
+          } else if (underlyingService === 'terabox') {
+            console.log(`[TeraBox Worker] Resolvendo link direto nativo para "${queueItem.name}"...`);
+            const tbUrl = queueItem.teraboxUrl || queueItem.sourceUrl || queueItem.url;
+            const tbInfo = await resolveTeraBoxDirectUrl(queueItem.numericId, tbUrl, queueItem.teraboxDlink, queueItem.teraboxPath, queueItem.teraboxShareId, queueItem.teraboxUk, queueItem.teraboxThumbs);
             directUrl = tbInfo.directUrl;
-            referer = tbInfo.referer || 'https://torbox.app/';
+            referer = tbInfo.referer || 'https://www.terabox.com/';
+            cookieHeader = tbInfo.cookie || '';
+          } else if (underlyingService === 'vik1ngfile') {
+            console.log(`[Vik1ngFile Worker] Resolvendo URL direta nativa para "${queueItem.name}"...`);
+            const vkUrl = queueItem.sourceUrl || queueItem.url || queueItem.downloadUrl || '';
+            const vkInfo = await resolveVikingFileDirectUrl(vkUrl);
+            directUrl = vkInfo.directUrl || vkUrl;
+            referer = vkUrl || 'https://vik1ngfile.site/';
+          } else if (underlyingService === 'gofile') {
+            console.log(`[GoFile Worker] Resolvendo URL direta nativa para "${queueItem.name}"...`);
+            const targetPageUrl = queueItem.sourceUrl || queueItem.url || queueItem.downloadUrl || '';
+            const gfInfo = await resolveGoFileDirectUrl(queueItem.fileId, queueItem.directUrl || queueItem.downloadUrl, queueItem.gofileToken);
+            directUrl = gfInfo.directUrl;
+            cookieHeader = gfInfo.cookieHeader || '';
+            referer = gfInfo.referer || targetPageUrl || 'https://gofile.io/';
+            queueItem.directUrl = directUrl;
+            queueItem.downloadUrl = directUrl;
+          } else if (underlyingService === 'send') {
+            console.log(`[Send Worker] Resolvendo URL direta nativa para "${queueItem.name}"...`);
+            const sendInfo = await resolveSendDirectUrl(queueItem.numericId, queueItem.sendUrl || queueItem.url, null, false);
+            directUrl = sendInfo ? sendInfo.directUrl : (queueItem.url || directUrl);
+            referer = sendInfo ? sendInfo.referer : 'https://send.now/';
+          } else if (underlyingService === 'drime') {
+            directUrl = queueItem.url || queueItem.directUrl || queueItem.downloadUrl || '';
+            referer = 'https://app.drime.cloud/';
+          } else if (underlyingService === 'turbo') {
+            const turboInfo = await resolveTurboDirectUrl(queueItem.turboFileId);
+            directUrl = turboInfo ? turboInfo.directUrl : (queueItem.url || directUrl);
+            referer = 'https://turbo.cr/';
+          } else if (underlyingService === 'torbox') {
+            throw new Error('A integração com o Torbox está DESLIGADA nas configurações. Ative a integração para baixar Torrents/Magnets.');
+          } else {
+            directUrl = queueItem.directUrl || queueItem.downloadUrl || queueItem.url || '';
+            referer = queueItem.referer || referer;
           }
-        } catch (e) {
-          console.warn(`[Torbox Worker] Resolução primária falhou para "${queueItem.name}":`, e.message);
-        }
+        } else {
+          console.log(`[Torbox Worker] Verificando progresso na nuvem e resolvendo CDN para "${queueItem.name}"...`);
+          const tbType = queueItem.torboxType || ((queueItem.id && queueItem.id.includes('_webdl_')) ? 'webdl' : 'torrent');
+          const tbId = queueItem.torboxId || (queueItem.id ? (queueItem.id.match(/\d+/g) || [0])[0] : 0);
+          const tbFileId = queueItem.torboxFileId !== undefined ? queueItem.torboxFileId : 0;
 
-        // Fallback 100% infalível: Se a resolução CDN não retornou URL, usa o link direto assinado do Torbox
-        if (!directUrl) {
-          directUrl = queueItem.torboxDownloadUrl || queueItem.directUrl || queueItem.downloadUrl || `https://api.torbox.app/v1/api/torrents/requestdl?token=${encodeURIComponent(config.torboxApiKey)}&torrent_id=${tbId}&file_id=${tbFileId}&redirect=true`;
-          referer = 'https://torbox.app/';
-          console.log(`[Torbox Worker] Usando link direto assinado do Torbox para "${queueItem.name}"`);
+          const isZip = queueItem.isZipDownload || (queueItem.id && String(queueItem.id).endsWith('_zip'));
+          try {
+            const tbInfo = await resolveTorboxDirectUrl(
+              queueItem.fileId || queueItem.id,
+              config.torboxApiKey,
+              tbType,
+              tbId,
+              tbFileId,
+              (statusMsg, percent) => {
+                queueItem.cloudProgress = percent;
+                queueItem.cloudMessage = statusMsg;
+                updateQueueUI();
+              },
+              isZip
+            );
+            if (tbInfo && tbInfo.directUrl) {
+              directUrl = tbInfo.directUrl;
+              referer = tbInfo.referer || 'https://torbox.app/';
+            }
+          } catch (e) {
+            console.warn(`[Torbox Worker] Resolução primária falhou para "${queueItem.name}":`, e.message);
+          }
+
+          // Fallback 100% infalível: Se a resolução CDN não retornou URL, usa o link direto assinado do Torbox
+          if (!directUrl) {
+            directUrl = queueItem.torboxDownloadUrl || queueItem.directUrl || queueItem.downloadUrl || `https://api.torbox.app/v1/api/torrents/requestdl?token=${encodeURIComponent(config.torboxApiKey)}&torrent_id=${tbId}&file_id=${tbFileId}&redirect=true`;
+            referer = 'https://torbox.app/';
+            console.log(`[Torbox Worker] Usando link direto assinado do Torbox para "${queueItem.name}"`);
+          }
         }
       } else if (queueItem.id && queueItem.id.startsWith('drime_')) {
         console.log(`[Drime Worker] Preparando URL direta para "${queueItem.name}"...`);
@@ -1205,34 +1471,25 @@ function downloadBunkrFile(queueItem) {
         
         if (!directUrl || directUrl.includes('gofile.io/d/')) {
           try {
-            const accToken = await getGoFileAccountToken();
-            if (queueItem.fileId && accToken) {
-              const resContent = await makeHttpRequest(`https://api.gofile.io/contents/${queueItem.fileId}`, { token: accToken });
-              const jsonContent = JSON.parse(resContent.bodyText);
-              if (jsonContent.status === 'ok' && jsonContent.data && jsonContent.data.link) {
-                directUrl = jsonContent.data.link;
-                queueItem.directUrl = directUrl;
-                queueItem.downloadUrl = directUrl;
-                queueItem.gofileToken = accToken;
-              } else if (jsonContent.status === 'error-notPremium') {
-                throw new Error('Conteúdo exclusivo para contas Premium do GoFile (error-notPremium). Se estiver usando Torbox, verifique se o limite de 3 WebDLs do Torbox não foi atingido.');
-              }
-            }
+            const gfInfo = await resolveGoFileDirectUrl(queueItem.fileId, queueItem.directUrl || queueItem.downloadUrl, queueItem.gofileToken);
+            directUrl = gfInfo.directUrl;
+            cookieHeader = gfInfo.cookieHeader || '';
+            referer = gfInfo.referer || targetPageUrl || 'https://gofile.io/';
+            queueItem.directUrl = directUrl;
+            queueItem.downloadUrl = directUrl;
           } catch (eGofile) {
             console.warn('[GoFile Worker] Resolução nativa do GoFile falhou:', eGofile.message);
-            if (eGofile.message.includes('error-notPremium')) {
-              throw eGofile;
-            }
+            throw eGofile;
           }
         }
 
         if (!directUrl || directUrl.includes('gofile.io/d/')) {
-          throw new Error('Não foi possível obter o link direto de download do GoFile (error-notPremium). Verifique se o limite de 3 WebDLs ativas do Torbox não foi atingido.');
+          throw new Error('Não foi possível obter o link direto de download do GoFile. Verifique sua conexão ou tente novamente.');
         }
 
-        cookieHeader = queueItem.gofileToken ? `accountToken=${queueItem.gofileToken}` : '';
-        referer = targetPageUrl || 'https://gofile.io/';
-      } else if (queueItem.id && (queueItem.id.startsWith('send_') || queueItem.sendUrl)) {
+        cookieHeader = cookieHeader || (queueItem.gofileToken ? `accountToken=${queueItem.gofileToken}` : '');
+        referer = referer || targetPageUrl || 'https://gofile.io/';
+      } else if (queueItem.id && (queueItem.id.startsWith('send_') || isSendUrl(queueItem.sendUrl || queueItem.url))) {
         console.log(`[Send Worker] Resolvendo URL direta do Send para "${queueItem.name}"...`);
         const fileCode = queueItem.numericId || (queueItem.sendUrl ? queueItem.sendUrl.split('/').pop() : '');
         const useTorbox = isTorboxEnabledForService('send');
@@ -1252,7 +1509,7 @@ function downloadBunkrFile(queueItem) {
         }
         directUrl = sendInfo ? sendInfo.directUrl : (queueItem.url || queueItem.downloadUrl || directUrl);
         referer = sendInfo ? sendInfo.referer : 'https://send.now/';
-      } else {
+      } else if ((queueItem.id && queueItem.id.startsWith('bunkr_')) || isBunkrUrl(queueItem.url || queueItem.bunkrPageUrl || queueItem.sourceUrl || queueItem.downloadUrl) || queueItem.service === 'Bunkr') {
         // Bunkr realiza download 100% NATIVO e de alta velocidade por padrão
         // Se a chave Torbox do Bunkr estiver LIGADA (torboxForServices.bunkr = true), tenta desproteger via Torbox
         // Se a chave estiver DESLIGADA, o Torbox é 100% ignorado e roda exclusivamente nativo pelo Nexus
@@ -1297,7 +1554,13 @@ function downloadBunkrFile(queueItem) {
           directUrl = bunkrInfo.directUrl || bunkrInfo;
           referer = bunkrInfo.referer || 'https://dl.bunkrr.cr/';
           cookieHeader = bunkrInfo.cookieHeader || '';
+          if (bunkrInfo.name && (!queueItem.name || queueItem.name === 'download' || queueItem.name === 'arquivo')) {
+            queueItem.name = bunkrInfo.name;
+          }
         }
+      } else {
+        directUrl = queueItem.directUrl || queueItem.downloadUrl || queueItem.url || '';
+        referer = queueItem.referer || referer;
       }
 
       console.log(`[HTTP Direct Worker] URL direta obtida com sucesso:`, directUrl);
@@ -1327,7 +1590,8 @@ function downloadBunkrFile(queueItem) {
           'Cookie': cookieHeader
         }
       };
-      if (service === 'bunkr' && parsedUrl && parsedUrl.hostname.includes('bunkr') && offlineBunkrSubdomains.has(parsedUrl.hostname)) {
+      const isMainBunkrDomain = (h) => !h || h === 'bunkr.cr' || h === 'bunkr.ph' || h === 'bunkr.is' || h === 'bunkr.su' || h === 'bunkr.site' || h === 'bunkr.pk' || h === 'balbums.st' || h.startsWith('dl.bunkr');
+      if (service === 'bunkr' && parsedUrl && parsedUrl.hostname.includes('bunkr') && !isMainBunkrDomain(parsedUrl.hostname) && offlineBunkrSubdomains.has(parsedUrl.hostname)) {
         return reject(new Error(`Servidor CDN ${parsedUrl.hostname} marcado como off-line/bloqueado no provedor. Ignorado instantaneamente.`));
       }
 
@@ -1701,7 +1965,8 @@ function downloadBunkrFile(queueItem) {
         });
 
         req.on('error', err => {
-          if (service === 'bunkr' && parsedUrl && parsedUrl.hostname.includes('bunkr') && err && (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || (err.message && err.message.includes('Tempo limite')))) {
+          const isMainBunkrDomain = (h) => !h || h === 'bunkr.cr' || h === 'bunkr.ph' || h === 'bunkr.is' || h === 'bunkr.su' || h === 'bunkr.site' || h === 'bunkr.pk' || h === 'balbums.st' || h.startsWith('dl.bunkr');
+          if (service === 'bunkr' && parsedUrl && parsedUrl.hostname.includes('bunkr') && !isMainBunkrDomain(parsedUrl.hostname) && err && (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || (err.message && err.message.includes('Tempo limite')))) {
             console.warn(`[Bunkr Worker] Marcando subdomínio CDN ${parsedUrl.hostname} como off-line em memória (BunkrDownloader 1.3.0)...`);
             offlineBunkrSubdomains.add(parsedUrl.hostname);
           }
@@ -2091,6 +2356,39 @@ ipcMain.handle('select-download-dir', async () => {
   return null;
 });
 
+// Handlers da Extensão e Telemetria
+ipcMain.handle('open-extension-folder', async () => {
+  const extensionPath = path.join(__dirname, 'extension');
+  try {
+    await shell.openPath(extensionPath);
+    return { success: true, path: extensionPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('sync-telemetry-now', async () => {
+  try {
+    const result = await syncWithGoogleDrive(driveService);
+    return result;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-telemetry-folder', async () => {
+  try {
+    const folder = getTelemetryLogsDir();
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+    }
+    await shell.openPath(folder);
+    return { success: true, path: folder };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Autenticação Google
 ipcMain.handle('check-auth', () => {
   const hasCreds = fs.existsSync(CREDENTIALS_FILE);
@@ -2183,7 +2481,7 @@ function detectHosterNameFromUrl(url) {
 }
 
 async function scanTorboxWithFastTimeout(link, apiKey, timeoutMs = 12000) {
-  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) return null;
+  if (!config.torboxEnabled || !apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) return null;
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error(`Torbox scan timeout (${timeoutMs / 1000}s)`)), timeoutMs);
@@ -2258,16 +2556,7 @@ async function scanSingleUrl(link) {
       const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
       if (tbFiles && tbFiles.length > 0) return tbFiles;
     }
-    try {
-      return await scanGoFile(link);
-    } catch (errGo) {
-      if (errGo.message.includes('error-notPremium') && config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
-        console.log('[GoFile Scanner] Detectado erro error-notPremium. Tentando desproteger via Torbox fallback...');
-        const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
-        if (tbFiles && tbFiles.length > 0) return tbFiles;
-      }
-      throw errGo;
-    }
+    return await scanGoFileLink(link);
   }
 
   // 0.2. Links do Microsoft OneDrive / SharePoint
@@ -2318,10 +2607,10 @@ async function scanSingleUrl(link) {
   // 0.4. Links do Google Drive
   const driveInfo = extractDriveId(link);
   if (driveInfo) {
-    if (!driveService) {
-      throw new Error('Para escanear links do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
-    }
     if (driveInfo.isFolder) {
+      if (!driveService) {
+        throw new Error('Para escanear pastas do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+      }
       let folderName = 'Pasta_Google_Drive';
       try {
         const metadata = await driveService.files.get({ fileId: driveInfo.id, fields: 'name', supportsAllDrives: true }, { httpsAgent });
@@ -2329,8 +2618,18 @@ async function scanSingleUrl(link) {
       } catch (e) {}
       return await scanGoogleDriveFolder(driveInfo.id, folderName);
     } else {
+      if (isTorboxEnabledForService('gdrive')) {
+        const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
+        if (tbFiles && tbFiles.length > 0) return tbFiles;
+      }
+      if (!driveService) {
+        throw new Error('Para escanear links do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+      }
       const file = await getFileInfo(driveInfo.id);
-      file.folderName = 'Arquivos Avulsos';
+      file.folderName = null;
+      file.isAvulso = true;
+      file.isSingleFile = true;
+      file.service = 'gdrive';
       return [file];
     }
   }
@@ -2338,6 +2637,9 @@ async function scanSingleUrl(link) {
   // 0.5. Magnet Links / Arquivos .torrent
   const isPureMagnetOrTorrent = link.trim().toLowerCase().startsWith('magnet:?') || link.toLowerCase().endsWith('.torrent') || /^[a-fA-F0-9]{40}$/.test(link.trim());
   if (isPureMagnetOrTorrent) {
+    if (!config.torboxEnabled) {
+      throw new Error('A integração com o Torbox está DESLIGADA nas configurações. Ative a integração com o Torbox em Ajustes para escanear e baixar Torrents.');
+    }
     if (config.torboxApiKey && config.torboxApiKey.trim().length > 0) {
       return await scanTorboxLink(link, config.torboxApiKey);
     } else {
@@ -2356,12 +2658,12 @@ async function scanSingleUrl(link) {
   else if (domainStr.includes('turbo')) hosterKey = 'turbo';
   else if (domainStr.includes('send.now') || domainStr.includes('send.cm')) hosterKey = 'send';
   else if (domainStr.includes('pixeldrain')) hosterKey = 'pixeldrain';
-  else if (domainStr.includes('mega.')) hosterKey = 'mega';
-  else if (domainStr.includes('rapidgator')) hosterKey = 'rapidgator';
+  else if (domainStr.includes('mega.') || domainStr.includes('mega.nz') || domainStr.includes('mega.co.nz') || domainStr.includes('mega.io')) hosterKey = 'mega';
+  else if (domainStr.includes('rapidgator') || domainStr.includes('rg.to')) hosterKey = 'rapidgator';
   else if (domainStr.includes('1fichier')) hosterKey = '1fichier';
 
   if (hosterKey !== 'generic' && isTorboxEnabledForService(hosterKey)) {
-    const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 2500);
+    const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
     if (tbFiles && tbFiles.length > 0) return tbFiles;
   }
 
@@ -2457,6 +2759,48 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
     throw new Error((firstErr && firstErr.error) || 'Nenhum arquivo disponível encontrado nos links informados.');
   }
 
+  // Regra Universal para Serviços com Atribuição de Arquivos Avulsos:
+  // bunkr, pixeldrain, vik1ngfile, gdrive, generic
+  const avulsoServices = ['bunkr', 'pixeldrain', 'vik1ngfile', 'gdrive', 'generic'];
+  const avulsoNames = {
+    bunkr: 'Arquivos Avulsos Bunkr',
+    pixeldrain: 'Arquivos Avulsos PixelDrain',
+    vik1ngfile: 'Arquivos Avulsos Vik1ngFile',
+    gdrive: 'Arquivos Avulsos Google Drive',
+    generic: 'Arquivos Avulsos'
+  };
+
+  const serviceAvulsosMap = new Map();
+  aggregatedFiles.forEach(f => {
+    const sKey = getItemServiceKey(f);
+    const isAvulsoCandidate = f.isAvulso || f.isSingleFile || !f.folderName || (typeof f.folderName === 'string' && f.folderName.toLowerCase().includes('avulso'));
+    if (avulsoServices.includes(sKey) && isAvulsoCandidate) {
+      if (!serviceAvulsosMap.has(sKey)) serviceAvulsosMap.set(sKey, []);
+      serviceAvulsosMap.get(sKey).push(f);
+    }
+  });
+
+  serviceAvulsosMap.forEach((filesList, sKey) => {
+    // Se o usuário inseriu múltiplos links (lines.length > 1) E há múltiplos arquivos avulsos desse serviço:
+    if (lines.length > 1 && filesList.length > 1) {
+      const batchId = `${sKey}_batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const folderTitle = avulsoNames[sKey] || 'Arquivos Avulsos';
+      filesList.forEach(f => {
+        f.folderName = folderTitle;
+        f.batchId = batchId;
+        f.batchTimestamp = Date.now();
+        f.relativePath = `${folderTitle}/${f.name}`;
+      });
+    } else {
+      // Link individual único: card independente com o próprio nome limpo do arquivo
+      filesList.forEach(f => {
+        f.folderName = null;
+        f.batchId = null;
+        f.relativePath = f.name;
+      });
+    }
+  });
+
   const successCount = summaryResults.filter(r => r.status === 'success').length;
   const errorCount = summaryResults.filter(r => r.status === 'error').length;
 
@@ -2472,7 +2816,9 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
 });
 
 // Ações da Fila
-ipcMain.handle('add-to-queue', (event, files) => {
+function addFilesToQueue(files) {
+  if (!Array.isArray(files) || files.length === 0) return 0;
+
   files.forEach(file => {
     // Remove qualquer versão antiga existente do mesmo ID (ex: falhado, concluído, etc) para garantir um início limpo
     const existingIndex = downloadQueue.findIndex(item => item.id === file.id);
@@ -2487,71 +2833,84 @@ ipcMain.handle('add-to-queue', (event, files) => {
       }
       downloadQueue.splice(existingIndex, 1);
     }
-      const itemSourceUrl = file.bunkrPageUrl || file.sourceUrl || file.originUrl || file.albumUrl || file.pageUrl || file.teraboxUrl || file.mediafireUrl || file.oneDriveUrl || file.url || file.directUrl || file.link || null;
-      let rawFolderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
-      
-      // Extrai o nome real se o nome da pasta for genérico (Torrentio/Stremio)
-      rawFolderName = extractRealReleaseName(rawFolderName, itemSourceUrl || file.magnetUrl, [file]);
-      
-      // Extrai o nome limpo da série/show para agrupar episódios em uma única pasta
-      let folderName = extractCleanShowName(rawFolderName);
+    const itemSourceUrl = file.bunkrPageUrl || file.sourceUrl || file.originUrl || file.albumUrl || file.pageUrl || file.teraboxUrl || file.mediafireUrl || file.oneDriveUrl || file.url || file.directUrl || file.link || null;
+    let rawFolderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
+    
+    // Extrai o nome real se o nome da pasta for genérico (Torrentio/Stremio)
+    rawFolderName = extractRealReleaseName(rawFolderName, itemSourceUrl || file.magnetUrl, [file]);
+    
+    // Extrai o nome limpo da série/show para agrupar episódios em uma única pasta
+    let folderName = extractCleanShowName(rawFolderName);
 
-      if (!folderName || folderName === 'Downloads' || folderName === 'Arquivos Avulsos') {
-        folderName = extractCleanShowName(file.name || 'Downloads');
-      }
+    if (!file.batchId && (!folderName || folderName === 'Downloads' || folderName.toLowerCase().includes('avulso'))) {
+      folderName = extractCleanShowName(file.name || 'Downloads');
+    }
 
-      let pureFileName = file.name || 'Arquivo';
-      if (pureFileName.includes('/')) pureFileName = pureFileName.split('/').pop();
-      if (pureFileName.includes('\\')) pureFileName = pureFileName.split('\\').pop();
+    let pureFileName = file.name || 'Arquivo';
+    if (pureFileName.includes('/')) pureFileName = pureFileName.split('/').pop();
+    if (pureFileName.includes('\\')) pureFileName = pureFileName.split('\\').pop();
 
-      let folderSegment = sanitizePathSegment(folderName);
-      const extIdx = folderSegment.lastIndexOf('.');
-      if (extIdx > 0 && extIdx > folderSegment.length - 6) {
-        folderSegment = folderSegment.substring(0, extIdx);
-      }
+    let folderSegment = sanitizePathSegment(folderName);
+    const extIdx = folderSegment.lastIndexOf('.');
+    if (extIdx > 0 && extIdx > folderSegment.length - 6) {
+      folderSegment = folderSegment.substring(0, extIdx);
+    }
 
-      let finalRelativePath = `${folderSegment}/${pureFileName}`;
+    let finalRelativePath = `${folderSegment}/${pureFileName}`;
 
-      downloadQueue.push({
-        id: file.id,
-        fileId: file.fileId,
-        numericId: file.numericId,
-        bunkrPageUrl: file.bunkrPageUrl || itemSourceUrl,
-        isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('send_') || file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_'))),
-        sendUrl: file.sendUrl || file.url || file.directUrl || file.downloadUrl || null,
-        mediafireUrl: file.mediafireUrl || null,
-        teraboxUrl: file.teraboxUrl || null,
-        teraboxDlink: file.teraboxDlink || null,
-        teraboxCookie: file.teraboxCookie || null,
-        oneDriveUrl: file.oneDriveUrl || null,
-        oneDriveDirectUrl: file.oneDriveDirectUrl || null,
-        torboxType: file.torboxType || null,
-        torboxId: file.torboxId || 0,
-        torboxFileId: (file.torboxFileId !== undefined && file.torboxFileId !== null) ? file.torboxFileId : 0,
-        torboxDownloadUrl: file.torboxDownloadUrl || file.directUrl || file.downloadUrl || null,
-        sourceUrl: itemSourceUrl,
-        url: file.url || file.sendUrl || file.directUrl || file.downloadUrl || itemSourceUrl || null,
-        directUrl: file.directUrl || file.url || file.sendUrl || file.downloadUrl || file.torboxDownloadUrl || null,
-        downloadUrl: file.downloadUrl || file.directUrl || file.url || file.sendUrl || null,
-        referer: file.referer || null,
-        cookieHeader: file.cookieHeader || null,
-        name: pureFileName,
-        size: file.size,
-        relativePath: finalRelativePath,
-        folderName: folderName,
-        status: 'pending',
-        progress: 0,
-        downloadedBytes: 0,
-        speed: 0,
-        eta: 0,
-        error: null,
-        addedAt: file.addedAt || Date.now()
-      });
+    const isBunkr = (file.id && file.id.startsWith('bunkr_')) || isBunkrUrl(file.url || file.bunkrPageUrl || itemSourceUrl);
+    const isSend = (file.id && file.id.startsWith('send_')) || isSendUrl(file.sendUrl || file.url);
+    const cleanSendUrl = (file.sendUrl && isSendUrl(file.sendUrl)) ? file.sendUrl : (isSendUrl(file.url) ? file.url : null);
+    const extractedFileId = file.fileId || (file.id && String(file.id).startsWith('bunkr_') ? file.id.replace('bunkr_', '') : (itemSourceUrl ? (itemSourceUrl.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1] : null));
+
+    downloadQueue.push({
+      id: file.id || `file_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fileId: extractedFileId,
+      numericId: file.numericId || null,
+      bunkrPageUrl: file.bunkrPageUrl || (isBunkr ? (file.url || itemSourceUrl) : null),
+      isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('send_') || file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_') || file.id.startsWith('gofile_'))),
+      sendUrl: cleanSendUrl,
+      mediafireUrl: file.mediafireUrl || null,
+      teraboxUrl: file.teraboxUrl || null,
+      teraboxDlink: file.teraboxDlink || null,
+      teraboxCookie: file.teraboxCookie || null,
+      oneDriveUrl: file.oneDriveUrl || null,
+      oneDriveDirectUrl: file.oneDriveDirectUrl || null,
+      torboxType: file.torboxType || null,
+      torboxId: file.torboxId || 0,
+      torboxFileId: (file.torboxFileId !== undefined && file.torboxFileId !== null) ? file.torboxFileId : 0,
+      torboxDownloadUrl: file.torboxDownloadUrl || null,
+      sourceUrl: itemSourceUrl,
+      url: file.url || itemSourceUrl || null,
+      directUrl: isBunkr ? '' : (file.directUrl || (isSend ? '' : file.url) || file.downloadUrl || file.torboxDownloadUrl || null),
+      downloadUrl: isBunkr ? '' : (file.downloadUrl || file.directUrl || (isSend ? '' : file.url) || null),
+      referer: file.referer || null,
+      cookieHeader: file.cookieHeader || null,
+      name: pureFileName,
+      size: file.size,
+      relativePath: finalRelativePath,
+      folderName: folderName,
+      batchId: file.batchId || null,
+      source: file.source || (file.isWeb ? 'extension' : 'portable'),
+      origin: file.origin || file.source || (file.isWeb ? 'extension' : 'portable'),
+      isWeb: !!(file.isWeb || file.source === 'extension' || file.source === 'web' || (file.id && String(file.id).startsWith('ext_'))),
+      status: 'pending',
+      progress: 0,
+      downloadedBytes: 0,
+      speed: 0,
+      eta: 0,
+      error: null,
+      addedAt: file.addedAt || Date.now()
+    });
   });
 
   updateQueueUI();
   processQueue();
   return downloadQueue.length;
+}
+
+ipcMain.handle('add-to-queue', (event, files) => {
+  return addFilesToQueue(files);
 });
 
 ipcMain.handle('test-torbox-api-key', async (event, apiKey) => {
@@ -2587,38 +2946,17 @@ ipcMain.handle('torbox-control-item', async (event, { id, type, action }) => {
   }
 });
 
-function saveCompletedDownloadToHistory(item) {
-  if (!item || !item.name) return;
-  config.downloadHistory = config.downloadHistory || [];
 
-  const existsIndex = config.downloadHistory.findIndex(h => h.id === item.id || (h.name === item.name && h.size === item.size));
-  if (existsIndex !== -1) {
-    config.downloadHistory.splice(existsIndex, 1);
-  }
-
-  const rawSourceUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.pageUrl || item.teraboxUrl || item.mediafireUrl || item.oneDriveUrl || item.url || item.directUrl || item.link || '';
-  const rawDirectUrl = item.url || item.downloadUrl || item.directUrl || rawSourceUrl;
-
-  const historyEntry = {
-    id: item.id || ('hist_' + Date.now()),
-    name: item.name,
-    size: item.size || 0,
-    sizeFormatted: item.sizeFormatted || formatBytes(item.size || 0),
-    folderName: item.folderName || 'Downloads',
-    url: rawDirectUrl,
-    sourceUrl: rawSourceUrl,
-    timestamp: Date.now()
-  };
-
-  config.downloadHistory.unshift(historyEntry);
-  if (config.downloadHistory.length > 500) {
-    config.downloadHistory = config.downloadHistory.slice(0, 500);
-  }
-  saveConfig();
-}
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle('get-bridge-status', () => {
+  if (config && config.extensionMonitoringMode === 'disabled') {
+    return { isRunning: true, isConnected: false, lastActivityTime: 0 };
+  }
+  return getBridgeActivity();
 });
 
 ipcMain.handle('open-external-url', async (event, url) => {
@@ -2773,14 +3111,22 @@ function saveCompletedDownloadToHistory(item) {
     config.downloadHistory.splice(existsIndex, 1);
   }
 
+  const rawSourceUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.pageUrl || item.teraboxUrl || item.mediafireUrl || item.oneDriveUrl || item.url || item.directUrl || item.link || '';
+  const rawDirectUrl = item.url || item.downloadUrl || item.directUrl || rawSourceUrl;
+
+  const isExt = item.isWeb || item.source === 'extension' || item.source === 'web' || item.origin === 'extension' || (item.id && String(item.id).startsWith('ext_'));
+
   const historyEntry = {
     id: item.id || ('hist_' + Date.now()),
     name: item.name,
     size: item.size || 0,
     sizeFormatted: item.sizeFormatted || formatBytes(item.size || 0),
     folderName: item.folderName || 'Downloads',
-    url: item.url || item.downloadUrl || item.directUrl || '',
-    sourceUrl: item.sourceUrl || item.originalUrl || item.url || '',
+    url: rawDirectUrl,
+    sourceUrl: rawSourceUrl,
+    source: isExt ? 'extension' : (item.source || 'portable'),
+    origin: isExt ? 'extension' : (item.origin || 'portable'),
+    isWeb: !!isExt,
     timestamp: Date.now()
   };
 
@@ -2792,6 +3138,15 @@ function saveCompletedDownloadToHistory(item) {
 }
 
 ipcMain.handle('get-download-history', () => {
+  if (Array.isArray(config.downloadHistory)) {
+    config.downloadHistory.forEach(item => {
+      if (item && (item.source === 'web' || item.origin === 'web' || item.isWeb || (item.id && String(item.id).startsWith('ext_')))) {
+        item.source = 'extension';
+        item.origin = 'extension';
+        item.isWeb = true;
+      }
+    });
+  }
   return config.downloadHistory || [];
 });
 
@@ -2950,7 +3305,7 @@ ipcMain.handle('check-for-updates', async () => {
       if (updateAvailable && Notification.isSupported()) {
         try {
           new Notification({
-            title: '⚡ Nexus Downloader',
+            title: 'Nexus Downloader',
             body: `Nova versão ${remoteVersion} disponível para download!`,
             icon: path.join(__dirname, 'renderer', 'icon.png')
           }).show();
@@ -2962,7 +3317,7 @@ ipcMain.handle('check-for-updates', async () => {
         updateAvailable,
         currentVersion,
         version: remoteVersion,
-        title: release.name || `⚡ Nexus ${remoteVersion}`,
+        title: release.name || `Nexus ${remoteVersion}`,
         body: release.body || 'Melhorias de desempenho e correções gerais de estabilidade.',
         publishedAt: release.published_at,
         assets: release.assets || []

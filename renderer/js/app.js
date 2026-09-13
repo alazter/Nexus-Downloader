@@ -266,6 +266,27 @@ async function updateFooterStatus() {
         torboxText.style.color = '#94a3b8';
       }
     }
+
+    // 3. Indicador da Extensão do Navegador (Bridge)
+    const browserIndicator = document.getElementById('browser-status-indicator');
+    const browserText = document.getElementById('browser-status-text');
+
+    if (browserIndicator && browserText && window.api && window.api.getBridgeStatus) {
+      const bridgeStatus = await window.api.getBridgeStatus();
+      if (bridgeStatus && bridgeStatus.isConnected) {
+        browserIndicator.className = 'status-indicator connected';
+        browserIndicator.style.background = '#00f2fe';
+        browserIndicator.style.boxShadow = '0 0 8px rgba(0, 242, 254, 0.7)';
+        browserText.textContent = 'Navegador Conectado';
+        browserText.style.color = '#38bdf8';
+      } else {
+        browserIndicator.className = 'status-indicator disconnected';
+        browserIndicator.style.background = '#f87171';
+        browserIndicator.style.boxShadow = 'none';
+        browserText.textContent = 'Navegador Desconectado';
+        browserText.style.color = '#94a3b8';
+      }
+    }
   } catch (err) {
     console.error('Erro ao atualizar status do rodapé:', err);
   }
@@ -407,7 +428,7 @@ if (window.api && window.api.onUpdaterStatus) {
         updateNotice.style.display = 'block';
       }
 
-      if (modalTitle) modalTitle.textContent = data.title || `⚡ Nova Versão v${data.version || ''} Disponível`;
+      if (modalTitle) modalTitle.textContent = data.title || `Nova Versão v${data.version || ''} Disponível`;
       if (modalSubtitle) modalSubtitle.textContent = 'Uma nova versão do Nexus Downloader está disponível com melhorias e correções.';
       if (releaseTag) releaseTag.textContent = data.version ? `v${data.version.replace(/^v/i, '')}` : 'vNova';
       if (releaseDate) releaseDate.textContent = data.publishedAt ? new Date(data.publishedAt).toLocaleDateString('pt-BR') : 'GitHub Releases';
@@ -449,7 +470,7 @@ if (window.api && window.api.onUpdaterStatus) {
         updateNotice.style.display = 'block';
       }
 
-      if (modalTitle) modalTitle.textContent = '⚡ Atualização Concluída';
+      if (modalTitle) modalTitle.textContent = 'Atualização Concluída';
       if (modalSubtitle) modalSubtitle.textContent = 'O download foi concluído com sucesso! Clique em Reiniciar e Instalar para aplicar a nova versão.';
       if (progressBar) progressBar.style.width = '100%';
       if (percentText) percentText.textContent = '100%';
@@ -606,6 +627,10 @@ async function loadConfig() {
   const elDrime = document.getElementById('setting-mode-drime');
   const elTurbo = document.getElementById('setting-mode-turbo');
   const elSend = document.getElementById('setting-mode-send');
+  const elPixelDrain = document.getElementById('setting-mode-pixeldrain');
+  const elMega = document.getElementById('setting-mode-mega');
+  const el1Fichier = document.getElementById('setting-mode-1fichier');
+  const elRapidgator = document.getElementById('setting-mode-rapidgator');
 
   if (elGdrive) elGdrive.value = modes.gdrive || 'single';
   if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
@@ -618,6 +643,10 @@ async function loadConfig() {
   if (elDrime) elDrime.value = modes.drime || 'multi';
   if (elTurbo) elTurbo.value = modes.turbo || 'multi';
   if (elSend) elSend.value = modes.send || 'multi';
+  if (elPixelDrain) elPixelDrain.value = modes.pixeldrain || 'multi';
+  if (elMega) elMega.value = modes.mega || 'multi';
+  if (el1Fichier) el1Fichier.value = modes['1fichier'] || 'multi';
+  if (elRapidgator) elRapidgator.value = modes.rapidgator || 'multi';
 
   const settingTorboxKey = document.getElementById('setting-torbox-api-key');
   const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
@@ -625,12 +654,13 @@ async function loadConfig() {
   if (settingTorboxEnabled) settingTorboxEnabled.checked = !!config.torboxEnabled;
 
   const torboxServices = config.torboxForServices || {
-    gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true
+    gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true, pixeldrain: true, mega: true, '1fichier': true, rapidgator: true
   };
-  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+  const allSupportedServices = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator'];
+  allSupportedServices.forEach(svc => {
     const chk = document.getElementById(`setting-torbox-service-${svc}`);
     if (chk) {
-      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox' || svc === 'gofile' || svc === 'vik1ngfile');
+      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox' || svc === 'gofile' || svc === 'vik1ngfile' || svc === 'pixeldrain' || svc === 'mega' || svc === '1fichier' || svc === 'rapidgator');
     }
   });
 
@@ -651,16 +681,28 @@ async function loadConfig() {
     settingEnableMultilinkAudit.checked = config.enableMultilinkAuditAlerts !== false;
   }
 
+  const settingExtensionMode = document.getElementById('setting-extension-mode');
+  if (settingExtensionMode) {
+    settingExtensionMode.value = config.extensionMonitoringMode || 'supported';
+  }
+
+  const settingTelemetryEnabled = document.getElementById('setting-telemetry-enabled');
+  if (settingTelemetryEnabled) {
+    settingTelemetryEnabled.checked = config.telemetryEnabled !== false;
+  }
+
   const serviceMaxObj = config.serviceMaxConcurrent || {};
-  ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'drime', 'turbo', 'pixeldrain', 'torbox'].forEach(svc => {
+  allSupportedServices.forEach(svc => {
     const sel = document.getElementById(`setting-service-max-${svc}`);
     if (sel) {
-      sel.value = (serviceMaxObj[svc] !== undefined ? serviceMaxObj[svc] : 1).toString();
+      sel.value = (serviceMaxObj[svc] !== undefined ? serviceMaxObj[svc] : (svc === 'torbox' ? 3 : 1)).toString();
     }
   });
 }
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'drime', 'turbo', 'pixeldrain', 'torbox'].forEach(svc => {
+const allSupportedServicesList = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator'];
+
+allSupportedServicesList.forEach(svc => {
   const sel = document.getElementById(`setting-service-max-${svc}`);
   if (sel) {
     sel.addEventListener('change', async () => {
@@ -672,26 +714,24 @@ async function loadConfig() {
   }
 });
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(service => {
+allSupportedServicesList.forEach(service => {
   const el = document.getElementById(`setting-mode-${service}`);
   if (el) {
     el.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const modes = config.downloadModes || { gdrive: 'single', bunkr: 'multi', mediafire: 'multi', terabox: 'multi', vik1ngfile: 'multi', gofile: 'single', onedrive: 'single', torbox: 'multi', drime: 'multi', turbo: 'multi', send: 'multi' };
+      const modes = config.downloadModes || {};
       modes[service] = el.value;
       await window.api.setConfig({ downloadModes: modes });
     });
   }
 });
 
-['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send'].forEach(svc => {
+allSupportedServicesList.forEach(svc => {
   const chk = document.getElementById(`setting-torbox-service-${svc}`);
   if (chk) {
     chk.addEventListener('change', async () => {
       const config = await window.api.getConfig();
-      const currentServices = config.torboxForServices || {
-        gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true
-      };
+      const currentServices = config.torboxForServices || {};
       currentServices[svc] = chk.checked;
       await window.api.setConfig({ torboxForServices: currentServices });
     });
@@ -751,19 +791,19 @@ if (btnTestTorboxKey) {
         torboxKeyStatus.style.display = 'block';
         if (res.success) {
           torboxKeyStatus.style.color = '#10b981';
-          torboxKeyStatus.textContent = '✓ ' + res.message;
+          torboxKeyStatus.textContent = res.message;
           await window.api.setConfig({ torboxApiKey: key, torboxEnabled: true });
           if (settingTorboxEnabled) settingTorboxEnabled.checked = true;
         } else {
           torboxKeyStatus.style.color = '#ef4444';
-          torboxKeyStatus.textContent = '✕ ' + (res.message || 'Falha na conexão.');
+          torboxKeyStatus.textContent = res.message || 'Falha na conexão.';
         }
       }
     } catch (e) {
       if (torboxKeyStatus) {
         torboxKeyStatus.style.display = 'block';
         torboxKeyStatus.style.color = '#ef4444';
-        torboxKeyStatus.textContent = '✕ Erro ao validar a chave.';
+        torboxKeyStatus.textContent = 'Erro ao validar a chave.';
       }
     } finally {
       btnTestTorboxKey.disabled = false;
@@ -807,6 +847,98 @@ const settingShowStartDownloadPopup = document.getElementById('setting-show-star
 if (settingShowStartDownloadPopup) {
   settingShowStartDownloadPopup.addEventListener('change', async () => {
     await window.api.setConfig({ showStartDownloadPopup: settingShowStartDownloadPopup.checked });
+  });
+}
+
+// Extensão para Navegador (Chrome / Brave / Edge)
+const btnInstallExtension = document.getElementById('btn-install-extension');
+if (btnInstallExtension) {
+  btnInstallExtension.addEventListener('click', async () => {
+    try {
+      if (window.api && window.api.openExtensionFolder) {
+        await window.api.openExtensionFolder();
+      }
+      await showCustomAlert(
+        'A pasta da extensão foi aberta no seu Explorador de Arquivos!\n\n' +
+        'Como carregar no Chrome, Brave, Edge ou Opera:\n' +
+        '1. Abra o navegador e acesse: chrome://extensions (ou edge://extensions / brave://extensions)\n' +
+        '2. Ative a chave "Modo do desenvolvedor" no canto superior direito.\n' +
+        '3. Clique no botão "Carregar sem compactação" (Load unpacked).\n' +
+        '4. Selecione a pasta da extensão que acabou de ser aberta.\n\n' +
+        'Pronto! O Nexus Downloader já estará conectado ao seu navegador.',
+        'Extensão Nexus Downloader'
+      );
+    } catch (err) {
+      console.error('Erro ao abrir pasta da extensão:', err);
+      await showCustomAlert('Não foi possível abrir a pasta da extensão: ' + err.message, 'Erro na Instalação');
+    }
+  });
+}
+
+const settingExtensionMode = document.getElementById('setting-extension-mode');
+if (settingExtensionMode) {
+  settingExtensionMode.addEventListener('change', async () => {
+    await window.api.setConfig({ extensionMonitoringMode: settingExtensionMode.value });
+    if (typeof updateFooterStatus === 'function') {
+      updateFooterStatus();
+    }
+  });
+}
+
+// Telemetria Analítica & Logs Locais
+const settingTelemetryEnabled = document.getElementById('setting-telemetry-enabled');
+if (settingTelemetryEnabled) {
+  settingTelemetryEnabled.addEventListener('change', async () => {
+    await window.api.setConfig({ telemetryEnabled: settingTelemetryEnabled.checked });
+  });
+}
+
+const btnOpenTelemetryFolder = document.getElementById('btn-open-telemetry-folder');
+if (btnOpenTelemetryFolder) {
+  btnOpenTelemetryFolder.addEventListener('click', async () => {
+    try {
+      if (window.api && window.api.openTelemetryFolder) {
+        await window.api.openTelemetryFolder();
+      }
+    } catch (err) {
+      console.error('Erro ao abrir pasta de telemetria:', err);
+      await showCustomAlert('Não foi possível abrir a pasta de telemetria: ' + err.message, 'Erro');
+    }
+  });
+}
+
+const btnSyncTelemetryNow = document.getElementById('btn-sync-telemetry-now');
+const telemetrySyncStatus = document.getElementById('telemetry-sync-status');
+if (btnSyncTelemetryNow) {
+  btnSyncTelemetryNow.addEventListener('click', async () => {
+    if (telemetrySyncStatus) {
+      telemetrySyncStatus.style.color = '#38bdf8';
+      telemetrySyncStatus.textContent = 'Sincronizando logs com a pasta "Nexus Downloader Logs" no Google Drive...';
+    }
+    btnSyncTelemetryNow.disabled = true;
+    try {
+      if (window.api && window.api.syncTelemetryNow) {
+        const result = await window.api.syncTelemetryNow();
+        if (result && result.success) {
+          if (telemetrySyncStatus) {
+            telemetrySyncStatus.style.color = '#4ade80';
+            telemetrySyncStatus.textContent = `Sincronizado com sucesso! (${result.fileCount || 0} arquivo(s) atualizados no Google Drive)`;
+          }
+        } else {
+          if (telemetrySyncStatus) {
+            telemetrySyncStatus.style.color = '#fb7185';
+            telemetrySyncStatus.textContent = result && result.error ? result.error : 'Conta Google não conectada ou sem permissão';
+          }
+        }
+      }
+    } catch (err) {
+      if (telemetrySyncStatus) {
+        telemetrySyncStatus.style.color = '#fb7185';
+        telemetrySyncStatus.textContent = 'Erro ao sincronizar: ' + err.message;
+      }
+    } finally {
+      btnSyncTelemetryNow.disabled = false;
+    }
   });
 }
 
@@ -1002,7 +1134,8 @@ function renderResults() {
 
     const sTag = getServiceTag(file);
     const serviceName = sTag ? (sTag.hoster ? `${sTag.text} ${sTag.hoster}` : sTag.text) : 'Google Drive';
-    const groupKey = `${serviceName}:::${rawGroupName}`;
+    const batchSuffix = file.batchId ? `:::${file.batchId}` : '';
+    const groupKey = `${serviceName}:::${rawGroupName}${batchSuffix}`;
 
     if (!groupsMap.has(groupKey)) {
       groupsMap.set(groupKey, { groupName: rawGroupName, groupItems: [] });
@@ -1046,16 +1179,7 @@ function renderResults() {
       const sampleFile = groupItems[0].file;
       const serviceTag = getServiceTag(sampleFile);
       const folderTag = getFolderTypeTag(groupItems.map(gi => gi.file), groupName);
-
-      const serviceTagSpanWrapper = document.createElement('span');
-      serviceTagSpanWrapper.style.display = 'inline-flex';
-      serviceTagSpanWrapper.style.alignItems = 'center';
-      serviceTagSpanWrapper.style.verticalAlign = 'middle';
-      serviceTagSpanWrapper.innerHTML = renderServiceTagHTML(serviceTag, false);
-
-      const folderTypeSpan = document.createElement('span');
-      folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;`;
-      folderTypeSpan.textContent = folderTag.text;
+      const tagsGroup = buildTagsGroupElement(serviceTag, folderTag, false, getOriginTag(sampleFile));
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'folder-group-name';
@@ -1063,8 +1187,7 @@ function renderResults() {
 
       titleGroup.appendChild(groupCb);
       titleGroup.appendChild(folderIcon);
-      titleGroup.appendChild(serviceTagSpanWrapper);
-      titleGroup.appendChild(folderTypeSpan);
+      titleGroup.appendChild(tagsGroup);
       titleGroup.appendChild(nameSpan);
 
       const metaDiv = document.createElement('div');
@@ -1130,7 +1253,7 @@ function renderResults() {
         tdName.className = 'text-truncate';
         const sTag = getServiceTag(file);
         const fTag = getFileTypeTag(file);
-        tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+        tdName.innerHTML = `${renderServiceTagHTML(sTag, true, getOriginTag(file))}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
         tdName.title = file.name;
 
         const tdPath = document.createElement('td');
@@ -1198,7 +1321,7 @@ function renderResults() {
       tdName.className = 'text-truncate';
       const sTag = getServiceTag(file);
       const fTag = getFileTypeTag(file);
-      tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
+      tdName.innerHTML = `${renderServiceTagHTML(sTag, true, getOriginTag(file))}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
       tdName.title = file.name;
       
       const tdPath = document.createElement('td');
@@ -1398,7 +1521,7 @@ function getFileTypeTag(item) {
 
   const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
   if (videoExts.some(ext => name.endsWith(ext))) {
-    return { text: '.video', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
   }
 
   if (name.endsWith('.zip') || name.endsWith('.7z') || name.endsWith('.tar') || name.endsWith('.gz') || name.endsWith('.bz2')) {
@@ -1417,20 +1540,95 @@ function getFileTypeTag(item) {
 }
 
 function getFolderTypeTag(folderItems, folderName) {
+  const fName = (folderName || '').toLowerCase();
   const videoExts = ['.mkv', '.mp4', '.avi', '.webm', '.mov', '.flv', '.wmv', '.m4v', '.ts', '.m2ts', '.3gp', '.iso'];
-  if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext)))) {
-    return { text: '.video', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
-  }
-  if (folderItems.some(i => i.torboxType === 'torrent' || (i.id && i.id.startsWith('torbox_torrent_')))) {
-    return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
-  }
-  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.zip') || (i.name || '').toLowerCase().endsWith('.7z'))) {
-    return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
-  }
-  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.rar'))) {
+  const zipExts = ['.zip', '.7z', '.tar', '.gz', '.bz2', '.xz'];
+
+  // 1. Arquivos comprimidos RAR (inclui .part1.rar, .r00, etc.)
+  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.rar') || /\.(r\d{2}|part\d+\.rar)$/i.test(i.name || '')) || fName.endsWith('.rar')) {
     return { text: '.Rar', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
   }
+
+  // 2. Arquivos comprimidos ZIP / 7Z / etc.
+  if (folderItems.some(i => zipExts.some(ext => (i.name || '').toLowerCase().endsWith(ext))) || zipExts.some(ext => fName.endsWith(ext))) {
+    return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
+  }
+
+  // 3. Vídeo
+  if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext))) || videoExts.some(ext => fName.endsWith(ext))) {
+    return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
+  }
+
+  // 4. Torrent (quando não há extensão específica de compactação ou vídeo identificada)
+  if (folderItems.some(i => i.torboxType === 'torrent' || (i.id && String(i.id).startsWith('torbox_torrent_')))) {
+    return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
+  }
+
   return { text: 'Outros', bg: 'rgba(100, 116, 139, 0.18)', color: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' };
+}
+
+function formatTorboxStorageInfo(groupItems) {
+  if (!groupItems || groupItems.length === 0) return '';
+
+  const refItem = groupItems.find(f => f.createdAt || f.cachedAt || f.updatedAt) || groupItems[0];
+  const dateVal = refItem.createdAt || refItem.updatedAt || refItem.cachedAt;
+  if (!dateVal) return '';
+
+  const itemDate = new Date(dateVal);
+  if (isNaN(itemDate.getTime())) return '';
+
+  const day = String(itemDate.getDate()).padStart(2, '0');
+  const month = String(itemDate.getMonth() + 1).padStart(2, '0');
+  const year = itemDate.getFullYear();
+  const dateFormatted = `${day}/${month}/${year}`;
+
+  const isFinished = groupItems.every(f => f.isFinished);
+  const isInactive = groupItems.some(f => f.isInactive);
+
+  let actionPrefix = 'Baixado';
+  if (isInactive) {
+    actionPrefix = 'Inativo';
+  } else if (!isFinished) {
+    actionPrefix = 'Adicionado';
+  }
+
+  const now = Date.now();
+  const diffMs = Math.max(0, now - itemDate.getTime());
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  let relativeTimeStr = '';
+  if (diffMin < 1) {
+    relativeTimeStr = 'poucos minutos';
+  } else if (diffHours < 1) {
+    relativeTimeStr = `${diffMin} Minuto${diffMin > 1 ? 's' : ''}`;
+  } else if (diffHours < 24) {
+    relativeTimeStr = `${diffHours} Hora${diffHours > 1 ? 's' : ''}`;
+  } else if (diffDays < 7) {
+    relativeTimeStr = `${diffDays} Dia${diffDays > 1 ? 's' : ''}`;
+  } else if (diffDays < 30) {
+    const weeks = Math.max(1, Math.round(diffDays / 7));
+    relativeTimeStr = `${weeks} Semana${weeks > 1 ? 's' : ''}`;
+  } else if (diffDays < 365) {
+    const months = Math.max(1, Math.round(diffDays / 30.4375));
+    relativeTimeStr = `${months} ${months > 1 ? 'Meses' : 'Mês'}`;
+  } else {
+    const years = Math.max(1, Math.round(diffDays / 365.25));
+    relativeTimeStr = `${years} Ano${years > 1 ? 's' : ''}`;
+  }
+
+  const isCached = !!(refItem.cachedAt || refItem.cloudState === 'cached' || isFinished);
+  const cachedPart = isCached ? ' (cached)' : '';
+
+  if (isFinished) {
+    return `${actionPrefix} ${dateFormatted}, Armazenado no Torbox${cachedPart} há ${relativeTimeStr}.`;
+  } else if (isInactive) {
+    return `${actionPrefix} ${dateFormatted}, Inativo no Torbox há ${relativeTimeStr}.`;
+  } else {
+    return `${actionPrefix} ${dateFormatted}, Baixando no Torbox há ${relativeTimeStr}.`;
+  }
 }
 
 function detectTorboxHoster(file) {
@@ -1530,14 +1728,74 @@ function detectTorboxHoster(file) {
   return null;
 }
 
-function renderServiceTagHTML(sTag, isTableRow = false) {
-  if (!sTag) return '';
+function getOriginTag(file) {
+  if (!file) return { text: 'Portable', bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.35)' };
+  const src = String(file.source || file.origin || '').toLowerCase();
+  const idStr = String(file.id || '').toLowerCase();
+  const isExt = src === 'extension' || src === 'web' || src === 'browser' || file.isWeb || idStr.startsWith('ext_');
+  if (isExt) {
+    return { text: 'Extensão Nexus', bg: 'rgba(56, 189, 248, 0.18)', color: '#38bdf8', border: 'rgba(56, 189, 248, 0.45)' };
+  }
+  return { text: 'Portable', bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.35)' };
+}
+
+function buildTagsGroupElement(serviceTag, folderTag, isTableRow = false, originTag = null) {
+  const container = document.createElement('span');
+  container.className = 'unified-tags-group';
   const pad = isTableRow ? '2px 6px' : '2px 7px';
   const fontSize = isTableRow ? '10px' : '11px';
-  let html = `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${sTag.text}</span>`;
-  if (sTag.hosterTag) {
-    const ht = sTag.hosterTag;
-    html += `<span style="background: ${ht.bg}; color: ${ht.color}; border: 1px solid ${ht.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${ht.text}</span>`;
+  const height = isTableRow ? '18px' : '20px';
+  const gap = '5px';
+  const marginR = isTableRow ? '6px' : '8px';
+
+  container.style.cssText = `display: inline-flex; align-items: center; gap: ${gap}; margin-right: ${marginR}; flex-shrink: 0; vertical-align: middle;`;
+
+  if (originTag && originTag.text) {
+    const oTag = document.createElement('span');
+    oTag.style.cssText = `background: ${originTag.bg}; color: ${originTag.color}; border: 1px solid ${originTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; display: inline-flex; align-items: center; justify-content: center; height: ${height}; box-sizing: border-box; flex-shrink: 0; white-space: nowrap; line-height: 1; margin: 0;`;
+    oTag.textContent = originTag.text;
+    container.appendChild(oTag);
+  }
+
+  if (serviceTag) {
+    const tag1 = document.createElement('span');
+    tag1.style.cssText = `background: ${serviceTag.bg}; color: ${serviceTag.color}; border: 1px solid ${serviceTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; display: inline-flex; align-items: center; justify-content: center; height: ${height}; box-sizing: border-box; flex-shrink: 0; white-space: nowrap; line-height: 1; margin: 0;`;
+    tag1.textContent = serviceTag.text;
+    container.appendChild(tag1);
+
+    if (serviceTag.hosterTag) {
+      const ht = serviceTag.hosterTag;
+      const tag2 = document.createElement('span');
+      tag2.style.cssText = `background: ${ht.bg}; color: ${ht.color}; border: 1px solid ${ht.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; display: inline-flex; align-items: center; justify-content: center; height: ${height}; box-sizing: border-box; flex-shrink: 0; white-space: nowrap; line-height: 1; margin: 0;`;
+      tag2.textContent = ht.text;
+      container.appendChild(tag2);
+    }
+  }
+
+  if (folderTag && folderTag.text) {
+    const tag3 = document.createElement('span');
+    tag3.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; display: inline-flex; align-items: center; justify-content: center; height: ${height}; box-sizing: border-box; flex-shrink: 0; white-space: nowrap; line-height: 1; margin: 0;`;
+    tag3.textContent = folderTag.text;
+    container.appendChild(tag3);
+  }
+
+  return container;
+}
+
+function renderServiceTagHTML(sTag, isTableRow = false, originTag = null) {
+  if (!sTag && !originTag) return '';
+  const pad = isTableRow ? '2px 6px' : '2px 7px';
+  const fontSize = isTableRow ? '10px' : '11px';
+  let html = '';
+  if (originTag && originTag.text) {
+    html += `<span style="background: ${originTag.bg}; color: ${originTag.color}; border: 1px solid ${originTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${originTag.text}</span>`;
+  }
+  if (sTag) {
+    html += `<span style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${sTag.text}</span>`;
+    if (sTag.hosterTag) {
+      const ht = sTag.hosterTag;
+      html += `<span style="background: ${ht.bg}; color: ${ht.color}; border: 1px solid ${ht.border}; font-weight: 700; padding: ${pad}; border-radius: 4px; font-size: ${fontSize}; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${ht.text}</span>`;
+    }
   }
   return html;
 }
@@ -1706,7 +1964,7 @@ function renderQueue(queue) {
       const pureFileName = (active.name || '').includes('/') ? active.name.split('/').pop() : active.name;
       const sTag = getServiceTag(active);
       const tag = getFileTypeTag(active);
-      const spanServiceTags = renderServiceTagHTML(sTag, false);
+      const spanServiceTags = renderServiceTagHTML(sTag, false, getOriginTag(active));
       const spanFileTag = `<span style="background: ${tag.bg}; color: ${tag.color}; border: 1px solid ${tag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">${tag.text}</span>`;
       if (activeFilename) {
         activeFilename.innerHTML = `${spanServiceTags}${spanFileTag}${escapeHtml(pureFileName)}`;
@@ -1807,7 +2065,8 @@ function renderQueue(queue) {
     const sTag = getServiceTag(item);
     const serviceName = sTag ? (sTag.hoster ? `${sTag.text} ${sTag.hoster}` : sTag.text) : 'Google Drive';
     const rawFolder = item.folderName || 'Downloads';
-    const groupKey = `${serviceName}:::${rawFolder}`;
+    const batchSuffix = item.batchId ? `:::${item.batchId}` : '';
+    const groupKey = `${serviceName}:::${rawFolder}${batchSuffix}`;
     if (!folderMap.has(groupKey)) {
       folderMap.set(groupKey, { serviceName, folderName: rawFolder, items: [] });
     }
@@ -1839,7 +2098,7 @@ function renderQueue(queue) {
     activeSection.innerHTML = `
       <div class="queue-section-header">
         <div class="queue-section-title">
-          <span>⚡ Em Progresso e Fila Ativa</span>
+          <span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Em Progresso e Fila Ativa</span>
           <span class="queue-section-count" id="queue-active-count">0</span>
         </div>
         <button class="btn btn-outline btn-sm" id="btn-collapse-active-sec" title="Recolher/Expandir pastas em progresso" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; border-radius: 6px;">
@@ -1893,7 +2152,7 @@ function renderQueue(queue) {
     completedSection.innerHTML = `
       <div class="queue-section-header completed-header">
         <div class="queue-section-title">
-          <span>✅ Downloads Concluídos</span>
+          <span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 6px;"><polyline points="20 6 9 17 4 12"/></svg>Downloads Concluídos</span>
           <span class="queue-section-count" id="queue-completed-count">0</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -2191,7 +2450,7 @@ function renderQueue(queue) {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
           </div>
-          ${renderServiceTagHTML(serviceTag, false)}
+          ${renderServiceTagHTML(serviceTag, false, getOriginTag(sampleFile))}
           <span style="background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${folderTag.text}</span>
           <span class="queue-folder-name" title="${folderName}">${folderName}</span>
         `;
@@ -2256,7 +2515,7 @@ function renderQueue(queue) {
             }
             navigator.clipboard.writeText(rawUrl).then(() => {
               const origTitle = btnFolderCopyLink.title;
-              btnFolderCopyLink.title = '✓ Link copiado e aberto no navegador!';
+              btnFolderCopyLink.title = 'Link copiado e aberto no navegador!';
               btnFolderCopyLink.style.color = '#10b981';
               setTimeout(() => {
                 btnFolderCopyLink.title = origTitle;
@@ -2343,7 +2602,7 @@ function renderQueue(queue) {
       if (percentSpan) percentSpan.textContent = `${folderPercent}%`;
       if (progressFill) progressFill.style.width = `${folderPercent}%`;
 
-      // Atualiza os chips de status no cabeçalho da pasta sem recriar o DOM (ex: ⚡ 1 baixando, ⏸️ 3 pausados, ⚠️ 1 com erro, ⏳ 10 aguardando)
+      // Atualiza os chips de status no cabeçalho da pasta sem recriar o DOM (ex: baixando, pausados, com erro, aguardando)
       let statusChipsContainer = folderCard.querySelector('.queue-folder-status-chips');
       if (!statusChipsContainer) {
         const badgeGroupEl = folderCard.querySelector('.queue-folder-badge-group');
@@ -2370,16 +2629,16 @@ function renderQueue(queue) {
 
         let chipsHTML = '';
         if (downloadingCount > 0) {
-          chipsHTML += `<span class="folder-status-chip chip-downloading" title="${downloadingCount} arquivo(s) baixando" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⚡ ${downloadingCount} baixando</span>`;
+          chipsHTML += `<span class="folder-status-chip chip-downloading" title="${downloadingCount} arquivo(s) baixando" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> ${downloadingCount} baixando</span>`;
         }
         if (pausedCount > 0) {
-          chipsHTML += `<span class="folder-status-chip chip-paused" title="${pausedCount} arquivo(s) pausados" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⏸️ ${pausedCount} pausado${pausedCount > 1 ? 's' : ''}</span>`;
+          chipsHTML += `<span class="folder-status-chip chip-paused" title="${pausedCount} arquivo(s) pausados" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> ${pausedCount} pausado${pausedCount > 1 ? 's' : ''}</span>`;
         }
         if (errorCount > 0) {
-          chipsHTML += `<span class="folder-status-chip chip-error" title="${errorCount} arquivo(s) com erro" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⚠️ ${errorCount} com erro</span>`;
+          chipsHTML += `<span class="folder-status-chip chip-error" title="${errorCount} arquivo(s) com erro" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> ${errorCount} com erro</span>`;
         }
         if (pendingCount > 0 && (downloadingCount > 0 || pausedCount > 0 || errorCount > 0)) {
-          chipsHTML += `<span class="folder-status-chip chip-pending" title="${pendingCount} arquivo(s) aguardando" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 0.72rem; font-weight: 600; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">⏳ ${pendingCount} aguardando</span>`;
+          chipsHTML += `<span class="folder-status-chip chip-pending" title="${pendingCount} arquivo(s) aguardando" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); font-size: 0.72rem; font-weight: 600; padding: 2px 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ${pendingCount} aguardando</span>`;
         }
         statusChipsContainer.innerHTML = chipsHTML;
       }
@@ -2453,7 +2712,7 @@ function renderQueue(queue) {
             <input type="checkbox" class="queue-item-checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="margin-right: 10px; cursor: pointer;">
             <div class="queue-item-info">
               <div class="queue-item-title-line">
-                ${renderServiceTagHTML(sTag, true)}
+                ${renderServiceTagHTML(sTag, true, getOriginTag(item))}
                 <span style="background: ${itemTag.bg}; color: ${itemTag.color}; border: 1px solid ${itemTag.border}; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;">${itemTag.text}</span>
                 <span class="queue-item-name" title="${escapeHtml(pureFileName)}">${escapeHtml(pureFileName)}</span>
               </div>
@@ -2513,7 +2772,7 @@ function renderQueue(queue) {
               }
               navigator.clipboard.writeText(rawUrl).then(() => {
                 const origTitle = btnCopyLinkItem.title;
-                btnCopyLinkItem.title = '✓ Link copiado e aberto no navegador!';
+                btnCopyLinkItem.title = 'Link copiado e aberto no navegador!';
                 btnCopyLinkItem.style.color = '#10b981';
                 setTimeout(() => {
                   btnCopyLinkItem.title = origTitle;
@@ -3167,13 +3426,13 @@ let showHiddenTorboxFiles = localStorage.getItem('nexus_torbox_show_hidden') ===
 
 function startTorboxLivePolling() {
   if (torboxLivePollInterval) return;
-  console.log('[Torbox Live Polling] Iniciando monitoramento em tempo real (3s)...');
+  console.log('[Torbox Live Polling] Iniciando monitoramento em tempo real (8s)...');
   torboxLivePollInterval = setInterval(() => {
     const torboxTab = document.getElementById('torbox-tab');
-    if (torboxTab && torboxTab.classList.contains('active')) {
+    if (torboxTab && torboxTab.classList.contains('active') && !isFetchingTorboxDownloads) {
       loadTorboxDownloads(true);
     }
-  }, 3000);
+  }, 8000);
 }
 
 function stopTorboxLivePolling() {
@@ -3215,15 +3474,14 @@ function updateTorboxStatsBar() {
   let inactiveCount = 0;
 
   jobMap.forEach(jobFiles => {
-    const sample = jobFiles[0];
-    if (jobFiles.some(f => f.isQueued || f.cloudStatus === 'Em Fila')) {
+    if (jobFiles.some(f => f.isActive)) {
+      activeCount++;
+    } else if (jobFiles.some(f => f.isQueued || f.cloudStatus === 'Em Fila')) {
       queuedCount++;
-    } else if (jobFiles.some(f => f.isInactive)) {
-      inactiveCount++;
     } else if (jobFiles.every(f => f.isFinished)) {
       readyCount++;
     } else {
-      activeCount++;
+      inactiveCount++;
     }
   });
 
@@ -3258,7 +3516,7 @@ function applyTorboxFilters() {
     }
 
     if (currentTorboxStatusFilter === 'ready' && !file.isFinished) return false;
-    if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive || file.isQueued)) return false;
+    if (currentTorboxStatusFilter === 'active' && !file.isActive) return false;
     if (currentTorboxStatusFilter === 'queued' && !file.isQueued && file.cloudStatus !== 'Em Fila') return false;
     if (currentTorboxStatusFilter === 'inactive' && !file.isInactive) return false;
 
@@ -3300,14 +3558,28 @@ function applyTorboxFilters() {
   return filtered;
 }
 
+let isFetchingTorboxDownloads = false;
+
 async function loadTorboxDownloads(isSilent = false) {
+  if (isFetchingTorboxDownloads) return;
+
   const torboxResultsContainer = document.getElementById('torbox-results-container');
   const torboxEmptyState = document.getElementById('torbox-empty-state');
   const torboxEmptyTitle = document.getElementById('torbox-empty-title');
   const torboxEmptyDesc = document.getElementById('torbox-empty-desc');
   const torboxBadge = document.getElementById('torbox-badge');
+  const btnRefresh = document.getElementById('btn-refresh-torbox');
 
   if (!torboxResultsContainer || !torboxEmptyState) return;
+
+  isFetchingTorboxDownloads = true;
+
+  if (btnRefresh && !isSilent) {
+    btnRefresh.classList.add('btn-refreshing');
+    btnRefresh.disabled = true;
+    const spanText = btnRefresh.querySelector('span');
+    if (spanText) spanText.textContent = 'Atualizando...';
+  }
 
   try {
     const res = await window.api.getTorboxUserDownloads();
@@ -3365,6 +3637,14 @@ async function loadTorboxDownloads(isSilent = false) {
     if (!isSilent) {
       torboxResultsContainer.style.display = 'none';
       torboxEmptyState.style.display = 'flex';
+    }
+  } finally {
+    isFetchingTorboxDownloads = false;
+    if (btnRefresh) {
+      btnRefresh.classList.remove('btn-refreshing');
+      btnRefresh.disabled = false;
+      const spanText = btnRefresh.querySelector('span');
+      if (spanText) spanText.textContent = 'Atualizar Lista';
     }
   }
 }
@@ -3424,26 +3704,36 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
 
     const serviceTag = getServiceTag(groupItems[0]);
     const folderTag = getFolderTypeTag(groupItems, groupName);
-
-    const serviceTagSpanWrapper = document.createElement('span');
-    serviceTagSpanWrapper.style.display = 'inline-flex';
-    serviceTagSpanWrapper.style.alignItems = 'center';
-    serviceTagSpanWrapper.style.verticalAlign = 'middle';
-    serviceTagSpanWrapper.innerHTML = renderServiceTagHTML(serviceTag, false);
-
-    const folderTypeSpan = document.createElement('span');
-    folderTypeSpan.style.cssText = `background: ${folderTag.bg}; color: ${folderTag.color}; border: 1px solid ${folderTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle; flex-shrink: 0; white-space: nowrap;`;
-    folderTypeSpan.textContent = folderTag.text;
+    const tagsGroup = buildTagsGroupElement(serviceTag, folderTag, false, getOriginTag(groupItems[0]));
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'folder-group-name';
     nameSpan.textContent = groupName;
 
+    const titleTextWrapper = document.createElement('div');
+    titleTextWrapper.className = 'folder-group-title-text-wrapper';
+    titleTextWrapper.style.cssText = 'display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; gap: 3px; justify-content: center;';
+
+    const titleMainRow = document.createElement('div');
+    titleMainRow.className = 'folder-group-title-main-row';
+    titleMainRow.style.cssText = 'display: flex; align-items: center; min-width: 0; flex-wrap: wrap;';
+
+    titleMainRow.appendChild(tagsGroup);
+    titleMainRow.appendChild(nameSpan);
+    titleTextWrapper.appendChild(titleMainRow);
+
+    const storageInfoText = formatTorboxStorageInfo(groupItems);
+    if (storageInfoText) {
+      const subInfoDiv = document.createElement('div');
+      subInfoDiv.className = 'folder-group-sub-info';
+      subInfoDiv.style.cssText = 'font-size: 0.77rem; color: #94a3b8; font-weight: 500; display: flex; align-items: center; gap: 4px; line-height: 1.25; margin-top: 2px;';
+      subInfoDiv.textContent = storageInfoText;
+      titleTextWrapper.appendChild(subInfoDiv);
+    }
+
     titleGroup.appendChild(groupCb);
     titleGroup.appendChild(folderIcon);
-    titleGroup.appendChild(serviceTagSpanWrapper);
-    titleGroup.appendChild(folderTypeSpan);
-    titleGroup.appendChild(nameSpan);
+    titleGroup.appendChild(titleTextWrapper);
 
     const metaDiv = document.createElement('div');
     metaDiv.className = 'folder-group-meta';
@@ -3483,8 +3773,8 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
 
       const unhideBtn = document.createElement('button');
       unhideBtn.className = 'btn btn-sm btn-outline';
-      unhideBtn.style.cssText = 'padding: 2px 8px; font-size: 0.75rem; margin-right: 6px; color: #fb7185; border-color: rgba(244, 63, 94, 0.4);';
-      unhideBtn.innerHTML = '👁️ Desocultar';
+      unhideBtn.style.cssText = 'padding: 2px 8px; font-size: 0.75rem; margin-right: 6px; color: #fb7185; border-color: rgba(244, 63, 94, 0.4); display: inline-flex; align-items: center; gap: 4px;';
+      unhideBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Desocultar';
       unhideBtn.onclick = (e) => {
         e.stopPropagation();
         groupItems.forEach(f => hiddenTorboxFileIds.delete(f.id));
@@ -3548,14 +3838,16 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         tdName.className = 'text-truncate';
         const sTag = getServiceTag(file);
         const fTag = getFileTypeTag(file);
-        tdName.innerHTML = `${renderServiceTagHTML(sTag, true)}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
-        tdName.title = file.name;
+        const rowTagsGroup = buildTagsGroupElement(sTag, fTag, true, getOriginTag(file));
+        tdName.appendChild(rowTagsGroup);
+        tdName.appendChild(document.createTextNode(file.name || ''));
+        tdName.title = file.name || '';
 
         const tdStatus = document.createElement('td');
         if (file.isFinished) {
           tdStatus.innerHTML = `<span style="background: rgba(52, 211, 153, 0.18); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Ready (100%)</span>`;
         } else if (file.isQueued || file.cloudStatus === 'Em Fila') {
-          tdStatus.innerHTML = `<span style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">⌛ Em Fila (Queued)</span>`;
+          tdStatus.innerHTML = `<span style="background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Em Fila (Queued)</span>`;
         } else if (file.isInactive) {
           tdStatus.innerHTML = `<span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 700;">Inativo</span>`;
         } else {
@@ -3574,9 +3866,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         // 1. Botão Baixar
         const dlBtn = document.createElement('button');
         dlBtn.className = 'btn btn-sm btn-success';
-        dlBtn.style.cssText = 'padding: 3px 8px; font-size: 0.75rem; border-radius: 4px;';
+        dlBtn.style.cssText = 'padding: 3px 8px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
         dlBtn.title = 'Enviar arquivo para a fila de downloads do Nexus';
-        dlBtn.innerHTML = '⬇️ Baixar';
+        dlBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Baixar';
         dlBtn.onclick = async (e) => {
           e.stopPropagation();
           await window.api.addToQueue([file]);
@@ -3587,9 +3879,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
         // 2. Botão Share (Compartilhar Link)
         const shareBtn = document.createElement('button');
         shareBtn.className = 'btn btn-sm btn-outline';
-        shareBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+        shareBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
         shareBtn.title = 'Compartilhar / Copiar Link Direto do Torbox';
-        shareBtn.innerHTML = '🔗 Share';
+        shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Share';
         shareBtn.onclick = (e) => {
           e.stopPropagation();
           const targetUrl = file.downloadUrl || file.directUrl || file.sourceUrl || '';
@@ -3605,9 +3897,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
           // Botão Force Start
           const forceBtn = document.createElement('button');
           forceBtn.className = 'btn btn-sm btn-warning';
-          forceBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; color: #1e293b; font-weight: 700;';
+          forceBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; color: #1e293b; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;';
           forceBtn.title = 'Forçar Início Imediato no Servidor Torbox';
-          forceBtn.innerHTML = '⚡ Force Start';
+          forceBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Force Start';
           forceBtn.onclick = async (e) => {
             e.stopPropagation();
             try {
@@ -3630,9 +3922,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
           // Botão Delete Queued
           const delQBtn = document.createElement('button');
           delQBtn.className = 'btn btn-sm btn-outline-danger';
-          delQBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          delQBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
           delQBtn.title = 'Excluir da Fila do Torbox';
-          delQBtn.innerHTML = '🗑️ Deletar';
+          delQBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Deletar';
           delQBtn.onclick = async (e) => {
             e.stopPropagation();
             try {
@@ -3658,9 +3950,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
             // Reannounce
             const reannBtn = document.createElement('button');
             reannBtn.className = 'btn btn-sm btn-outline';
-            reannBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            reannBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
             reannBtn.title = 'Reanunciar aos Trackers';
-            reannBtn.innerHTML = '📢 Reannounce';
+            reannBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>Reannounce';
             reannBtn.onclick = async (e) => {
               e.stopPropagation();
               try {
@@ -3682,9 +3974,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
             // Check Health
             const healthBtn = document.createElement('button');
             healthBtn.className = 'btn btn-sm btn-outline';
-            healthBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            healthBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
             healthBtn.title = 'Verificar Saúde do Torrent';
-            healthBtn.innerHTML = '🏥 Health';
+            healthBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Health';
             healthBtn.onclick = (e) => {
               e.stopPropagation();
               showCustomAlert(`Saúde do Torrent (ID ${file.torboxId}):\n• Status: ${file.cloudStatus || 'Ativo'}\n• Seeds: ${file.seeds || 0}\n• Peers: ${file.peers || 0}\n• Ratio: ${file.ratio || 0}\n• Progresso: ${file.progress || 0}%`, 'Saúde do Torrent');
@@ -3694,9 +3986,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
             // Copy Short Magnet
             const magnetBtn = document.createElement('button');
             magnetBtn.className = 'btn btn-sm btn-outline';
-            magnetBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+            magnetBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
             magnetBtn.title = 'Copiar Magnet Link curto';
-            magnetBtn.innerHTML = '🧲 Magnet';
+            magnetBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a6 6 0 0 0 12 0V3"/><line x1="6" y1="7" x2="6" y2="3"/><line x1="18" y1="7" x2="18" y2="3"/></svg>Magnet';
             magnetBtn.onclick = (e) => {
               e.stopPropagation();
               const mag = file.magnetUrl || (file.hash ? `magnet:?xt=urn:btih:${file.hash}` : '');
@@ -3713,9 +4005,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
           // Copy Name
           const copyNameBtn = document.createElement('button');
           copyNameBtn.className = 'btn btn-sm btn-outline';
-          copyNameBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          copyNameBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
           copyNameBtn.title = 'Copiar Nome Completo';
-          copyNameBtn.innerHTML = '📋 Nome';
+          copyNameBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Nome';
           copyNameBtn.onclick = (e) => {
             e.stopPropagation();
             navigator.clipboard.writeText(file.name || '');
@@ -3726,9 +4018,9 @@ function renderTorboxDownloads(filesToRender, limit = torboxRenderLimit) {
           // Delete Torrent / Download
           const delBtn = document.createElement('button');
           delBtn.className = 'btn btn-sm btn-outline-danger';
-          delBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px;';
+          delBtn.style.cssText = 'padding: 3px 6px; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;';
           delBtn.title = 'Excluir do Servidor Torbox';
-          delBtn.innerHTML = '🗑️ Deletar';
+          delBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Deletar';
           delBtn.onclick = async (e) => {
             e.stopPropagation();
             try {
@@ -3850,7 +4142,8 @@ function updateTorboxSelectionSummary() {
       }
 
       if (currentTorboxStatusFilter === 'ready' && !file.isFinished) return false;
-      if (currentTorboxStatusFilter === 'active' && (file.isFinished || file.isInactive)) return false;
+      if (currentTorboxStatusFilter === 'active' && !file.isActive) return false;
+      if (currentTorboxStatusFilter === 'queued' && !file.isQueued && file.cloudStatus !== 'Em Fila') return false;
       if (currentTorboxStatusFilter === 'inactive' && !file.isInactive) return false;
 
       if (currentTorboxTypeFilter === 'torrent' && file.torboxType !== 'torrent') return false;
@@ -3930,7 +4223,9 @@ function syncTorboxFilterDropdownUI() {
   const btnToggleHidden = document.getElementById('btn-toggle-show-hidden');
   if (btnToggleHidden) {
     btnToggleHidden.classList.toggle('active', showHiddenTorboxFiles);
-    btnToggleHidden.textContent = showHiddenTorboxFiles ? '✓ Exibir Itens Ocultados' : '👁️ Exibir Itens Ocultados';
+    btnToggleHidden.innerHTML = (showHiddenTorboxFiles
+      ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>') + 'Exibir Itens Ocultados';
   }
 }
 
@@ -4403,7 +4698,7 @@ function refreshAuditTable() {
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.06)';
 
     const sTag = getServiceTag(item);
-    const tagHtml = renderServiceTagHTML(sTag, true);
+    const tagHtml = renderServiceTagHTML(sTag, true, getOriginTag(item));
 
     const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A';
     const rawUrl = item.sourceUrl || item.originUrl || item.albumUrl || item.url || item.directUrl || '';
@@ -4411,7 +4706,7 @@ function refreshAuditTable() {
 
     tr.innerHTML = `
       <td style="padding: 10px 8px; color: #94a3b8; font-size: 11px;">${dateStr}</td>
-      <td style="padding: 10px 8px;">${tagHtml}</td>
+      <td style="padding: 10px 8px; white-space: nowrap;">${tagHtml}</td>
       <td style="padding: 10px 8px; font-weight: 600; color: #fff; word-break: break-all;" title="${item.name}">${item.name}</td>
       <td style="padding: 10px 8px; color: #cbd5e1;">${item.sizeFormatted || formatBytes(item.size || 0)}</td>
       <td style="padding: 10px 8px; color: #60a5fa; font-size: 11px; word-break: break-all;">
@@ -4437,15 +4732,15 @@ function copyAuditLogToClipboard() {
 
   const sortedStats = Array.from(hosterStats.entries()).sort((a, b) => b[1] - a[1]);
 
-  let markdownReport = `### 📊 Relatório de Auditoria de Hosters & Downloads (Nexus Downloader)\n\n`;
+  let markdownReport = `### Relatório de Auditoria de Hosters & Downloads (Nexus Downloader)\n\n`;
   markdownReport += `- **Data do Log**: ${new Date().toLocaleString('pt-BR')}\n`;
   markdownReport += `- **Total de Arquivos Registrados**: ${currentAuditHistoryData.length}\n\n`;
-  markdownReport += `#### 🏷️ Resumo por Hoster / Provedor:\n`;
+  markdownReport += `#### Resumo por Hoster / Provedor:\n`;
   sortedStats.forEach(([hName, count]) => {
     markdownReport += `- **${hName}**: ${count} arquivo(s)\n`;
   });
 
-  markdownReport += `\n#### 📋 Tabela Completa de Registros:\n`;
+  markdownReport += `\n#### Tabela Completa de Registros:\n`;
   markdownReport += `| Data | Hoster | Nome do Arquivo | Tamanho | URL de Origem |\n`;
   markdownReport += `|---|---|---|---|---|\n`;
 
@@ -4565,7 +4860,9 @@ async function renderMultilinkAuditSummary(summary) {
     scanAuditSummaryBar.style.background = 'rgba(34, 197, 94, 0.15)';
     scanAuditSummaryBar.style.border = '1px solid rgba(34, 197, 94, 0.35)';
     scanAuditSummaryBar.style.color = '#4ade80';
-    if (scanAuditIcon) scanAuditIcon.textContent = '🎉';
+    if (scanAuditIcon) {
+      scanAuditIcon.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+    }
     if (scanAuditMessage) {
       scanAuditMessage.textContent = `Sucesso! Todos os ${accSummary.totalLinks} links foram escaneados com sucesso (${scannedFiles.length} arquivos prontos para download).`;
     }
@@ -4574,7 +4871,9 @@ async function renderMultilinkAuditSummary(summary) {
     scanAuditSummaryBar.style.background = 'rgba(245, 158, 11, 0.15)';
     scanAuditSummaryBar.style.border = '1px solid rgba(245, 158, 11, 0.35)';
     scanAuditSummaryBar.style.color = '#fbbf24';
-    if (scanAuditIcon) scanAuditIcon.textContent = '⚠️';
+    if (scanAuditIcon) {
+      scanAuditIcon.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    }
     if (scanAuditMessage) {
       scanAuditMessage.textContent = `${accSummary.successCount} de ${accSummary.totalLinks} links foram escaneados com sucesso. ${accSummary.errorCount} link(s) apresentaram inconsistência.`;
     }

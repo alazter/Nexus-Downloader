@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Nexus Downloader - Configurações</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-layout">
+
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside class="options-sidebar">
+      <div class="sidebar-brand">
+        <svg class="sidebar-logo" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="optGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#c084fc"/>
+              <stop offset="50%" stop-color="#38bdf8"/>
+              <stop offset="100%" stop-color="#00f2fe"/>
+            </linearGradient>
+            <linearGradient id="optGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#38bdf8"/>
+              <stop offset="100%" stop-color="#00f2fe"/>
+            </linearGradient>
+            <filter id="optGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3.5" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <g filter="url(#optGlow)">
+            <path d="M 28 64 C 18 64 12 56 12 46 C 12 37 19 30 28 30 C 32 20 42 14 54 14 C 67 14 77 22 80 32 C 87 33 92 40 92 48 C 92 57 85 64 76 64 Z" 
+                  fill="none" stroke="url(#optGrad1)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M 50 18 L 62 46 L 53 46 L 53 60 L 64 60 L 50 82 L 36 60 L 47 60 L 47 46 L 38 46 Z" 
+                  fill="none" stroke="url(#optGrad2)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>
+        <div class="sidebar-brand-title">
+          <span class="nexus-title">NEXUS DOWNLOADER</span>
+          <span class="nexus-sub">Extensão v1.3.0</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-btn active" data-section="section-geral">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 8px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Geral
+        </button>
+        <button class="nav-btn" data-section="section-provedores">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 8px;"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/></svg> Provedores & Torbox
+        </button>
+        <button class="nav-btn" data-section="section-monitoramento">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 8px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Monitoramento
+        </button>
+        <button class="nav-btn" data-section="section-telemetria">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Telemetria & Logs
+        </button>
+      </nav>
+    </aside>
+
+    <!-- CONTEÚDO PRINCIPAL (MAIN PANEL COM ABAS REAIS) -->
+    <main class="options-main">
+
+      <!-- ABA 1: GERAL -->
+      <section class="tab-section active" id="section-geral">
+        <!-- CARD TOGGLE BAIXAR SOMENTE PELA EXTENSÃO -->
+        <div class="config-card" style="opacity: 0.5;">
+          <div class="card-header">
+            <div>
+              <h2 id="opt-engine-title">Baixar Usando Motor do Nexus Portable PC</h2>
+              <p class="card-subtitle" id="opt-engine-desc">Downloads processados exclusivamente pelo Nexus Downloader Portable no seu computador.</p>
+            </div>
+            <label class="toggle-switch-large">
+              <input type="checkbox" id="opt-chk-extension-only" disabled>
+              <span class="slider-large"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- CARD SELEÇÃO DE MOTOR -->
+        <div class="config-card">
+          <div class="card-header">
+            <h2>Modo do Motor de Download</h2>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+          </div>
+          <div class="engine-switch-row">
+            <label class="engine-option" id="engine-browser-label" style="opacity: 0.4; pointer-events: none; cursor: not-allowed;">
+              <input type="radio" name="downloadEngine" value="browser" id="engine-browser" disabled>
+              <div class="engine-pill">
+                <span class="engine-name">Motor do Navegador <em style="font-size: 0.72rem; color: #94a3b8; font-weight: normal;">(Desabilitado)</em></span>
+                <span class="engine-desc">Opção desabilitada: use o Nexus Portable PC</span>
+              </div>
+            </label>
+
+            <label class="engine-option" id="engine-bridge-label">
+              <input type="radio" name="downloadEngine" value="bridge" id="engine-bridge" checked>
+              <div class="engine-pill highlight">
+                <span class="engine-name">Nexus Downloader Portable (Desktop Bridge)</span>
+                <span class="engine-desc">Ultra-velocidade multi-thread, túnel proxy e aceleração de rede</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- CARD PASTA DE DOWNLOAD -->
+        <div class="config-card" id="card-download-folder">
+          <div class="card-header">
+            <div>
+              <h2>Pasta de Salvamento dos Downloads</h2>
+              <p class="card-subtitle" id="opt-folder-desc">Desabilitado no navegador: Os arquivos são salvos diretamente na pasta configurada no Nexus Downloader Portable PC.</p>
+            </div>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          </div>
+          <div class="input-group">
+            <input type="text" id="opt-download-folder" placeholder="Gerenciado pelo Nexus Portable PC" value="Gerenciado pelo Nexus Portable PC" disabled readonly style="opacity: 0.5; cursor: not-allowed;">
+            <button class="btn-paste" id="opt-btn-open-folder" title="Abrir pasta de downloads"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Abrir Pasta</button>
+          </div>
+        </div>
+
+        <!-- CARD COMPORTAMENTO DO HUD -->
+        <div class="config-card">
+          <div class="card-header">
+            <h2>Visualização do HUD Flutuante</h2>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          </div>
+          <div class="option-row">
+            <label class="checkbox-option">
+              <input type="checkbox" id="opt-hud-enabled" checked>
+              <span>Ativar hud de download grande</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ABA 2: PROVEDORES & INTEGRAÇÃO TORBOX -->
+      <section class="tab-section" id="section-provedores">
+        <div class="config-card">
+          <div class="card-header">
+            <div>
+              <h2>Integração Torbox Debrid</h2>
+              <p class="card-subtitle">Insira sua chave de API para desbloqueio em nuvem de Torrents e hosts premium</p>
+            </div>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6l6.5-6.5z"/></svg></span>
+          </div>
+          <div class="input-group">
+            <input type="password" id="opt-torbox-key" placeholder="Chave de API do Torbox (Ex: eyJhbGciOi...)" autocomplete="off">
+            <button class="btn-paste" id="btn-paste-torbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Colar</button>
+            <button class="btn-test-key" id="btn-test-torbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Testar</button>
+            <div class="badge-status" id="torbox-status-badge">
+              <span>●</span> Conectado
+            </div>
+          </div>
+          <p id="opt-torbox-hint" style="font-size:0.75rem; color:#94a3b8; margin-top:8px; display:none;"></p>
+        </div>
+
+        <div class="config-card">
+          <div class="card-header">
+            <h2>Provedores com Detecção e Download Automático</h2>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+          </div>
+          <div class="providers-badges-grid">
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">GoFile</span>
+              <span class="prov-tag">Álbuns & Pastas</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">Bunkr</span>
+              <span class="prov-tag">Mídia & CDN</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">Google Drive</span>
+              <span class="prov-tag">Pastas & Arquivos</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">TeraBox</span>
+              <span class="prov-tag">1024Tera & Pastas</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">MediaFire</span>
+              <span class="prov-tag">Lotes Diretos</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">PixelDrain</span>
+              <span class="prov-tag">Listas e Arquivos</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">Send.cm / Vik1ng</span>
+              <span class="prov-tag">Download Direto</span>
+            </div>
+            <div class="provider-badge-item active">
+              <span class="prov-dot"></span>
+              <span class="prov-name">Turbo.cr / Drime</span>
+              <span class="prov-tag">Arquivos & Pastas</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ABA 3: MODO DE MONITORAMENTO (4 CARDS) -->
+      <section class="tab-section" id="section-monitoramento">
+        <div class="config-card">
+          <div class="card-header">
+            <div>
+              <h2>Modo de Monitoramento de Páginas Web</h2>
+              <p class="card-subtitle">Selecione em quais páginas o Nexus Downloader deve procurar arquivos e exibir o HUD</p>
+            </div>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          </div>
+          <div class="modes-grid">
+            
+            <div class="mode-card" data-mode="disabled">
+              <div class="mode-radio"></div>
+              <div class="mode-card-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>
+              <div class="mode-card-title">Desligado</div>
+              <div class="mode-card-desc">Desativa a extensão e monitoramento em todas as páginas da internet.</div>
+            </div>
+
+            <div class="mode-card active" data-mode="supported">
+              <div class="mode-radio"></div>
+              <div class="mode-card-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+              <div class="mode-card-title">Sites Suportados</div>
+              <div class="mode-card-desc">Atua exclusivamente nos provedores oficiais integrados (GoFile, Bunkr, etc.).</div>
+            </div>
+
+            <div class="mode-card" data-mode="supported_torbox">
+              <div class="mode-radio"></div>
+              <div class="mode-card-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+              <div class="mode-card-title">Sites Suportados + Torbox</div>
+              <div class="mode-card-desc">Provedores oficiais + torrents, links magnet e debrid Torbox.</div>
+            </div>
+
+            <div class="mode-card" data-mode="universal">
+              <div class="mode-radio"></div>
+              <div class="mode-card-icon"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+              <div class="mode-card-title">Universal</div>
+              <div class="mode-card-desc">Varredura heurística universal em qualquer site de arquivos da web.</div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ABA 4: TELEMETRIA & DIAGNÓSTICOS -->
+      <section class="tab-section" id="section-telemetria">
+        <div class="config-card">
+          <div class="card-header">
+            <div>
+              <h2>Telemetria Local & Diagnósticos</h2>
+              <p class="card-subtitle">Registros analíticos e métricas de velocidade gravados exclusivamente na sua máquina</p>
+            </div>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+          </div>
+          <div class="telemetry-row">
+            <label class="toggle-telemetry">
+              <input type="checkbox" id="opt-telemetry" checked>
+              <span class="slider"></span>
+            </label>
+            <span class="telemetry-desc">Gravar logs analíticos e telemetria local para melhoria contínua e refinamento</span>
+          </div>
+        </div>
+
+        <div class="config-card">
+          <div class="card-header">
+            <h2>Diretório Local de Telemetria</h2>
+            <span class="card-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          </div>
+          <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.5;">
+            Os logs locais de diagnóstico são armazenados no diretório oficial para validação de estabilidade:
+          </p>
+          <div class="path-box">
+            <code>C:\Users\alazt\Documents\GitHub\Projetos\Telemetria\Nexus Downloader</code>
+          </div>
+        </div>
+      </section>
+
+      <!-- BOTÃO SALVAR CONFIGURAÇÕES FIXO NA BASE -->
+      <div class="save-bar">
+        <button class="btn-save-settings" id="btn-save-all">
+          Salvar Configurações
+        </button>
+        <span class="save-status" id="save-status-text"></span>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

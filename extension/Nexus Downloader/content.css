@@ -1,0 +1,2038 @@
+/* ============================================================
+   Nexus Downloader - Content Styles (HUD Flutuante & Modal In-Page)
+   ============================================================ */
+
+:root {
+  --nexus-bg-primary: #060810;
+  --nexus-bg-glass: rgba(11, 15, 25, 0.94);
+  --nexus-cyan: #00f2fe;
+  --nexus-cyan-glow: rgba(0, 242, 254, 0.35);
+  --nexus-purple: #7f00ff;
+  --nexus-emerald: #00f5a0;
+  --nexus-emerald-glow: rgba(0, 245, 160, 0.35);
+  --nexus-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* CONTAINER PRINCIPAL DO HUD FLUTUANTE */
+#nexus-hud-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483640;
+  font-family: var(--nexus-font);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* WIDGET HUD CIRCULAR */
+.nexus-floating-hud {
+  position: relative;
+  background: var(--nexus-bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 50%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.35s ease;
+  overflow: visible;
+}
+
+/* 1. VERSÃO PEQUENA PADRÃO (~58px) */
+.nexus-floating-hud.compact {
+  width: 58px;
+  height: 58px;
+  box-shadow: 0 0 18px var(--nexus-cyan-glow), 0 6px 20px rgba(0, 0, 0, 0.7);
+}
+
+.nexus-floating-hud.compact.completed {
+  box-shadow: 0 0 20px var(--nexus-emerald-glow), 0 6px 20px rgba(0, 0, 0, 0.7);
+}
+
+/* LOGO OFICIAL COMO MARCA D'ÁGUA NO BACKGROUND */
+.nexus-hud-bg-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 72%;
+  height: 72%;
+  opacity: 0.22;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* No modo expandido, oculta completamente a logo do background para ZERO sobreposição com textos e botões */
+.nexus-floating-hud.expanded .nexus-hud-bg-logo {
+  display: none !important;
+}
+
+/* ANEL DE PROGRESSO SVG NO CONTORNO INTERNO */
+.nexus-hud-svg-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.nexus-hud-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.nexus-hud-ring-bar {
+  fill: none;
+  stroke: var(--nexus-cyan);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease, stroke 0.4s ease, opacity 0.3s ease;
+  filter: drop-shadow(0 0 6px var(--nexus-cyan));
+}
+
+.nexus-hud-ring-bar.inactive {
+  stroke: transparent !important;
+  opacity: 0 !important;
+  visibility: hidden;
+}
+
+.nexus-hud-ring-bar.completed {
+  stroke: var(--nexus-emerald);
+  filter: drop-shadow(0 0 7px var(--nexus-emerald));
+}
+
+/* DADOS NO CENTRO DO MODO COMPACTO */
+.nexus-hud-compact-data {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+  padding: 4px;
+  border-radius: 50%;
+  width: 100%;
+  height: 100%;
+}
+
+.nexus-hud-compact-data:hover {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.8));
+}
+
+.nexus-compact-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+  width: 100%;
+  line-height: 1.1;
+}
+
+.nexus-compact-speed-val {
+  font-size: 8.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: -0.2px;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 242, 254, 0.4);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.nexus-compact-count-val {
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.2px;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.nexus-hud-check {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--nexus-emerald);
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(0, 245, 160, 0.8);
+}
+
+/* 2. VERSÃO EXPANDIDA (~184px - Espaçosa e Sem Sobreposição) */
+.nexus-floating-hud.expanded {
+  width: 184px;
+  height: 184px;
+  box-shadow: 0 0 32px var(--nexus-cyan-glow), 0 14px 44px rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+}
+
+.nexus-floating-hud.expanded.completed {
+  box-shadow: 0 0 32px var(--nexus-emerald-glow), 0 14px 44px rgba(0, 0, 0, 0.9);
+}
+
+.nexus-hud-expanded-data {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 3;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  padding: 14px 12px 16px 12px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.nexus-floating-hud.expanded .nexus-hud-expanded-data {
+  display: flex;
+}
+
+.nexus-floating-hud.expanded .nexus-hud-compact-data {
+  display: none;
+}
+
+/* BLOCO UNIFICADO: STATUS + CONTADOR (UM SÓ ELEMENTO INTERATIVO NO HOVER) */
+.nexus-exp-header-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 5px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-bottom: 2px;
+  width: 90%;
+  box-sizing: border-box;
+}
+
+.nexus-exp-header-group:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: translateY(-1px) scale(1.015);
+}
+
+.nexus-exp-header-group:hover .nexus-exp-status-row,
+.nexus-exp-header-group:hover .nexus-exp-counter,
+.nexus-exp-header-group:hover .nexus-exp-sub {
+  filter: none !important;
+  -webkit-text-stroke: 0 !important;
+}
+
+.nexus-exp-header-group:hover .nexus-exp-counter {
+  color: #38bdf8 !important;
+  text-shadow: 0 0 6px rgba(56, 189, 248, 0.5) !important;
+}
+
+.nexus-exp-header-group:hover .nexus-exp-status {
+  text-shadow: 0 0 5px rgba(56, 189, 248, 0.4) !important;
+}
+
+.nexus-exp-header-group:hover .nexus-exp-sub {
+  color: #bae6fd !important;
+  text-shadow: 0 0 4px rgba(56, 189, 248, 0.3) !important;
+}
+
+.nexus-exp-header-group:active {
+  transform: scale(0.98);
+}
+
+.nexus-exp-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.nexus-exp-status {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--nexus-emerald);
+  letter-spacing: 0.2px;
+  line-height: 1.1;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.nexus-exp-status.downloading {
+  color: #38bdf8;
+}
+
+.nexus-exp-check {
+  font-size: 1.1rem;
+  color: var(--nexus-emerald);
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.nexus-exp-counter {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.1;
+  margin: 1px 0;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.nexus-exp-sub {
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  line-height: 1;
+  margin-bottom: 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.nexus-exp-tags {
+  display: flex;
+  gap: 5px;
+  margin: 1px 0 0 0;
+  align-items: center;
+  justify-content: center;
+  max-width: 120px;
+  flex-wrap: nowrap;
+}
+
+.nexus-tag-service {
+  background: rgba(167, 139, 250, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  font-size: 8px;
+  line-height: 1.2;
+  white-space: nowrap;
+  max-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nexus-tag-type {
+  background: rgba(0, 242, 254, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  font-size: 8px;
+  line-height: 1.2;
+  white-space: nowrap;
+  max-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* BOTÃO ABRIR PASTA / BAIXAR LOTE / VER DOWNLOADS */
+.nexus-btn-open-folder {
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid rgba(0, 242, 254, 0.45);
+  color: #00f2fe;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 154px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.nexus-btn-open-folder:hover {
+  background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);
+  color: #060810;
+  border-color: #00f2fe;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.5);
+}
+
+/* BOTÕES DE CONTROLE NO HOVER (EXPANDIDO & COMPACTO) */
+.nexus-hud-hover-controls {
+  position: absolute;
+  top: -16px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 25;
+}
+
+.nexus-floating-hud.compact .nexus-hud-hover-controls {
+  top: -14px;
+  gap: 6px;
+}
+
+/* Ponte de hover contínua entre o topo do círculo e os botões */
+.nexus-hud-hover-controls::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -25px;
+  right: -25px;
+  bottom: -22px;
+  z-index: -1;
+  pointer-events: auto;
+}
+
+.nexus-floating-hud.expanded:hover .nexus-hud-hover-controls,
+.nexus-floating-hud.compact:hover .nexus-hud-hover-controls,
+.nexus-hud-hover-controls:hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.nexus-btn-ctrl {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s;
+}
+
+.nexus-btn-ctrl:hover {
+  background: var(--nexus-cyan);
+  color: #060810;
+  border-color: var(--nexus-cyan);
+  box-shadow: 0 0 8px var(--nexus-cyan);
+}
+
+.nexus-btn-ctrl.close:hover {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+/* ÍCONE DE ARRASTE (DRAG HANDLE) */
+.nexus-drag-handle {
+  cursor: grab;
+}
+.nexus-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* ============================================================
+   ESCUDO DE ISOLAMENTO TOTAL CONTRA RESETS EXTERNOS (EX: TERABOX [dir] *)
+   ============================================================ */
+#nexus-manager-overlay,
+#nexus-manager-overlay *,
+#nexus-modal-overlay,
+#nexus-modal-overlay *,
+#nexus-inpage-options-backdrop,
+#nexus-inpage-options-backdrop *,
+#nexus-confirm-overlay,
+#nexus-confirm-overlay *,
+#nexus-hud-container,
+#nexus-hud-container *,
+[dir] #nexus-manager-overlay,
+[dir] #nexus-manager-overlay *,
+[dir] #nexus-modal-overlay,
+[dir] #nexus-modal-overlay *,
+[dir] #nexus-inpage-options-backdrop,
+[dir] #nexus-inpage-options-backdrop *,
+[dir] #nexus-confirm-overlay,
+[dir] #nexus-confirm-overlay *,
+[dir] #nexus-hud-container,
+[dir] #nexus-hud-container * {
+  box-sizing: border-box !important;
+  text-align: left;
+  letter-spacing: normal;
+  visibility: visible;
+}
+
+#nexus-manager-overlay button,
+#nexus-modal-overlay button,
+#nexus-inpage-options-backdrop button,
+#nexus-confirm-overlay button,
+#nexus-hud-container button,
+[dir] #nexus-manager-overlay button,
+[dir] #nexus-modal-overlay button,
+[dir] #nexus-inpage-options-backdrop button,
+[dir] #nexus-confirm-overlay button,
+[dir] #nexus-hud-container button {
+  font-family: var(--nexus-font) !important;
+  cursor: pointer !important;
+  text-transform: none;
+  overflow: visible;
+}
+
+/* ============================================================
+   MINI JANELA MODAL DE ARQUIVOS DETECTADOS NA PÁGINA
+   ============================================================ */
+#nexus-modal-overlay,
+[dir] #nexus-modal-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(3, 5, 10, 0.6) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  z-index: 2147483645 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#nexus-modal-overlay .nexus-modal-card,
+[dir] #nexus-modal-overlay .nexus-modal-card,
+.nexus-modal-card {
+  width: 90% !important;
+  max-width: 440px !important;
+  background: rgba(10, 15, 30, 0.95) !important;
+  border: 1px solid rgba(0, 242, 254, 0.3) !important;
+  box-shadow: 0 0 35px rgba(0, 242, 254, 0.25), 0 20px 50px rgba(0, 0, 0, 0.8) !important;
+  border-radius: 18px !important;
+  padding: 22px !important;
+  font-family: var(--nexus-font) !important;
+  color: #f8fafc !important;
+  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+@keyframes nexus-modal-in {
+  from { opacity: 0; transform: scale(0.92) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+#nexus-modal-overlay .nexus-modal-header,
+[dir] #nexus-modal-overlay .nexus-modal-header,
+.nexus-modal-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  margin-bottom: 14px !important;
+  background: transparent !important;
+}
+
+#nexus-modal-overlay .nexus-modal-brand,
+#nexus-manager-overlay .nexus-modal-brand,
+[dir] #nexus-modal-overlay .nexus-modal-brand,
+[dir] #nexus-manager-overlay .nexus-modal-brand,
+.nexus-modal-brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-modal-overlay .nexus-modal-brand svg,
+#nexus-manager-overlay .nexus-modal-brand svg,
+[dir] #nexus-modal-overlay .nexus-modal-brand svg,
+[dir] #nexus-manager-overlay .nexus-modal-brand svg,
+.nexus-modal-brand svg {
+  width: 38px !important;
+  height: 38px !important;
+  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.65)) !important;
+  flex-shrink: 0 !important;
+  display: block !important;
+}
+
+#nexus-modal-overlay .nexus-modal-title-nexus,
+#nexus-manager-overlay .nexus-modal-title-nexus,
+[dir] #nexus-modal-overlay .nexus-modal-title-nexus,
+[dir] #nexus-manager-overlay .nexus-modal-title-nexus,
+.nexus-modal-title-nexus {
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.5px !important;
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: #00f2fe !important;
+  line-height: 1.1 !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-modal-overlay .nexus-modal-title-downloader,
+#nexus-manager-overlay .nexus-modal-title-downloader,
+[dir] #nexus-modal-overlay .nexus-modal-title-downloader,
+[dir] #nexus-manager-overlay .nexus-modal-title-downloader,
+.nexus-modal-title-downloader {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.5px !important;
+  text-transform: uppercase !important;
+  color: #94a3b8 !important;
+  display: block !important;
+  line-height: 1.2 !important;
+  margin-top: 2px !important;
+  padding: 0 !important;
+}
+
+#nexus-modal-overlay .nexus-modal-subbar,
+[dir] #nexus-modal-overlay .nexus-modal-subbar,
+.nexus-modal-subbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 12px !important;
+  font-size: 0.82rem !important;
+  padding: 0 !important;
+}
+
+#nexus-modal-overlay .nexus-modal-files-list,
+[dir] #nexus-modal-overlay .nexus-modal-files-list,
+.nexus-modal-files-list {
+  max-height: 240px !important;
+  overflow-y: auto !important;
+  margin-bottom: 16px !important;
+  padding-right: 4px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  padding-left: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar,
+.nexus-modal-files-list::-webkit-scrollbar {
+  width: 5px !important;
+}
+#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-track,
+.nexus-modal-files-list::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4) !important;
+  border-radius: 4px !important;
+}
+#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-thumb,
+.nexus-modal-files-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;
+  border-radius: 4px !important;
+}
+
+#nexus-modal-overlay .nexus-modal-file-row,
+[dir] #nexus-modal-overlay .nexus-modal-file-row,
+.nexus-modal-file-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 10px !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 8px !important;
+  margin-bottom: 6px !important;
+  font-size: 0.8rem !important;
+}
+
+#nexus-modal-overlay .nexus-modal-file-info,
+[dir] #nexus-modal-overlay .nexus-modal-file-info,
+.nexus-modal-file-info {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#nexus-modal-overlay .nexus-btn-download-action,
+[dir] #nexus-modal-overlay .nexus-btn-download-action,
+.nexus-btn-download-action {
+  width: 100% !important;
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;
+  color: #060810 !important;
+  font-weight: 800 !important;
+  font-size: 0.92rem !important;
+  padding: 12px 18px !important;
+  border: none !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.4) !important;
+  transition: all 0.25s !important;
+}
+
+#nexus-modal-overlay .nexus-btn-download-action:hover,
+[dir] #nexus-modal-overlay .nexus-btn-download-action:hover,
+.nexus-btn-download-action:hover {
+  box-shadow: 0 6px 28px rgba(0, 242, 254, 0.7) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ============================================================
+   JANELA DE GERENCIAMENTO DE DOWNLOADS IN-PAGE (ESTILO PORTABLE)
+   ============================================================ */
+#nexus-manager-overlay,
+[dir] #nexus-manager-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(3, 5, 10, 0.75) !important;
+  backdrop-filter: blur(12px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(160%) !important;
+  z-index: 2147483646 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-family: var(--nexus-font) !important;
+  color: #f8fafc !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-card,
+[dir] #nexus-manager-overlay .nexus-manager-card,
+.nexus-manager-card {
+  width: 92% !important;
+  max-width: 680px !important;
+  max-height: 86vh !important;
+  background: rgba(8, 12, 24, 0.96) !important;
+  border: 1px solid rgba(0, 242, 254, 0.35) !important;
+  box-shadow: 0 0 45px rgba(0, 242, 254, 0.2), 0 24px 60px rgba(0, 0, 0, 0.85) !important;
+  border-radius: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  animation: nexus-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin: auto !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-header,
+[dir] #nexus-manager-overlay .nexus-manager-header,
+.nexus-manager-header {
+  padding: 16px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(15, 23, 42, 0.45) !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-btn-ctrl.close,
+#nexus-modal-overlay .nexus-btn-ctrl.close,
+[dir] #nexus-manager-overlay .nexus-btn-ctrl.close,
+[dir] #nexus-modal-overlay .nexus-btn-ctrl.close,
+.nexus-btn-ctrl.close {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #94a3b8 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  transition: all 0.2s ease !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-btn-ctrl.close:hover,
+#nexus-modal-overlay .nexus-btn-ctrl.close:hover,
+[dir] #nexus-manager-overlay .nexus-btn-ctrl.close:hover,
+[dir] #nexus-modal-overlay .nexus-btn-ctrl.close:hover,
+.nexus-btn-ctrl.close:hover {
+  background: rgba(239, 68, 68, 0.8) !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;
+}
+
+#nexus-manager-overlay .nexus-manager-stats-panel,
+[dir] #nexus-manager-overlay .nexus-manager-stats-panel,
+.nexus-manager-stats-panel {
+  padding: 16px 20px !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(6, 8, 16, 0.6) 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  display: block !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-stats-grid,
+[dir] #nexus-manager-overlay .nexus-manager-stats-grid,
+.nexus-manager-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 12px !important;
+  margin-bottom: 12px !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-stat-box,
+[dir] #nexus-manager-overlay .nexus-stat-box,
+.nexus-stat-box {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-stat-box-label,
+[dir] #nexus-manager-overlay .nexus-stat-box-label,
+.nexus-stat-box-label {
+  font-size: 0.64rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  color: #94a3b8 !important;
+  letter-spacing: 0.5px !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-stat-box-val,
+[dir] #nexus-manager-overlay .nexus-stat-box-val,
+.nexus-stat-box-val {
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-stat-box-val.highlight,
+[dir] #nexus-manager-overlay .nexus-stat-box-val.highlight,
+.nexus-stat-box-val.highlight {
+  color: #00f2fe !important;
+  text-shadow: 0 0 10px rgba(0, 242, 254, 0.5) !important;
+}
+
+#nexus-manager-overlay .nexus-stat-box-val.success,
+[dir] #nexus-manager-overlay .nexus-stat-box-val.success,
+.nexus-stat-box-val.success {
+  color: #00f5a0 !important;
+  text-shadow: 0 0 10px rgba(0, 245, 160, 0.5) !important;
+}
+
+#nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,
+[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,
+.nexus-manager-main-progress-bar-wrap {
+  width: 100% !important;
+  height: 8px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-main-progress-bar-fill,
+[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill,
+.nexus-manager-main-progress-bar-fill {
+  height: 100% !important;
+  background: linear-gradient(90deg, #00f2fe 0%, #38bdf8 50%, #7f00ff 100%) !important;
+  border-radius: 999px !important;
+  transition: width 0.35s ease !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.7) !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,
+[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,
+.nexus-manager-main-progress-bar-fill.completed {
+  background: linear-gradient(90deg, #00f5a0 0%, #10b981 100%) !important;
+  box-shadow: 0 0 10px rgba(0, 245, 160, 0.7) !important;
+}
+
+#nexus-manager-overlay .nexus-manager-toolbar,
+[dir] #nexus-manager-overlay .nexus-manager-toolbar,
+.nexus-manager-toolbar {
+  padding: 10px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: rgba(11, 15, 25, 0.7) !important;
+  flex-wrap: wrap !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-filter-tabs,
+[dir] #nexus-manager-overlay .nexus-manager-filter-tabs,
+.nexus-manager-filter-tabs {
+  display: flex !important;
+  gap: 6px !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-filter-tab-btn,
+[dir] #nexus-manager-overlay .nexus-filter-tab-btn,
+.nexus-filter-tab-btn {
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #94a3b8 !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 5px 10px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-filter-tab-btn:hover,
+[dir] #nexus-manager-overlay .nexus-filter-tab-btn:hover,
+.nexus-filter-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+#nexus-manager-overlay .nexus-filter-tab-btn.active,
+[dir] #nexus-manager-overlay .nexus-filter-tab-btn.active,
+.nexus-filter-tab-btn.active {
+  background: rgba(0, 242, 254, 0.15) !important;
+  border-color: rgba(0, 242, 254, 0.5) !important;
+  color: #00f2fe !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;
+}
+
+#nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,
+[dir] #nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,
+.nexus-filter-tab-btn.torbox.active {
+  background: rgba(167, 139, 250, 0.2) !important;
+  border-color: #a78bfa !important;
+  color: #c084fc !important;
+  box-shadow: 0 0 10px rgba(167, 139, 250, 0.4) !important;
+}
+
+#nexus-manager-overlay .nexus-manager-actions-row,
+[dir] #nexus-manager-overlay .nexus-manager-actions-row,
+.nexus-manager-actions-row {
+  display: flex !important;
+  gap: 8px !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action,
+.nexus-btn-manager-action {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #f8fafc !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 5px 12px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  transition: all 0.2s ease !important;
+  margin: 0 !important;
+  white-space: nowrap !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action:hover,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action:hover,
+.nexus-btn-manager-action:hover {
+  background: rgba(0, 242, 254, 0.15) !important;
+  border-color: var(--nexus-cyan) !important;
+  color: var(--nexus-cyan) !important;
+}
+
+#nexus-manager-overlay .nexus-subbar-left,
+[dir] #nexus-manager-overlay .nexus-subbar-left,
+.nexus-subbar-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action.primary,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary,
+.nexus-btn-manager-action.primary {
+  background: rgba(0, 242, 254, 0.12) !important;
+  border: 1px solid var(--nexus-cyan) !important;
+  color: #00f2fe !important;
+  font-weight: 800 !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2) !important;
+  transition: all 0.2s ease !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action.primary:hover,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary:hover,
+.nexus-btn-manager-action.primary:hover {
+  background: rgba(0, 242, 254, 0.2) !important;
+  color: #00f2fe !important;
+  border-color: #00f2fe !important;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4) !important;
+  text-shadow: 0 0 6px rgba(0, 242, 254, 0.5) !important;
+  filter: none !important;
+  -webkit-text-stroke: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-tag-origin,
+[dir] #nexus-manager-overlay .nexus-tag-origin,
+.nexus-tag-origin {
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  font-weight: 700 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  font-size: 8.5px !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+  display: inline-block !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action.restart:hover,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action.restart:hover,
+.nexus-btn-manager-action.restart:hover {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: #f59e0b !important;
+  color: #f59e0b !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action.clear:hover,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action.clear:hover,
+.nexus-btn-manager-action.clear:hover {
+  background: rgba(168, 85, 247, 0.2) !important;
+  border-color: #c084fc !important;
+  color: #c084fc !important;
+  box-shadow: 0 0 10px rgba(192, 132, 252, 0.35) !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,
+.nexus-btn-manager-action.cancel:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35) !important;
+}
+
+#nexus-manager-overlay .nexus-item-btn-remove,
+[dir] #nexus-manager-overlay .nexus-item-btn-remove,
+.nexus-item-btn-remove {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  transition: all 0.2s !important;
+  line-height: 1 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-subbar,
+[dir] #nexus-manager-overlay .nexus-manager-subbar,
+.nexus-manager-subbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 20px !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  font-size: 0.76rem !important;
+  color: #94a3b8 !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-subbar-select-all,
+[dir] #nexus-manager-overlay .nexus-subbar-select-all,
+.nexus-subbar-select-all {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  font-weight: 600 !important;
+  color: #cbd5e1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-subbar-actions,
+[dir] #nexus-manager-overlay .nexus-subbar-actions,
+.nexus-subbar-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-tag-engine,
+[dir] #nexus-manager-overlay .nexus-tag-engine,
+.nexus-tag-engine {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #60a5fa !important;
+  border: 1px solid rgba(59, 130, 246, 0.35) !important;
+  font-weight: 700 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  font-size: 8.5px !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+  display: inline-block !important;
+}
+
+#nexus-manager-overlay .nexus-item-chk,
+[dir] #nexus-manager-overlay .nexus-item-chk,
+.nexus-item-chk {
+  accent-color: #00f2fe !important;
+  width: 15px !important;
+  height: 15px !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-block !important;
+}
+
+#nexus-manager-overlay .nexus-item-actions-btn-group,
+[dir] #nexus-manager-overlay .nexus-item-actions-btn-group,
+.nexus-item-actions-btn-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-left: 6px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-btn-item-action,
+[dir] #nexus-manager-overlay .nexus-btn-item-action,
+.nexus-btn-item-action {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #94a3b8 !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-btn-item-action:hover,
+[dir] #nexus-manager-overlay .nexus-btn-item-action:hover,
+.nexus-btn-item-action:hover {
+  background: rgba(0, 242, 254, 0.15) !important;
+  border-color: rgba(0, 242, 254, 0.4) !important;
+  color: #00f2fe !important;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3) !important;
+}
+
+#nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,
+[dir] #nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,
+.nexus-btn-item-action.open-browser:hover {
+  background: rgba(167, 139, 250, 0.15) !important;
+  border-color: rgba(167, 139, 250, 0.4) !important;
+  color: #c084fc !important;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.3) !important;
+}
+
+#nexus-manager-overlay .nexus-btn-manager-action:disabled,
+[dir] #nexus-manager-overlay .nexus-btn-manager-action:disabled,
+.nexus-btn-manager-action:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #64748b !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  box-shadow: none !important;
+}
+
+#nexus-manager-overlay .nexus-manager-list,
+[dir] #nexus-manager-overlay .nexus-manager-list,
+.nexus-manager-list {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding: 12px 20px !important;
+  max-height: 380px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar,
+.nexus-manager-list::-webkit-scrollbar {
+  width: 6px !important;
+}
+#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-track,
+.nexus-manager-list::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3) !important;
+  border-radius: 4px !important;
+}
+#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-thumb,
+.nexus-manager-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;
+  border-radius: 4px !important;
+}
+
+#nexus-manager-overlay .nexus-manager-item,
+[dir] #nexus-manager-overlay .nexus-manager-item,
+.nexus-manager-item {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  transition: border-color 0.2s, background 0.2s !important;
+  margin: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-manager-item:hover,
+[dir] #nexus-manager-overlay .nexus-manager-item:hover,
+.nexus-manager-item:hover {
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-color: rgba(0, 242, 254, 0.25) !important;
+}
+
+#nexus-manager-overlay .nexus-item-row-top,
+[dir] #nexus-manager-overlay .nexus-item-row-top,
+.nexus-item-row-top {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-item-title-group,
+[dir] #nexus-manager-overlay .nexus-item-title-group,
+.nexus-item-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  flex: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-item-name,
+[dir] #nexus-manager-overlay .nexus-item-name,
+.nexus-item-name {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #f8fafc !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  flex: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: normal !important;
+}
+
+#nexus-manager-overlay .nexus-item-meta,
+[dir] #nexus-manager-overlay .nexus-item-meta,
+.nexus-item-meta {
+  display: none !important;
+}
+
+#nexus-manager-overlay .nexus-item-progress-bar-wrap,
+[dir] #nexus-manager-overlay .nexus-item-progress-bar-wrap,
+.nexus-item-progress-bar-wrap {
+  width: 100% !important;
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 4px !important;
+  overflow: hidden !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-item-progress-bar-fill,
+[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill,
+.nexus-item-progress-bar-fill {
+  height: 100% !important;
+  background: linear-gradient(90deg, #00f2fe, #38bdf8) !important;
+  border-radius: 4px !important;
+  transition: width 0.3s ease !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-item-progress-bar-fill.completed,
+[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill.completed,
+.nexus-item-progress-bar-fill.completed {
+  background: #00f5a0 !important;
+}
+
+#nexus-manager-overlay .nexus-item-row-bottom,
+[dir] #nexus-manager-overlay .nexus-item-row-bottom,
+.nexus-item-row-bottom {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: #94a3b8 !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-item-bottom-left,
+[dir] #nexus-manager-overlay .nexus-item-bottom-left,
+.nexus-item-bottom-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#nexus-manager-overlay .nexus-item-size,
+[dir] #nexus-manager-overlay .nexus-item-size,
+.nexus-item-size {
+  color: #cbd5e1 !important;
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
+  margin-right: 2px !important;
+  display: inline-block !important;
+}
+
+#nexus-manager-overlay .nexus-item-status-tag,
+[dir] #nexus-manager-overlay .nexus-item-status-tag,
+.nexus-item-status-tag {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-weight: 700 !important;
+  margin-right: 2px !important;
+}
+
+#nexus-manager-overlay .nexus-item-status-tag.downloading,
+[dir] #nexus-manager-overlay .nexus-item-status-tag.downloading,
+.nexus-item-status-tag.downloading {
+  color: #38bdf8 !important;
+}
+
+#nexus-manager-overlay .nexus-item-status-tag.completed,
+[dir] #nexus-manager-overlay .nexus-item-status-tag.completed,
+.nexus-item-status-tag.completed {
+  color: #00f5a0 !important;
+}
+
+#nexus-manager-overlay .nexus-item-status-tag.pending,
+[dir] #nexus-manager-overlay .nexus-item-status-tag.pending,
+.nexus-item-status-tag.pending {
+  color: #f59e0b !important;
+}
+
+#nexus-manager-overlay .nexus-item-status-tag.failed,
+[dir] #nexus-manager-overlay .nexus-item-status-tag.failed,
+.nexus-item-status-tag.failed {
+  color: #ef4444 !important;
+}
+
+/* ============================================================
+   POPUP DE CONFIRMAÇÃO DE REINÍCIO (ESTILO DARK GLASS OBSIDIAN)
+   ============================================================ */
+#nexus-confirm-overlay,
+[dir] #nexus-confirm-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(2, 3, 8, 0.82) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-family: var(--nexus-font) !important;
+  color: #f8fafc !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#nexus-confirm-overlay .nexus-confirm-card,
+[dir] #nexus-confirm-overlay .nexus-confirm-card,
+.nexus-confirm-card {
+  width: 90% !important;
+  max-width: 420px !important;
+  background: rgba(10, 15, 30, 0.98) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  box-shadow: 0 0 35px rgba(245, 158, 11, 0.25), 0 20px 50px rgba(0, 0, 0, 0.9) !important;
+  border-radius: 18px !important;
+  padding: 24px !important;
+  text-align: center !important;
+  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+#nexus-confirm-overlay .nexus-confirm-icon,
+[dir] #nexus-confirm-overlay .nexus-confirm-icon,
+.nexus-confirm-icon {
+  font-size: 2.2rem !important;
+  margin-bottom: 12px !important;
+  display: inline-block !important;
+  animation: nexus-pulse-warning 2s infinite ease-in-out !important;
+}
+
+@keyframes nexus-pulse-warning {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.8)); }
+}
+
+#nexus-confirm-overlay .nexus-confirm-title,
+[dir] #nexus-confirm-overlay .nexus-confirm-title,
+.nexus-confirm-title {
+  font-size: 1.2rem !important;
+  font-weight: 800 !important;
+  color: #f8fafc !important;
+  margin-bottom: 8px !important;
+}
+
+#nexus-confirm-overlay .nexus-confirm-desc,
+[dir] #nexus-confirm-overlay .nexus-confirm-desc,
+.nexus-confirm-desc {
+  font-size: 0.85rem !important;
+  color: #cbd5e1 !important;
+  line-height: 1.45 !important;
+  margin-bottom: 20px !important;
+}
+
+#nexus-confirm-overlay .nexus-confirm-actions,
+[dir] #nexus-confirm-overlay .nexus-confirm-actions,
+.nexus-confirm-actions {
+  display: flex !important;
+  gap: 10px !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
+
+#nexus-confirm-overlay .nexus-btn-confirm-cancel,
+[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel,
+.nexus-btn-confirm-cancel {
+  flex: 1 !important;
+  padding: 10px 16px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #f8fafc !important;
+  font-weight: 700 !important;
+  font-size: 0.82rem !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+#nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,
+[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,
+.nexus-btn-confirm-cancel:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+#nexus-confirm-overlay .nexus-btn-confirm-restart,
+[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart,
+.nexus-btn-confirm-restart {
+  flex: 1 !important;
+  padding: 10px 16px !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 0.82rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4) !important;
+  transition: all 0.2s ease !important;
+}
+
+#nexus-confirm-overlay .nexus-btn-confirm-restart:hover,
+[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart:hover,
+.nexus-btn-confirm-restart:hover {
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ============================================================
+   JANELA IN-PAGE DE CONFIGURAÇÕES COMPLETAS DA EXTENSÃO
+   Obsidian Glass, Overlay com Blur e Toggle Roxo Oficial
+   ============================================================ */
+#nexus-inpage-options-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(3, 7, 18, 0.78) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  z-index: 2147483648 !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+#nexus-inpage-options-backdrop.active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+#nexus-inpage-options-window {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) scale(0.96) !important;
+  width: 720px !important;
+  max-width: 94vw !important;
+  max-height: 90vh !important;
+  background: rgba(11, 15, 25, 0.98) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 242, 254, 0.15) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  z-index: 2147483649 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  color: #f8fafc !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+#nexus-inpage-options-backdrop.active #nexus-inpage-options-window {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translate(-50%, -50%) scale(1) !important;
+}
+
+.nexus-inpage-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 16px 22px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+}
+
+.nexus-inpage-header-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.nexus-inpage-title {
+  font-size: 1.05rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.5px !important;
+  color: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.nexus-inpage-btn-close {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #cbd5e1 !important;
+  font-size: 15px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.nexus-inpage-btn-close:hover {
+  background: rgba(239, 68, 68, 0.8) !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;
+  transform: scale(1.05) !important;
+}
+
+.nexus-inpage-body {
+  padding: 20px 24px !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  max-height: calc(90vh - 130px) !important;
+}
+
+.nexus-inpage-card {
+  background: rgba(15, 23, 42, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 14px !important;
+  padding: 16px 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.nexus-inpage-card-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+}
+
+.nexus-inpage-card-title {
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  margin-bottom: 3px !important;
+}
+
+.nexus-inpage-card-desc {
+  font-size: 0.8rem !important;
+  color: #94a3b8 !important;
+  line-height: 1.4 !important;
+}
+
+/* TOGGLE ROXO NEXUS */
+.nexus-purple-toggle {
+  position: relative !important;
+  display: inline-block !important;
+  width: 48px !important;
+  height: 26px !important;
+  flex-shrink: 0 !important;
+}
+
+.nexus-purple-toggle input {
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.nexus-purple-slider {
+  position: absolute !important;
+  cursor: pointer !important;
+  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 26px !important;
+}
+
+.nexus-purple-slider:before {
+  position: absolute !important;
+  content: "" !important;
+  height: 18px !important;
+  width: 18px !important;
+  left: 3px !important;
+  bottom: 3px !important;
+  background-color: #ffffff !important;
+  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;
+}
+
+.nexus-purple-toggle input:checked + .nexus-purple-slider {
+  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6) !important;
+}
+
+.nexus-purple-toggle input:checked + .nexus-purple-slider:before {
+  transform: translateX(22px) !important;
+}
+
+/* TOGGLE VERDE (RECURSOS EXCLUSIVOS DA EXTENSÃO) */
+.nexus-green-toggle {
+  position: relative !important;
+  display: inline-block !important;
+  width: 48px !important;
+  height: 26px !important;
+  flex-shrink: 0 !important;
+}
+
+.nexus-green-toggle input {
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.nexus-green-slider {
+  position: absolute !important;
+  cursor: pointer !important;
+  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 26px !important;
+}
+
+.nexus-green-slider:before {
+  position: absolute !important;
+  content: "" !important;
+  height: 18px !important;
+  width: 18px !important;
+  left: 3px !important;
+  bottom: 3px !important;
+  background-color: #ffffff !important;
+  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;
+}
+
+.nexus-green-toggle input:checked + .nexus-green-slider {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6) !important;
+}
+
+.nexus-green-toggle input:checked + .nexus-green-slider:before {
+  transform: translateX(22px) !important;
+}
+
+/* CHAVE TORBOX E GATE VISUAL */
+.nexus-inpage-torbox-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.nexus-inpage-torbox-input {
+  flex: 1 1 240px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  font-size: 0.85rem !important;
+  outline: none !important;
+  transition: border-color 0.2s !important;
+}
+
+.nexus-inpage-torbox-input:focus {
+  border-color: var(--nexus-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;
+}
+
+.nexus-inpage-torbox-input:disabled {
+  background: rgba(15, 23, 42, 0.6) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  cursor: not-allowed !important;
+  letter-spacing: 2px !important;
+}
+
+.nexus-inpage-btn-action {
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #e2e8f0 !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+  white-space: nowrap !important;
+}
+
+.nexus-inpage-btn-action:hover:not(:disabled) {
+  background: rgba(0, 242, 254, 0.15) !important;
+  border-color: var(--nexus-cyan) !important;
+  color: #00f2fe !important;
+}
+
+.nexus-inpage-btn-action:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.nexus-inpage-chips-row {
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.nexus-inpage-chip {
+  padding: 7px 14px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  color: #94a3b8 !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+}
+
+.nexus-inpage-chip:hover {
+  background: rgba(0, 242, 254, 0.08) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(0, 242, 254, 0.3) !important;
+}
+
+.nexus-inpage-chip.active {
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-color: #10b981 !important;
+  color: #34d399 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+}
+
+.nexus-inpage-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  padding: 16px 22px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(15, 23, 42, 0.7) !important;
+}
+
+.nexus-inpage-btn-save {
+  padding: 9px 22px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(168, 85, 247, 0.6) !important;
+  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.4) !important;
+  transition: all 0.2s ease !important;
+}
+
+.nexus-inpage-btn-save:hover {
+  box-shadow: 0 0 24px rgba(192, 132, 252, 0.7) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* SELETOR DUAL NO MODAL IN-PAGE */
+.nexus-inpage-engine-modes {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  margin-top: 8px !important;
+}
+
+.nexus-inpage-engine-option {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  cursor: pointer !important;
+  transition: all 0.22s ease !important;
+  user-select: none !important;
+}
+
+.nexus-inpage-engine-option:hover {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+.nexus-inpage-engine-radio {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  border: 2px solid #64748b !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  margin-top: 2px !important;
+  transition: all 0.2s ease !important;
+}
+
+.nexus-inpage-radio-dot {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+.nexus-inpage-engine-opt-title {
+  font-size: 0.84rem !important;
+  font-weight: 700 !important;
+  color: #f1f5f9 !important;
+  transition: color 0.2s ease !important;
+}
+
+.nexus-inpage-engine-opt-desc {
+  font-size: 0.74rem !important;
+  color: #94a3b8 !important;
+  line-height: 1.3 !important;
+  margin-top: 2px !important;
+}
+
+/* Modo Portable Ativo (Roxo Oficial) */
+.nexus-inpage-engine-option.mode-portable.active {
+  background: rgba(168, 85, 247, 0.12) !important;
+  border-color: rgba(168, 85, 247, 0.6) !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.25) !important;
+}
+
+.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-radio {
+  border-color: #c084fc !important;
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.6) !important;
+}
+
+.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-radio-dot {
+  background: #c084fc !important;
+}
+
+.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-opt-title {
+  color: #e9d5ff !important;
+}
+
+/* Modo Extensão Ativo (Verde Esmeralda) */
+.nexus-inpage-engine-option.mode-extension.active {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25) !important;
+}
+
+.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-radio {
+  border-color: #34d399 !important;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6) !important;
+}
+
+.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-radio-dot {
+  background: #34d399 !important;
+}
+
+.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-opt-title {
+  color: #a7f3d0 !important;
+}
+
+/* Efeito highlight quando direcionado para configurar pasta */
+@keyframes nexusPulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.7); }
+  50% { box-shadow: 0 0 22px 6px rgba(0, 242, 254, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0); }
+}
+
+.nexus-highlight-pulse {
+  animation: nexusPulseGlow 1.4s ease-out !important;
+  border-color: #00f2fe !important;
+}

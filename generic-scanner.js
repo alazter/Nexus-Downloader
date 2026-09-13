@@ -110,93 +110,12 @@ function makeHttpRequest(urlStr, options = {}) {
 }
 
 // ----------------------------------------------------
-// MOTOR 1: GoFile API Engine (Suporte a Pastas e Subpastas)
+// MOTOR 1: GoFile API Engine (Suporte a Pastas e Subpastas com Assinatura WT)
 // ----------------------------------------------------
-let gofileAccountToken = null;
-
-async function getGoFileAccountToken() {
-  try {
-    const res = await makeHttpRequest('https://api.gofile.io/accounts', { method: 'POST' });
-    const json = JSON.parse(res.bodyText);
-    if (json.status === 'ok' && json.data && json.data.token) {
-      return json.data.token;
-    }
-  } catch (e) {}
-  return 'wt=4fd6a892dcd6'; // Fallback token publico
-}
-
-async function scanGoFileFolder(contentId, folderPath = '', token = null) {
-  const results = [];
-  const accToken = token || await getGoFileAccountToken();
-  const url = `https://api.gofile.io/contents/${contentId}`;
-
-  const res = await makeHttpRequest(url, { token: accToken });
-  const json = JSON.parse(res.bodyText);
-
-  if (json.status !== 'ok' || !json.data) {
-    if (json.status === 'error-notPremium') {
-      throw new Error('Este conteúdo no GoFile é exclusivo para contas Premium do GoFile (error-notPremium). Para baixar pelo Nexus, ative a chave do Torbox nos Ajustes.');
-    }
-    throw new Error(json.status || 'Falha ao acessar GoFile API');
-  }
-
-  const data = json.data;
-  const currentFolderName = folderPath ? `${folderPath} / ${data.name || 'GoFile'}` : (data.name || 'GoFile Folder');
-
-  if (data.children) {
-    for (const key of Object.keys(data.children)) {
-      const child = data.children[key];
-      if (child.type === 'file') {
-        results.push({
-          id: `gofile_${child.id}`,
-          fileId: child.id,
-          name: child.name,
-          size: child.size || 0,
-          downloadUrl: child.link,
-          directUrl: child.link,
-          folderName: currentFolderName,
-          relativePath: `${currentFolderName}/${child.name}`,
-          gofileToken: accToken
-        });
-      } else if (child.type === 'folder') {
-        // Varredura recursiva de subpasta
-        const subFiles = await scanGoFileFolder(child.id, currentFolderName, accToken);
-        results.push(...subFiles);
-      }
-    }
-  }
-
-  return results;
-}
+const { scanGoFileLink, getGoFileAccountToken } = require('./gofile-scanner');
 
 async function scanGoFile(urlStr) {
-  if (!urlStr.includes('gofile.io')) return null;
-  const match = urlStr.match(/gofile\.io\/d\/([a-zA-Z0-9_-]+)/i);
-  if (!match) return null;
-
-  const contentId = match[1];
-  console.log(`[GoFile Engine] Escaneando conteúdo ID: ${contentId}`);
-  try {
-    const files = await scanGoFileFolder(contentId);
-    if (files && files.length > 0) return files;
-  } catch (errGo) {
-    console.warn(`[GoFile Engine] Aviso ao escanear ${contentId}:`, errGo.message);
-  }
-
-  // Fallback no estilo MediaFire: Adiciona o item à fila para resolução e download no momento da execução
-  return [{
-    id: `gofile_${contentId}`,
-    fileId: contentId,
-    name: `gofile_${contentId}`,
-    size: 0,
-    sizeFormatted: 'Desconhecido',
-    relativePath: `GoFile_Downloads/gofile_${contentId}`,
-    folderName: 'GoFile_Downloads',
-    isHttpDirect: true,
-    bunkrPageUrl: urlStr,
-    sourceUrl: urlStr,
-    url: urlStr
-  }];
+  return await scanGoFileLink(urlStr);
 }
 
 // ----------------------------------------------------
@@ -452,9 +371,12 @@ async function scanPixelDrain(urlStr) {
       directUrl: directUrl,
       sourceUrl: pageUrl,
       originalUrl: pageUrl,
-      folderName: 'Arquivos Avulsos PixelDrain',
-      relativePath: `Arquivos Avulsos PixelDrain/${fileName}`,
-      isHttpDirect: true
+      folderName: null,
+      relativePath: fileName,
+      isHttpDirect: true,
+      isAvulso: true,
+      isSingleFile: true,
+      service: 'pixeldrain'
     }];
   }
 
@@ -586,9 +508,12 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
       sizeFormatted: 'Procurando...',
       downloadUrl: urlStr,
       directUrl: urlStr,
-      folderName: domain ? domain.toUpperCase() : 'Arquivos Avulsos',
-      relativePath: (domain ? domain.toUpperCase() : 'Arquivos Avulsos') + '/' + cleanFileName,
+      folderName: null,
+      relativePath: cleanFileName,
       isHttpDirect: true,
+      isAvulso: true,
+      isSingleFile: true,
+      service: 'generic',
       url: urlStr
     }];
   } catch (err) {

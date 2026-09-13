@@ -122,8 +122,10 @@ async function scanVikingFileLink(pageUrl) {
     bunkrPageUrl: pageUrl,
     isHttpDirect: true,
     service: 'Vik1ngFile',
-    folderName: 'Arquivos Avulsos',
-    relativePath: `Arquivos Avulsos/${result.fileName}`
+    folderName: null,
+    relativePath: result.fileName,
+    isAvulso: true,
+    isSingleFile: true
   }];
 }
 

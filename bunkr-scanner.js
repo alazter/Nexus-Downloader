@@ -160,7 +160,7 @@ async function getBunkrFileDetails(fileId, folderName, baseDomain = 'https://bun
       numericId: numericId,
       name: filename,
       relativePath: relativePath,
-      folderName: folderName || 'Bunkr_Downloads',
+      folderName: folderName || null,
       size: sizeInBytes,
       sizeFormatted: formatBytes(sizeInBytes),
       isHttpDirect: true,
@@ -175,7 +175,7 @@ async function getBunkrFileDetails(fileId, folderName, baseDomain = 'https://bun
       fileId: fileId,
       name: `bunkr_${fileId}.bin`,
       relativePath: folderName ? `${folderName}/bunkr_${fileId}.bin` : `bunkr_${fileId}.bin`,
-      folderName: folderName || 'Bunkr_Downloads',
+      folderName: folderName || null,
       size: 0,
       sizeFormatted: 'Desconhecido',
       isHttpDirect: true,
@@ -190,57 +190,87 @@ async function getBunkrFileDetails(fileId, folderName, baseDomain = 'https://bun
  */
 async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
   try {
-    const fileSlug = fileId || numericId;
+    let fileSlug = fileId || numericId;
+    if (!fileSlug && pageUrlInput) {
+      const m = pageUrlInput.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || pageUrlInput.match(/bunkr\.[^/]+\/([a-zA-Z0-9_-]+)/i);
+      if (m && m[1]) fileSlug = m[1];
+    }
     if (!fileSlug) throw new Error('ID/Slug do arquivo não informado');
 
     let pageUrl = pageUrlInput;
     if (!pageUrl || typeof pageUrl !== 'string' || !pageUrl.startsWith('http')) {
-      pageUrl = `https://bunkr.ph/f/${fileSlug}`;
+      pageUrl = `https://bunkr.cr/f/${fileSlug}`;
     }
+
+    let domainMatch = pageUrl.match(/(https?:\/\/[^/]+)/i);
+    let baseDomain = domainMatch ? domainMatch[1] : 'https://bunkr.cr';
 
     let baseUrl = null;
     let originalName = null;
     let dataFileId = null;
 
-    // 1. Tentar extrair jsCDN ou link direto diretamente do HTML da página do arquivo
-    try {
-      const html = await fetchText(pageUrl);
-      if (html) {
-        const jsCdnMatch = html.match(/var\s+jsCDN\s*=\s*["']([^"']+)["']/);
-        if (jsCdnMatch && jsCdnMatch[1]) {
-          baseUrl = jsCdnMatch[1].replace(/\\\/|\\/g, '/');
-        }
-        const fileIdMatch = html.match(/data-file-id=["']([^"']+)["']/);
-        if (fileIdMatch && fileIdMatch[1]) {
-          dataFileId = fileIdMatch[1];
-        }
+    // 1. Tentar extrair jsCDN ou link direto diretamente do HTML da página do arquivo (/f/slug ou URL fornecida)
+    const testPages = [
+      `${baseDomain}/f/${fileSlug}`,
+      pageUrl,
+      `https://bunkr.cr/f/${fileSlug}`,
+      `https://bunkr.ph/f/${fileSlug}`
+    ];
 
-        if (!baseUrl) {
-          const directHrefMatch = html.match(/href=["'](https?:\/\/[^"']*(?:cdn|media|storage|get)\.[^"']+)["']/i) ||
-                                 html.match(/src=["'](https?:\/\/[^"']*(?:cdn|media|storage)\.[^"']+)["']/i) ||
-                                 html.match(/href=["'](https?:\/\/dl\.bunkr\.[^"']+)["']/i);
-          if (directHrefMatch && directHrefMatch[1]) {
-            baseUrl = directHrefMatch[1];
+    for (const pUrl of testPages) {
+      if (!pUrl || !pUrl.startsWith('http')) continue;
+      try {
+        const html = await fetchText(pUrl);
+        if (html) {
+          const jsCdnMatch = html.match(/var\s+jsCDN\s*=\s*["']([^"']+)["']/);
+          if (jsCdnMatch && jsCdnMatch[1]) {
+            baseUrl = jsCdnMatch[1].replace(/\\\/|\\/g, '/');
           }
+          const fileIdMatch = html.match(/data-file-id=["']([^"']+)["']/);
+          if (fileIdMatch && fileIdMatch[1]) {
+            dataFileId = fileIdMatch[1];
+          }
+          const titleMatch = html.match(/<h1[^>]*>(.*?)<\/h1>/i) || html.match(/<title>(.*?)<\/title>/i);
+          if (titleMatch && titleMatch[1]) {
+            let cleanTitle = titleMatch[1].replace(/Download /i, '').replace(/ - Bunkr.*/i, '').trim();
+            if (cleanTitle && cleanTitle !== 'Bunkr') {
+              originalName = cleanTitle;
+            }
+          }
+
+          if (!baseUrl) {
+            const directHrefMatch = html.match(/href=["'](https?:\/\/[^"']*(?:cdn|media|storage|get)\.[^"']+)["']/i) ||
+                                   html.match(/src=["'](https?:\/\/[^"']*(?:cdn|media|storage)\.[^"']+)["']/i);
+            if (directHrefMatch && directHrefMatch[1]) {
+              baseUrl = directHrefMatch[1];
+            }
+          }
+          if (baseUrl) break;
         }
+      } catch (e) {
+        // Tenta próxima página candidata
       }
-    } catch (e) {
-      console.warn('[Bunkr Scanner] Não foi possível ler o HTML da página, tentando via API POST...', e.message);
     }
 
     // 2. Se jsCDN/link direto não foi encontrado no HTML, consulta a API POST _001_v2 (fallback BunkrDownloader 1.3.0)
     if (!baseUrl) {
-      try {
-        const targetId = dataFileId || numericId || fileId || fileSlug;
-        const meta = await postJson('https://dl.bunkr.cr/api/_001_v2', { id: targetId });
-        if (meta && meta.mediafiles && meta.path) {
-          const cleanMediaHost = meta.mediafiles.endsWith('/') ? meta.mediafiles.slice(0, -1) : meta.mediafiles;
-          const cleanPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
-          baseUrl = `${cleanMediaHost}${cleanPath}`;
-          if (meta.original) originalName = meta.original;
-        }
-      } catch (errPost) {
-        console.warn('[Bunkr Scanner] Erro ao consultar API POST _001_v2:', errPost.message);
+      const targetId = dataFileId || numericId || fileId || fileSlug;
+      const apiEndpoints = [
+        'https://dl.bunkr.cr/api/_001_v2',
+        'https://dl.bunkr.ph/api/_001_v2',
+        'https://dl.bunkrr.cr/api/_001_v2'
+      ];
+      for (const apiEndpoint of apiEndpoints) {
+        try {
+          const meta = await postJson(apiEndpoint, { id: targetId });
+          if (meta && meta.mediafiles && meta.path) {
+            const cleanMediaHost = meta.mediafiles.endsWith('/') ? meta.mediafiles.slice(0, -1) : meta.mediafiles;
+            const cleanPath = meta.path.startsWith('/') ? meta.path : '/' + meta.path;
+            baseUrl = `${cleanMediaHost}${cleanPath}`;
+            if (meta.original) originalName = meta.original;
+            break;
+          }
+        } catch (errPost) {}
       }
     }
 
@@ -279,13 +309,15 @@ async function resolveBunkrDirectUrl(numericId, fileId, pageUrlInput) {
       return {
         directUrl: finalUrl.toString(),
         cookieHeader: '',
-        referer: 'https://dl.bunkrr.cr/'
+        referer: 'https://dl.bunkrr.cr/',
+        name: originalName || undefined
       };
     } catch (eSign) {
       return {
         directUrl: baseUrl,
         cookieHeader: '',
-        referer: 'https://dl.bunkrr.cr/'
+        referer: 'https://dl.bunkrr.cr/',
+        name: originalName || undefined
       };
     }
 
@@ -474,8 +506,13 @@ async function scanBunkrLink(urlStr) {
       fileId = parts.pop();
     }
     if (fileId && fileId.length >= 3) {
-      const singleFile = await getBunkrFileDetails(fileId, 'Arquivos Avulsos Bunkr', baseDomain);
-      if (singleFile) files.push(singleFile);
+      const singleFile = await getBunkrFileDetails(fileId, null, baseDomain);
+      if (singleFile) {
+        singleFile.isAvulso = true;
+        singleFile.isSingleFile = true;
+        singleFile.service = 'bunkr';
+        files.push(singleFile);
+      }
     }
   }
 

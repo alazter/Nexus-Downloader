@@ -231,9 +231,8 @@ async function getTorboxActiveCloudJobsCount(apiKey) {
     const webdlRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
     if (webdlRes && webdlRes.data && Array.isArray(webdlRes.data.data)) {
       webdlRes.data.data.forEach(w => {
-        const isFinished = !!w.download_finished || w.download_state === 'completed' || (w.progress !== undefined && w.progress >= 1);
-        const isInactive = !!w.inactive || (w.download_state && (w.download_state.toLowerCase().includes('error') || w.download_state.toLowerCase().includes('expired')));
-        if (!isFinished && !isInactive) activeJobs++;
+        const stateLower = (w.download_state || '').toLowerCase();
+        if (w.active === true || stateLower === 'downloading') activeJobs++;
       });
     }
   } catch (e) {}
@@ -242,9 +241,8 @@ async function getTorboxActiveCloudJobsCount(apiKey) {
     const torrentRes = await callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey);
     if (torrentRes && torrentRes.data && Array.isArray(torrentRes.data.data)) {
       torrentRes.data.data.forEach(t => {
-        const isFinished = !!t.download_finished || t.download_state === 'completed' || (t.progress !== undefined && t.progress >= 1);
-        const isInactive = !!t.inactive || (t.download_state && (t.download_state.toLowerCase().includes('error') || t.download_state.toLowerCase().includes('expired')));
-        if (!isFinished && !isInactive) activeJobs++;
+        const stateLower = (t.download_state || '').toLowerCase();
+        if (t.active === true || stateLower === 'downloading') activeJobs++;
       });
     }
   } catch (e) {}
@@ -703,13 +701,27 @@ async function fetchTorboxUserDownloads(apiKey) {
 
   let allFiles = [];
 
-  // 1. Busca Torrents da conta
+  // Busca Torrents e WebDL em paralelo para velocidade máxima (reduz tempo pela metade)
+  let torrentsRes = null;
+  let webdlRes = null;
   try {
-    let torrentsRes = await callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey);
-    if (!torrentsRes.data || !torrentsRes.data.data) {
-      torrentsRes = await callTorboxApi('/torrents/mylist', 'GET', apiKey);
-    }
-    const torrents = (torrentsRes.data && torrentsRes.data.data) ? torrentsRes.data.data : [];
+    const results = await Promise.all([
+      callTorboxApi('/torrents/mylist?bypass_cache=true', 'GET', apiKey)
+        .then(res => (res.data && res.data.data) ? res : callTorboxApi('/torrents/mylist', 'GET', apiKey))
+        .catch(err => { console.warn('[Torbox Fetch] Erro ao buscar lista de torrents:', err.message); return null; }),
+      callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey)
+        .then(res => (res.data && res.data.data) ? res : callTorboxApi('/webdl/mylist', 'GET', apiKey))
+        .catch(err => { console.warn('[Torbox Fetch] Erro ao buscar lista de webdl:', err.message); return null; })
+    ]);
+    torrentsRes = results[0];
+    webdlRes = results[1];
+  } catch (errParallel) {
+    console.warn('[Torbox Fetch] Erro no carregamento paralelo:', errParallel.message);
+  }
+
+  // 1. Processa Torrents da conta
+  try {
+    const torrents = (torrentsRes && torrentsRes.data && torrentsRes.data.data) ? torrentsRes.data.data : [];
 
     for (const t of torrents) {
       const hashStr = t.hash || '';
@@ -720,11 +732,28 @@ async function fetchTorboxUserDownloads(apiKey) {
       const rawProg = t.progress !== undefined ? t.progress : 0;
       const percent = Math.round(rawProg <= 1 ? rawProg * 100 : rawProg);
       const stateLower = (t.download_state || '').toLowerCase();
-      const isFinished = !!t.download_finished || stateLower === 'completed' || stateLower === 'seeding' || stateLower === 'cached';
-      const isQueued = !isFinished && (stateLower.includes('queued') || stateLower.includes('waiting') || stateLower.includes('metadl'));
-      const isInactive = !isFinished && !isQueued && (!!t.inactive || stateLower.includes('inactive') || stateLower.includes('error') || stateLower.includes('failed') || stateLower.includes('cancelled'));
 
-      let statusText = isFinished ? 'Concluído' : (isQueued ? 'Em Fila' : (isInactive ? 'Inativo' : (stateLower.includes('stalled') ? 'Stalled (No Seeds)' : `Baixando (${percent}%)`)));
+      const isActive = t.active === true || stateLower === 'downloading';
+      const isQueued = !isActive && (stateLower.includes('queued') || stateLower.includes('waiting') || t.queued === true);
+      const isInactive = !isActive && !isQueued && (
+        t.download_present === false ||
+        stateLower === 'expired' ||
+        stateLower.includes('failed') ||
+        stateLower.includes('stalled') ||
+        stateLower.includes('incomplete') ||
+        stateLower === 'metadl' ||
+        stateLower.includes('error') ||
+        stateLower.includes('cancelled')
+      );
+      const isFinished = !isActive && !isQueued && !isInactive && t.download_present === true && (
+        t.download_finished === true ||
+        stateLower === 'completed' ||
+        stateLower === 'cached' ||
+        stateLower === 'seeding' ||
+        stateLower === 'uploading'
+      );
+
+      let statusText = isFinished ? 'Concluído' : (isQueued ? 'Em Fila' : (isInactive ? (stateLower === 'expired' ? 'Expirado' : (stateLower.includes('stalled') ? 'Stalled (No Seeds)' : 'Inativo')) : `Baixando (${percent}%)`));
 
       if (t.files && Array.isArray(t.files) && t.files.length > 0) {
         t.files.forEach((f, fIdx) => {
@@ -744,9 +773,11 @@ async function fetchTorboxUserDownloads(apiKey) {
             torboxType: 'torrent',
             torboxId: t.id,
             torboxFileId: fileId,
+            isActive: isActive,
             isFinished: isFinished,
             isQueued: isQueued,
             isInactive: isInactive,
+            downloadPresent: t.download_present !== false,
             progress: percent,
             cloudStatus: statusText,
             cloudState: t.download_state || '',
@@ -776,9 +807,11 @@ async function fetchTorboxUserDownloads(apiKey) {
           torboxType: 'torrent',
           torboxId: t.id,
           torboxFileId: 0,
+          isActive: isActive,
           isFinished: isFinished,
           isQueued: isQueued,
           isInactive: isInactive,
+          downloadPresent: t.download_present !== false,
           progress: percent,
           cloudStatus: statusText,
           cloudState: t.download_state || '',
@@ -799,24 +832,37 @@ async function fetchTorboxUserDownloads(apiKey) {
     console.warn('[Torbox Fetch] Erro ao buscar lista de torrents:', err.message);
   }
 
-  // 2. Busca WebDL / Hosters da conta
+  // 2. Processa WebDL / Hosters da conta
   try {
-    let webdlRes = await callTorboxApi('/webdl/mylist?bypass_cache=true', 'GET', apiKey);
-    if (!webdlRes.data || !webdlRes.data.data) {
-      webdlRes = await callTorboxApi('/webdl/mylist', 'GET', apiKey);
-    }
-    const webdls = (webdlRes.data && webdlRes.data.data) ? webdlRes.data.data : [];
+    const webdls = (webdlRes && webdlRes.data && webdlRes.data.data) ? webdlRes.data.data : [];
 
     for (const w of webdls) {
       const folderName = w.name || `WebDL_${w.id}`;
       const rawProg = w.progress !== undefined ? w.progress : 0;
       const percent = Math.round(rawProg <= 1 ? rawProg * 100 : rawProg);
       const wStateLower = (w.download_state || '').toLowerCase();
-      const isFinished = !!w.download_finished || wStateLower === 'completed' || wStateLower === 'cached';
-      const isQueued = !isFinished && (wStateLower.includes('queued') || wStateLower.includes('waiting') || wStateLower.includes('metadl'));
-      const isInactive = !isFinished && !isQueued && (!!w.inactive || wStateLower.includes('inactive') || wStateLower.includes('error') || wStateLower.includes('failed') || wStateLower.includes('cancelled'));
 
-      let statusText = isFinished ? 'Concluído' : (isQueued ? 'Em Fila' : (isInactive ? 'Inativo' : `Baixando (${percent}%)`));
+      const isActive = w.active === true || wStateLower === 'downloading';
+      const isQueued = !isActive && (wStateLower.includes('queued') || wStateLower.includes('waiting') || w.queued === true);
+      const isInactive = !isActive && !isQueued && (
+        w.download_present === false ||
+        wStateLower === 'expired' ||
+        wStateLower.includes('failed') ||
+        wStateLower.includes('stalled') ||
+        wStateLower.includes('incomplete') ||
+        wStateLower === 'metadl' ||
+        wStateLower.includes('error') ||
+        wStateLower.includes('cancelled')
+      );
+      const isFinished = !isActive && !isQueued && !isInactive && w.download_present === true && (
+        w.download_finished === true ||
+        wStateLower === 'completed' ||
+        wStateLower === 'cached' ||
+        wStateLower === 'seeding' ||
+        wStateLower === 'uploading'
+      );
+
+      let statusText = isFinished ? 'Concluído' : (isQueued ? 'Em Fila' : (isInactive ? (wStateLower === 'expired' ? 'Expirado' : 'Inativo') : `Baixando (${percent}%)`));
       const folderDisplayName = sanitizePathSegment(w.name || `WebDL_${w.id}`);
 
       if (!w.files || !Array.isArray(w.files) || w.files.length <= 1) {
@@ -842,8 +888,11 @@ async function fetchTorboxUserDownloads(apiKey) {
           isZipDownload: true,
           sourceUrl: w.original_url || '',
           originalUrl: w.original_url || '',
+          isActive: isActive,
           isFinished: isFinished,
+          isQueued: isQueued,
           isInactive: isInactive,
+          downloadPresent: w.download_present !== false,
           progress: percent,
           cloudStatus: statusText,
           createdAt: w.created_at || w.added_at || '',
@@ -877,8 +926,11 @@ async function fetchTorboxUserDownloads(apiKey) {
             torboxFileId: fFileId,
             sourceUrl: w.original_url || '',
             originalUrl: w.original_url || '',
+            isActive: isActive,
             isFinished: isFinished,
+            isQueued: isQueued,
             isInactive: isInactive,
+            downloadPresent: w.download_present !== false,
             progress: percent,
             cloudStatus: statusText,
             createdAt: w.created_at || w.added_at || '',

@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('api', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
   clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
+  openExtensionFolder: () => ipcRenderer.invoke('open-extension-folder'),
+  syncTelemetryNow: () => ipcRenderer.invoke('sync-telemetry-now'),
+  openTelemetryFolder: () => ipcRenderer.invoke('open-telemetry-folder'),
+  getBridgeStatus: () => ipcRenderer.invoke('get-bridge-status'),
 
   // Autenticação
   checkAuth: () => ipcRenderer.invoke('check-auth'),
