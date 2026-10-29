@@ -126,20 +126,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Se houver apenas 1 item detectado e a página for um álbum/pasta de hoster, requisitar scan ao bridge
         const tabUrl = tab.url || '';
-        const isSupportedHoster = tabUrl.includes('gofile.io') || tabUrl.includes('bunkr') || tabUrl.includes('pixeldrain') || tabUrl.includes('drive.google.com') || tabUrl.includes('mediafire.com');
+        const isSupportedHoster = tabUrl.includes('gofile.io') || tabUrl.includes('bunkr') || tabUrl.includes('pixeldrain') ||
+          tabUrl.includes('drive.google.com') || tabUrl.includes('mediafire.com') || tabUrl.includes('onedrive') ||
+          tabUrl.includes('send.now') || tabUrl.includes('send.cm') || tabUrl.includes('drime') || tabUrl.includes('turbo.cr') ||
+          tabUrl.includes('vik1ngfile') || tabUrl.includes('vikingfile') || tabUrl.includes('1fichier.com') ||
+          tabUrl.includes('mega.nz') || tabUrl.includes('mega.co.nz') || tabUrl.includes('megaup.net') ||
+          tabUrl.includes('filester') || tabUrl.includes('fileditch') || tabUrl.includes('datanodes') ||
+          tabUrl.includes('filekeeper') || tabUrl.includes('rapidgator') || tabUrl.includes('rg.to') ||
+          tabUrl.includes('terabox') || tabUrl.includes('1024tera') || tabUrl.includes('freeterabox');
         if (res.files.length === 1 && isSupportedHoster) {
           chrome.runtime.sendMessage({ action: 'SCAN_PAGE_URL', url: tabUrl }, (scanRes) => {
             if (scanRes && scanRes.success && scanRes.files && scanRes.files.length > 0) {
-              const mapped = scanRes.files.map(f => ({
-                id: f.id,
-                url: f.url || f.downloadUrl || f.directUrl || tabUrl,
-                directUrl: f.directUrl || f.downloadUrl || f.url,
-                filename: f.name || f.filename || 'arquivo',
-                size: f.size || 0,
-                service: res.service || 'Download',
-                type: f.type || '.Arquivo'
-              }));
-              renderFileList(mapped, res.service);
+              const mapped = scanRes.files.map(f => {
+                let svc = f.service || res.service || 'Download';
+                if (svc === 'generic') svc = 'Sites Genéricos';
+                return {
+                  id: f.id,
+                  url: f.url || f.downloadUrl || f.directUrl || tabUrl,
+                  directUrl: f.directUrl || f.downloadUrl || f.url,
+                  filename: f.name || f.filename || 'arquivo',
+                  size: f.size || 0,
+                  service: svc,
+                  type: f.type || '.Arquivo'
+                };
+              });
+              renderFileList(mapped, mapped[0] ? mapped[0].service : res.service);
             }
           });
         }

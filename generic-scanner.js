@@ -47,6 +47,19 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+function parseSizeToBytes(sizeStr) {
+  if (!sizeStr || typeof sizeStr !== 'string') return 0;
+  const match = sizeStr.trim().match(/([\d\.,]+)\s*([a-zA-Z]+)/);
+  if (!match) return 0;
+  const numPart = parseFloat(match[1].replace(',', '.'));
+  const unit = match[2].toLowerCase();
+  if (unit.includes('to') || unit.includes('tb')) return Math.round(numPart * 1024 * 1024 * 1024 * 1024);
+  if (unit.includes('go') || unit.includes('gb')) return Math.round(numPart * 1024 * 1024 * 1024);
+  if (unit.includes('mo') || unit.includes('mb')) return Math.round(numPart * 1024 * 1024);
+  if (unit.includes('ko') || unit.includes('kb')) return Math.round(numPart * 1024);
+  return Math.round(numPart);
+}
+
 function makeHttpRequest(urlStr, options = {}) {
   return new Promise((resolve, reject) => {
     try {
@@ -119,6 +132,168 @@ async function scanGoFile(urlStr) {
 }
 
 // ----------------------------------------------------
+// MOTOR: 1Fichier Directory Parser (/dir/)
+// ----------------------------------------------------
+async function scan1FichierDirectory(urlStr) {
+  try {
+    const res = await makeHttpRequest(urlStr, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (res.statusCode !== 200 || !res.bodyText) {
+      throw new Error(`Status ${res.statusCode}`);
+    }
+
+    const html = res.bodyText;
+    const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+    const files = [];
+
+    for (const r of rows) {
+      const linkM = r.match(/href="([^"]*1fichier\.com\/\?[^"]+)"/i);
+      const nameM = r.match(/<a[^>]+>([^<]+)<\/a>/i);
+      const sizeM = r.match(/<td[^>]*>([\d\.,]+\s*(?:[KMGT]?B|Bytes|o|Ko|Mo|Go|To))<\/td>/i);
+
+      if (linkM) {
+        let directLink = linkM[1];
+        if (directLink.startsWith('//')) directLink = 'https:' + directLink;
+        else if (directLink.startsWith('/')) directLink = 'https://1fichier.com' + directLink;
+
+        let name = nameM ? nameM[1].trim() : path.basename(new URL(directLink).pathname) || '1fichier_file';
+        name = name.replace(/[\\/:*?"<>|]/g, '_');
+        const sizeFormatted = sizeM ? sizeM[1].trim() : 'Desconhecido';
+
+        let sizeBytes = 0;
+        if (sizeM) {
+          const numPart = parseFloat(sizeM[1].replace(',', '.'));
+          const unit = sizeM[1].toLowerCase();
+          if (unit.includes('to') || unit.includes('tb')) sizeBytes = Math.round(numPart * 1024 * 1024 * 1024 * 1024);
+          else if (unit.includes('go') || unit.includes('gb')) sizeBytes = Math.round(numPart * 1024 * 1024 * 1024);
+          else if (unit.includes('mo') || unit.includes('mb')) sizeBytes = Math.round(numPart * 1024 * 1024);
+          else if (unit.includes('ko') || unit.includes('kb')) sizeBytes = Math.round(numPart * 1024);
+          else sizeBytes = Math.round(numPart);
+        }
+
+        const idSuffix = Math.random().toString(36).substring(2, 9);
+        files.push({
+          id: `onefichier_${idSuffix}`,
+          fileId: `1fichier_${idSuffix}`,
+          numericId: Date.now() + files.length,
+          name: name,
+          size: sizeBytes,
+          sizeFormatted: sizeFormatted,
+          downloadUrl: directLink,
+          directUrl: directLink,
+          folderName: '1Fichier Pasta',
+          relativePath: name,
+          isHttpDirect: true,
+          isAvulso: false,
+          isSingleFile: false,
+          service: '1fichier',
+          url: directLink
+        });
+      }
+    }
+
+    if (files.length > 0) {
+      console.log(`[Generic Scanner] 1Fichier Directory parseou ${files.length} arquivos com sucesso.`);
+      return files;
+    }
+    throw new Error('Nenhum arquivo encontrado no diretório 1Fichier');
+  } catch (err) {
+    console.log('[Generic Scanner] Erro ao escanear diretório 1Fichier:', err.message);
+    throw err;
+  }
+}
+
+// ----------------------------------------------------
+// MOTOR: 1Fichier Single File Parser Engine
+// ----------------------------------------------------
+async function scan1FichierSingleFile(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string' || !urlStr.includes('1fichier.com')) return null;
+  const cleanUrl = urlStr.trim();
+  console.log(`[1Fichier Scanner] Escaneando arquivo único: ${cleanUrl}`);
+
+  try {
+    const res = await makeHttpRequest(cleanUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+
+    const body = res.bodyText || '';
+    if (res.statusCode === 404 || body.includes('File not found') || body.includes('Fichier introuvable')) {
+      console.warn(`[1Fichier Scanner] Arquivo não encontrado ou removido: ${cleanUrl}`);
+      return null;
+    }
+
+    // 1. Extração de nome por <span class="tier-name"> ou .normal td
+    let fileName = '';
+    const tierNameMatch = body.match(/<span[^>]*class=["']tier-name["'][^>]*>([\s\S]*?)<\/span>/i);
+    if (tierNameMatch) {
+      fileName = tierNameMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
+
+    if (!fileName) {
+      const tdNameMatch = body.match(/<td[^>]*class=["']normal["'][^>]*>(?:Nom du fichier\s*:|Filename\s*:)<\/td>\s*<td[^>]*class=["']normal["'][^>]*>([\s\S]*?)<\/td>/i);
+      if (tdNameMatch) {
+        fileName = tdNameMatch[1].replace(/<[^>]+>/g, '').trim();
+      }
+    }
+
+    // 2. Extração de tamanho por <span class="tier-feat"> ou .normal td
+    let fileSize = 0;
+    let sizeFormatted = '';
+    const tierFeatMatch = body.match(/<span[^>]*class=["']tier-feat["'][^>]*>([\s\S]*?)<\/span>/i);
+    if (tierFeatMatch) {
+      sizeFormatted = tierFeatMatch[1].replace(/<[^>]+>/g, '').trim();
+      fileSize = parseSizeToBytes(sizeFormatted);
+    }
+
+    if (!fileSize) {
+      const tdSizeMatch = body.match(/<td[^>]*class=["']normal["'][^>]*>(?:Taille\s*:|Size\s*:)<\/td>\s*<td[^>]*class=["']normal["'][^>]*>([\s\S]*?)<\/td>/i);
+      if (tdSizeMatch) {
+        sizeFormatted = tdSizeMatch[1].replace(/<[^>]+>/g, '').trim();
+        fileSize = parseSizeToBytes(sizeFormatted);
+      }
+    }
+
+    if (!fileName) {
+      const urlMatch = cleanUrl.match(/1fichier\.com\/(?:\?|)([a-zA-Z0-9_-]+)/i);
+      const fid = urlMatch ? urlMatch[1] : `1f_${Date.now()}`;
+      fileName = `1fichier_${fid}.bin`;
+    }
+
+    const cleanFileName = fileName.replace(/[\\/:*?"<>|]/g, '_');
+    const fileId = `1fichier_${Buffer.from(cleanUrl).toString('hex').slice(0, 12)}`;
+
+    return [{
+      id: fileId,
+      fileId: fileId,
+      numericId: Date.now(),
+      name: cleanFileName,
+      size: fileSize,
+      sizeFormatted: sizeFormatted || (fileSize ? formatBytes(fileSize) : 'Tamanho Desconhecido'),
+      downloadUrl: cleanUrl,
+      directUrl: cleanUrl,
+      folderName: '1Fichier',
+      relativePath: cleanFileName,
+      isHttpDirect: true,
+      isAvulso: true,
+      isSingleFile: true,
+      service: '1fichier',
+      url: cleanUrl
+    }];
+  } catch (err) {
+    console.warn(`[1Fichier Scanner] Erro ao escanear link único:`, err.message);
+    return null;
+  }
+}
+
+// ----------------------------------------------------
 // MOTOR 2: Direct HTTP Probe Engine
 // ----------------------------------------------------
 async function scanDirectHttpProbe(urlStr) {
@@ -164,8 +339,9 @@ async function scanDirectHttpProbe(urlStr) {
       size: contentLength,
       downloadUrl: urlStr,
       directUrl: urlStr,
-      folderName: `Downloads (${domain})`,
-      relativePath: fileName
+      folderName: 'Sites Genéricos',
+      relativePath: fileName,
+      service: 'generic'
     }];
   } catch (e) {
     return null;
@@ -183,25 +359,57 @@ async function scanSmartHtmlScraper(urlStr) {
 
     // A. SUPORTE ESPECÍFICO PARA MEGAUP (megaup.net)
     if (domain.includes('megaup.net')) {
+      const setCookies = res.headers ? (res.headers['set-cookie'] || []) : [];
+      const cookieHeader = Array.isArray(setCookies) ? setCookies.map(c => c.split(';')[0]).join('; ') : '';
+
       const megaUpDlMatch = body.match(/href=['"](https?:\/\/download\.megaup\.net\/\?url=[^'"]+)['"]/i) || 
                             body.match(/(https?:\/\/download\.megaup\.net\/\?url=[^\s"'<>]+)/i);
 
-      const megaUpTitleMatch = body.match(/<title>(.*?) - MegaUp<\/title>/i) || body.match(/<title>(.*?)<\/title>/i);
-      let megaUpName = megaUpTitleMatch ? megaUpTitleMatch[1].trim() : 'The_Binding_of_Isaac_Afterbirth.rar';
+      let megaUpName = '';
+      let megaUpSize = 0;
+      let megaUpSizeFormatted = '';
 
-      if (megaUpDlMatch) {
-        const directDlUrl = megaUpDlMatch[1];
-        console.log(`[MegaUp Engine] Link direto extraído com sucesso: ${directDlUrl}`);
-        return [{
-          id: `megaup_${Buffer.from(directDlUrl).toString('hex').slice(0, 16)}`,
-          name: megaUpName,
-          size: 0,
-          downloadUrl: directDlUrl,
-          directUrl: directDlUrl,
-          folderName: `Downloads (megaup.net)`,
-          relativePath: megaUpName
-        }];
+      const tableMatch = body.match(/<th[^>]*responsiveInfoTable[^>]*>\s*<strong>(.*?)<\/strong>/is) ||
+                         body.match(/<strong>\s*(.*?\.(?:rar|zip|7z|bin|iso|exe|mp4|mkv)\s*\([\d\.]+\s*(?:MB|GB|KB)\))\s*<\/strong>/i);
+      if (tableMatch && tableMatch[1]) {
+        const rawContent = tableMatch[1].trim();
+        const sizeMatch = rawContent.match(/\(([\d\.]+)\s*(MB|GB|KB)\)/i);
+        if (sizeMatch) {
+          const num = parseFloat(sizeMatch[1]);
+          const unit = sizeMatch[2].toUpperCase();
+          const mult = unit === 'GB' ? 1073741824 : unit === 'MB' ? 1048576 : 1024;
+          megaUpSize = Math.round(num * mult);
+          megaUpSizeFormatted = `${sizeMatch[1]} ${unit}`;
+          megaUpName = rawContent.replace(/\s*\([\d\.]+\s*(?:MB|GB|KB)\)/i, '').trim();
+        } else {
+          megaUpName = rawContent;
+        }
       }
+
+      if (!megaUpName) {
+        const megaUpTitleMatch = body.match(/<title>(.*?) - MegaUp<\/title>/i) || body.match(/<title>(.*?)<\/title>/i);
+        megaUpName = megaUpTitleMatch ? megaUpTitleMatch[1].trim() : 'arquivo.rar';
+      }
+
+      const directDlUrl = megaUpDlMatch ? megaUpDlMatch[1] : urlStr;
+      console.log(`[MegaUp Engine] Arquivo detectado: "${megaUpName}" (${megaUpSizeFormatted || (megaUpSize ? formatBytes(megaUpSize) : 'Tamanho dinâmico')})`);
+      return [{
+        id: `megaup_${Buffer.from(urlStr).toString('hex').slice(0, 16)}`,
+        name: megaUpName,
+        size: megaUpSize,
+        sizeFormatted: megaUpSizeFormatted || (megaUpSize ? formatBytes(megaUpSize) : 'Calculando...'),
+        downloadUrl: directDlUrl,
+        directUrl: directDlUrl,
+        folderName: 'MegaUp',
+        relativePath: megaUpName,
+        service: 'megaup',
+        isHttpDirect: true,
+        headers: {
+          'Referer': urlStr,
+          'Cookie': cookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
+      }];
     }
 
     // B. SUPORTE ESPECÍFICO PARA TURBO.CR ALBUMS E PASTAS (turbo.cr/a/...)
@@ -261,8 +469,9 @@ async function scanSmartHtmlScraper(urlStr) {
           size: 0,
           downloadUrl: dlUrl,
           directUrl: dlUrl,
-          folderName: `Arquivos Encontrados (${domain})`,
-          relativePath: name
+          folderName: 'Sites Genéricos',
+          relativePath: name,
+          service: 'generic'
         });
       });
       return results;
@@ -270,17 +479,23 @@ async function scanSmartHtmlScraper(urlStr) {
 
     // D. FALLBACK DE NOME POR TÍTULO DA PÁGINA
     const titleMatch = body.match(/<title>(.*?)<\/title>/i);
-    let titleName = titleMatch ? titleMatch[1].replace(/[-_] (turbo\.cr|megaup|vik1ngfile).*/i, '').trim() : '';
+    let titleName = titleMatch ? titleMatch[1].replace(/[-_] (turbo\.cr|megaup|vik1ngfile|1fichier|datanodes|filekeeper).*/i, '').trim() : '';
 
-    if (titleName && !titleName.toLowerCase().includes('404') && !titleName.toLowerCase().includes('error')) {
+    const isGenericTitle = !titleName || 
+      /^(1fichier|datanodes|filekeeper|megaup|turbo|bunkr|gofile|pixeldrain|mediafire|google drive|cloud storage|free file|download|home|index|login|register|error|404)/i.test(titleName) ||
+      titleName.toLowerCase().includes('cloud storage') ||
+      titleName.toLowerCase().includes('file upload');
+
+    if (titleName && !isGenericTitle) {
       return [{
         id: `scraper_page_${Buffer.from(urlStr).toString('hex').slice(0, 16)}`,
-        name: titleName.endsWith('.rar') || titleName.endsWith('.zip') || titleName.endsWith('.mp4') ? titleName : `${titleName}.rar`,
+        name: titleName,
         size: 0,
         downloadUrl: urlStr,
         directUrl: urlStr,
-        folderName: `Downloads (${domain})`,
-        relativePath: titleName
+        folderName: 'Sites Genéricos',
+        relativePath: titleName,
+        service: 'generic'
       }];
     }
 
@@ -389,6 +604,25 @@ async function scanPixelDrain(urlStr) {
 async function scanGenericLink(urlStr, torboxApiKey = null) {
   const domain = getDomain(urlStr);
   console.log(`[Generic Scanner] Processando URL: ${urlStr} (Domínio: ${domain})`);
+
+  // 0.0 1Fichier Parser (/dir/ ou arquivo individual)
+  if (urlStr.includes('1fichier.com')) {
+    if (urlStr.includes('1fichier.com/dir/')) {
+      try {
+        const oneFiles = await scan1FichierDirectory(urlStr);
+        if (oneFiles && oneFiles.length > 0) return oneFiles;
+      } catch (e) {
+        console.log('[Generic Scanner] scan1FichierDirectory falhou:', e.message);
+      }
+    } else {
+      try {
+        const oneFile = await scan1FichierSingleFile(urlStr);
+        if (oneFile && oneFile.length > 0) return oneFile;
+      } catch (e) {
+        console.log('[Generic Scanner] scan1FichierSingleFile falhou:', e.message);
+      }
+    }
+  }
 
   // 0. PixelDrain API Engine (Álbuns e Arquivos Únicos)
   if (urlStr.includes('pixeldrain.com')) {
@@ -508,7 +742,7 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
       sizeFormatted: 'Procurando...',
       downloadUrl: urlStr,
       directUrl: urlStr,
-      folderName: null,
+      folderName: 'Sites Genéricos',
       relativePath: cleanFileName,
       isHttpDirect: true,
       isAvulso: true,
@@ -526,5 +760,8 @@ module.exports = {
   scanPixelDrain,
   scanGoFile,
   scanDirectHttpProbe,
-  scanSmartHtmlScraper
+  scanSmartHtmlScraper,
+  scan1FichierDirectory,
+  scan1FichierSingleFile
 };
+

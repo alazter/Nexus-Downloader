@@ -139,6 +139,24 @@ async function getOrCreateProxyWindow() {
 }
 
 /**
+ * Obtém os cookies da sessão Electron necessários para passar pela proteção do Cloudflare do teraboxdl.site
+ */
+async function getSessionCookieHeader() {
+  try {
+    const { session } = require('electron');
+    if (session && session.defaultSession) {
+      const cookies = await session.defaultSession.cookies.get({});
+      if (cookies && cookies.length > 0) {
+        return cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      }
+    }
+  } catch (e) {
+    console.warn('[TeraBox Cookies] Erro ao obter cookies da sessão:', e.message);
+  }
+  return '';
+}
+
+/**
  * Consulta a API de proxy de alta velocidade do TeraBox via Electron BrowserWindow (TeraboxDL Proxy Engine)
  */
 async function fetchTeraBoxProxyApiElectron(surl, dirPath = '', shareId = null, uk = null) {
@@ -316,7 +334,8 @@ async function scanTeraBoxLink(urlStr) {
       const folderTotalSize = parseInt(data.folder_total_size || '0', 10) 
         || data.list.reduce((acc, i) => acc + (i.isdir !== 1 && i.isdir !== '1' ? (parseInt(i.size, 10) || 0) : 0), 0);
 
-      if ((hasFiles || data.folder_download_url) && folderTotalSize > 0) {
+      // Cria item de Download All (.zip) SOMENTE se o backend proxy realmente fornecer folder_download_url válido
+      if (data.folder_download_url && data.folder_download_url.startsWith('http') && folderTotalSize > 0) {
         const rawName = current.dirPath ? current.dirPath.split('/').pop() : (data.title || currentFolderName);
         const folderNameClean = sanitizeFolderName(rawName);
         const folderZipName = `${folderNameClean} (Download All - Pacote Completo).zip`;
@@ -331,8 +350,14 @@ async function scanTeraBoxLink(urlStr) {
           relativePath: current.dirPath ? `${currentFolderName}/${folderNameClean}/${folderZipName}` : `${folderNameClean}/${folderZipName}`,
           folderName: currentFolderName,
           isHttpDirect: true,
+          service: 'terabox',
+          url: `https://www.terabox.com/sharing/link?surl=${surl}`,
+          sourceUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
+          originalUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
+          downloadUrl: data.folder_download_url,
+          directUrl: data.folder_download_url,
           teraboxUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
-          teraboxDlink: data.folder_download_url || '',
+          teraboxDlink: data.folder_download_url,
           teraboxShareId: shareId,
           teraboxUk: uk,
           teraboxPath: current.dirPath,
@@ -356,6 +381,7 @@ async function scanTeraBoxLink(urlStr) {
           const fSize = parseInt(item.size, 10) || 0;
           const fsId = item.fs_id || item.fsid || item.id;
           const folderNameClean = sanitizeFolderName(current.dirPath ? current.dirPath.split('/').pop() : (data.title || currentFolderName));
+          const directFileLink = item.direct_link || item.dlink || '';
 
           files.push({
             id: 'terabox_file_' + (fsId || (Date.now() + '_' + Math.random().toString(36).substr(2, 5))),
@@ -367,12 +393,20 @@ async function scanTeraBoxLink(urlStr) {
             relativePath: current.dirPath ? `${currentFolderName}/${folderNameClean}/${pureFileName}` : `${folderNameClean}/${pureFileName}`,
             folderName: currentFolderName,
             isHttpDirect: true,
+            service: 'terabox',
+            url: `https://www.terabox.com/sharing/link?surl=${surl}`,
+            sourceUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
+            originalUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
+            downloadUrl: directFileLink,
+            directUrl: directFileLink,
             teraboxUrl: `https://www.terabox.com/sharing/link?surl=${surl}`,
-            teraboxDlink: item.dlink || item.direct_link || '',
+            teraboxDlink: directFileLink,
             teraboxShareId: shareId,
             teraboxUk: uk,
             teraboxPath: item.path || current.dirPath,
             teraboxFsId: fsId,
+            referer: 'https://teraboxdl.site/',
+            teraboxDlinkTime: Date.now(),
             thumbs: item.thumbs
           });
         }
@@ -391,10 +425,21 @@ async function scanTeraBoxLink(urlStr) {
 }
 
 /**
- * Resolve OBRIGATORIAMENTE o link de download via TeraboxDL Gateway
+ * Resolve OBRIGATORIAMENTE o link de download via TeraboxDL Gateway com cookies de sessão Cloudflare
  */
-async function resolveTeraBoxDirectUrl(fsId, teraboxUrl, dlink, teraboxPath, shareId, uk, thumbs) {
+async function resolveTeraBoxDirectUrl(fsId, teraboxUrl, dlink, teraboxPath, shareId, uk, thumbs, dlinkAgeMs = 0) {
   console.log('[TeraBox Resolver] Resolvendo link direto FRESCO via TeraboxDL Gateway para fs_id:', fsId);
+
+  // 1. Se já possui o dlink direto do teraboxdl.site pré-resolvido e válido (< 45 minutos)
+  if (dlink && typeof dlink === 'string' && dlinkAgeMs < 45 * 60 * 1000 && (dlink.includes('teraboxdl.site') || dlink.includes('/download') || dlink.includes('folder-download'))) {
+    console.log('[TeraBox Resolver] Usando dlink direto disponível com cookies da sessão.');
+    const cookieStr = await getSessionCookieHeader();
+    return {
+      directUrl: dlink,
+      referer: 'https://teraboxdl.site/',
+      cookie: cookieStr
+    };
+  }
 
   const surl = extractSurl(teraboxUrl || '');
 
@@ -405,43 +450,47 @@ async function resolveTeraBoxDirectUrl(fsId, teraboxUrl, dlink, teraboxPath, sha
     parentDirPath = parts.length > 0 ? '/' + parts.join('/') : '';
   }
 
+  let dirToUse = teraboxPath || '';
+  if (/\.[a-zA-Z0-9]{2,5}$/i.test(dirToUse)) {
+    dirToUse = parentDirPath;
+  }
+
   if (surl) {
-    const pathsToTry = [teraboxPath, parentDirPath, ''].filter((v, i, a) => v !== undefined && a.indexOf(v) === i);
+    const pathsToTry = [dirToUse, parentDirPath, ''].filter((v, i, a) => v !== undefined && a.indexOf(v) === i);
 
     for (const targetPath of pathsToTry) {
       const proxyData = await fetchTeraBoxProxyApiElectron(surl, targetPath, shareId, uk) 
         || await fetchTeraBoxProxyApiNode(surl, targetPath, shareId, uk);
 
       if (proxyData) {
+        const cookieStr = await getSessionCookieHeader();
+
         if (proxyData.folder_download_url && proxyData.folder_download_url.startsWith('http')) {
           console.log(`[TeraBox Resolver] Link de Download All (folder-download) obtido com sucesso para path: "${targetPath}"!`);
           return {
             directUrl: proxyData.folder_download_url,
-            referer: 'https://teraboxdl.site/'
+            referer: 'https://teraboxdl.site/',
+            cookie: cookieStr
           };
         }
 
         if (proxyData.list && Array.isArray(proxyData.list)) {
-          const match = proxyData.list.find(i => String(i.fs_id) === String(fsId));
-          if (match && match.direct_link && match.direct_link.startsWith('http')) {
+          let match = proxyData.list.find(i => String(i.fs_id) === String(fsId));
+          if (!match && proxyData.list.length === 1 && (proxyData.list[0].direct_link || proxyData.list[0].dlink)) {
+            match = proxyData.list[0];
+          }
+          const directLink = match ? (match.direct_link || match.dlink) : null;
+          if (match && directLink && directLink.startsWith('http')) {
             console.log('[TeraBox Resolver] Link direto de arquivo obtido com sucesso via TeraboxDL Gateway!');
             return {
-              directUrl: match.direct_link,
-              referer: 'https://teraboxdl.site/'
+              directUrl: directLink,
+              referer: 'https://teraboxdl.site/',
+              cookie: cookieStr
             };
           }
         }
       }
     }
-  }
-
-  // Se já possui o dlink direto do teraboxdl.site como fallback
-  if (dlink && typeof dlink === 'string' && (dlink.includes('teraboxdl.site') || dlink.includes('/download') || dlink.includes('folder-download'))) {
-    console.log('[TeraBox Resolver] Usando dlink em cache como fallback válido.');
-    return {
-      directUrl: dlink,
-      referer: 'https://teraboxdl.site/'
-    };
   }
 
   throw new Error('Não foi possível gerar o link de download de alta velocidade via TeraboxDL Gateway. Tente novamente.');

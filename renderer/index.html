@@ -532,9 +532,12 @@
             </div>
 
             <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-              <label class="setting-label" style="display: flex; align-items: center; gap: 8px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                <span>Limite de Downloads Simultâneos por Serviço / Hoster</span>
+              <label class="setting-label" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  <span>Limite de Downloads Simultâneos por Serviço / Hoster</span>
+                </div>
+                <span class="service-badge-count" id="count-service-concurrency">18 Serviços</span>
               </label>
               <span class="setting-hint setting-hint-block">Define quantos arquivos podem ser baixados em paralelo no mesmo site. A sua configuração selecionada nos cartões abaixo substitui o padrão (1 por vez) e define o limite exato de cada hoster para evitar bloqueio 503 por IP.</span>
 
@@ -718,11 +721,86 @@
                     <option value="3">3 arquivos por vez (Máximo)</option>
                   </select>
                 </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Filester</span>
+                    <strong>Filester</strong>
+                  </div>
+                  <select id="setting-service-max-filester" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">MegaUp</span>
+                    <strong>MegaUp</strong>
+                  </div>
+                  <select id="setting-service-max-megaup" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(148, 163, 184, 0.18); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Sites Genéricos</span>
+                    <strong>Sites Genéricos</strong>
+                  </div>
+                  <select id="setting-service-max-generic" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">DataNodes</span>
+                    <strong>DataNodes</strong>
+                  </div>
+                  <select id="setting-service-max-datanodes" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">FileKeeper</span>
+                    <strong>FileKeeper</strong>
+                  </div>
+                  <select id="setting-service-max-filekeeper" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">FileDitch</span>
+                    <strong>FileDitch</strong>
+                  </div>
+                  <select id="setting-service-max-fileditch" class="service-select">
+                    <option value="1" selected>1 arquivo por vez (Padrão - Recomendado)</option>
+                    <option value="2">2 arquivos por vez</option>
+                    <option value="3">3 arquivos por vez (Máximo)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-              <label class="setting-label">Modos de Conexão por Serviço (Download Mode)</label>
+              <label class="setting-label" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span>Modos de Conexão por Serviço (Download Mode)</span>
+                <span class="service-badge-count" id="count-service-modes">18 Serviços</span>
+              </label>
               <span class="setting-hint setting-hint-block">Escolha individualmente o modo de conexão para cada serviço. Conexão Única evita bloqueios de cota; Multiconexão acelera os downloads em até 4x.</span>
               
               <div class="mode-settings-grid">
@@ -890,6 +968,72 @@
                     <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
                   </select>
                 </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Filester</span>
+                    <strong>Filester</strong>
+                  </div>
+                  <select id="setting-mode-filester" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">MegaUp</span>
+                    <strong>MegaUp</strong>
+                  </div>
+                  <select id="setting-mode-megaup" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(148, 163, 184, 0.18); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">Sites Genéricos</span>
+                    <strong>Sites Genéricos</strong>
+                  </div>
+                  <select id="setting-mode-generic" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">DataNodes</span>
+                    <strong>DataNodes</strong>
+                  </div>
+                  <select id="setting-mode-datanodes" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">FileKeeper</span>
+                    <strong>FileKeeper</strong>
+                  </div>
+                  <select id="setting-mode-filekeeper" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
+
+                <div class="setting-service-card">
+                  <div class="service-card-header">
+                    <span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; vertical-align: middle;">FileDitch</span>
+                    <strong>FileDitch</strong>
+                  </div>
+                  <select id="setting-mode-fileditch" class="service-select">
+                    <option value="single">Conexão Única (Estável)</option>
+                    <option value="multi" selected>Multiconexão (4 Conexões Rápidas)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -976,7 +1120,10 @@
 
             <!-- SWITCHES DE FORÇAMENTO TORBOX POR SERVIÇO -->
             <div class="setting-item" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-              <label class="setting-label" style="margin-bottom: 4px; display: block;">Forçar Resolução via Torbox por Serviço</label>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <label class="setting-label" style="margin-bottom: 0;">Forçar Resolução via Torbox por Serviço</label>
+                <span class="service-badge-count" id="count-torbox-services">18 Serviços</span>
+              </div>
               <span class="setting-hint" style="display: block; margin-bottom: 14px;">Ligue o switch para processar o download via servidor Torbox WebDL ou desligue para baixar diretamente fora do ambiente Torbox (modo nativo HTTP Direct).</span>
 
               <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;">
@@ -1187,6 +1334,90 @@
                   <div class="toggle-switch">
                     <input type="checkbox" id="setting-torbox-service-rapidgator" checked>
                     <label for="setting-torbox-service-rapidgator"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Filester</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Filester</span>
+                      <span class="torbox-switch-sub">filester.sh / filester.me</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-filester" checked>
+                    <label for="setting-torbox-service-filester"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">MegaUp</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">MegaUp</span>
+                      <span class="torbox-switch-sub">megaup.net</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-megaup">
+                    <label for="setting-torbox-service-megaup"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(148, 163, 184, 0.18); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">Sites Genéricos</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">Sites Genéricos</span>
+                      <span class="torbox-switch-sub">Qualquer link / hoster externo</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-generic" checked>
+                    <label for="setting-torbox-service-generic"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">DataNodes</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">DataNodes</span>
+                      <span class="torbox-switch-sub">datanodes.to</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-datanodes" checked>
+                    <label for="setting-torbox-service-datanodes"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">FileKeeper</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">FileKeeper</span>
+                      <span class="torbox-switch-sub">filekeeper.net</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-filekeeper" checked>
+                    <label for="setting-torbox-service-filekeeper"></label>
+                  </div>
+                </div>
+
+                <div class="torbox-switch-card">
+                  <div class="torbox-switch-info">
+                    <span style="background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; vertical-align: middle;">FileDitch</span>
+                    <div class="torbox-switch-details">
+                      <span class="torbox-switch-title">FileDitch</span>
+                      <span class="torbox-switch-sub">fileditchfiles.st / fileditch.com</span>
+                    </div>
+                  </div>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="setting-torbox-service-fileditch" checked>
+                    <label for="setting-torbox-service-fileditch"></label>
                   </div>
                 </div>
               </div>

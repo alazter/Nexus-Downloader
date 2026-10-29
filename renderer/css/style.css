@@ -2952,3 +2952,44 @@ input[type="checkbox"]:checked::after,
   margin-top: 10px;
 }
 
+/* Badges de Contagem de Serviços nas Configurações */
+.service-badge-count {
+  background: rgba(99, 102, 241, 0.16);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+}
+
+/* Tag de Sites Genéricos */
+.service-tag.generic,
+.service-tag[data-service="generic"] {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+/* Tag de MegaUp */
+.service-tag.megaup,
+.service-tag[data-service="megaup"] {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+/* Tag de Filester */
+.service-tag.filester,
+.service-tag[data-service="filester"] {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+

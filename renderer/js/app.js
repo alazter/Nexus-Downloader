@@ -615,38 +615,13 @@ async function loadConfig() {
     settingDownloadMode.value = config.downloadMode || 'single';
   }
 
-  const modes = config.downloadModes || {};
-  const elGdrive = document.getElementById('setting-mode-gdrive');
-  const elBunkr = document.getElementById('setting-mode-bunkr');
-  const elMediaFire = document.getElementById('setting-mode-mediafire');
-  const elTeraBox = document.getElementById('setting-mode-terabox');
-  const elVik1ngFile = document.getElementById('setting-mode-vik1ngfile');
-  const elGoFile = document.getElementById('setting-mode-gofile');
-  const elOneDrive = document.getElementById('setting-mode-onedrive');
-  const elTorbox = document.getElementById('setting-mode-torbox');
-  const elDrime = document.getElementById('setting-mode-drime');
-  const elTurbo = document.getElementById('setting-mode-turbo');
-  const elSend = document.getElementById('setting-mode-send');
-  const elPixelDrain = document.getElementById('setting-mode-pixeldrain');
-  const elMega = document.getElementById('setting-mode-mega');
-  const el1Fichier = document.getElementById('setting-mode-1fichier');
-  const elRapidgator = document.getElementById('setting-mode-rapidgator');
-
-  if (elGdrive) elGdrive.value = modes.gdrive || 'single';
-  if (elBunkr) elBunkr.value = modes.bunkr || 'multi';
-  if (elMediaFire) elMediaFire.value = modes.mediafire || 'multi';
-  if (elTeraBox) elTeraBox.value = modes.terabox || 'multi';
-  if (elVik1ngFile) elVik1ngFile.value = modes.vik1ngfile || 'multi';
-  if (elGoFile) elGoFile.value = modes.gofile || 'multi';
-  if (elOneDrive) elOneDrive.value = modes.onedrive || 'single';
-  if (elTorbox) elTorbox.value = modes.torbox || 'multi';
-  if (elDrime) elDrime.value = modes.drime || 'multi';
-  if (elTurbo) elTurbo.value = modes.turbo || 'multi';
-  if (elSend) elSend.value = modes.send || 'multi';
-  if (elPixelDrain) elPixelDrain.value = modes.pixeldrain || 'multi';
-  if (elMega) elMega.value = modes.mega || 'multi';
-  if (el1Fichier) el1Fichier.value = modes['1fichier'] || 'multi';
-  if (elRapidgator) elRapidgator.value = modes.rapidgator || 'multi';
+  const allSupportedServices = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator', 'filester', 'megaup', 'generic', 'datanodes', 'filekeeper', 'fileditch'];
+  allSupportedServices.forEach(svc => {
+    const el = document.getElementById(`setting-mode-${svc}`);
+    if (el) {
+      el.value = modes[svc] || (svc === 'gdrive' || svc === 'onedrive' ? 'single' : 'multi');
+    }
+  });
 
   const settingTorboxKey = document.getElementById('setting-torbox-api-key');
   const settingTorboxEnabled = document.getElementById('setting-torbox-enabled');
@@ -654,13 +629,12 @@ async function loadConfig() {
   if (settingTorboxEnabled) settingTorboxEnabled.checked = !!config.torboxEnabled;
 
   const torboxServices = config.torboxForServices || {
-    gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true, pixeldrain: true, mega: true, '1fichier': true, rapidgator: true
+    gdrive: false, bunkr: false, mediafire: false, terabox: false, vik1ngfile: true, gofile: true, onedrive: false, torbox: true, drime: false, turbo: false, send: true, pixeldrain: true, mega: true, '1fichier': true, rapidgator: true, filester: true, megaup: false, generic: true, datanodes: true, filekeeper: true, fileditch: true
   };
-  const allSupportedServices = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator'];
   allSupportedServices.forEach(svc => {
     const chk = document.getElementById(`setting-torbox-service-${svc}`);
     if (chk) {
-      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox' || svc === 'gofile' || svc === 'vik1ngfile' || svc === 'pixeldrain' || svc === 'mega' || svc === '1fichier' || svc === 'rapidgator');
+      chk.checked = torboxServices[svc] !== undefined ? !!torboxServices[svc] : (svc === 'send' || svc === 'torbox' || svc === 'gofile' || svc === 'vik1ngfile' || svc === 'pixeldrain' || svc === 'mega' || svc === '1fichier' || svc === 'rapidgator' || svc === 'filester' || svc === 'generic' || svc === 'datanodes' || svc === 'filekeeper' || svc === 'fileditch');
     }
   });
 
@@ -698,9 +672,25 @@ async function loadConfig() {
       sel.value = (serviceMaxObj[svc] !== undefined ? serviceMaxObj[svc] : (svc === 'torbox' ? 3 : 1)).toString();
     }
   });
+
+  updateServiceCounters();
 }
 
-const allSupportedServicesList = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator'];
+function updateServiceCounters() {
+  const elConcurrency = document.getElementById('count-service-concurrency');
+  const elModes = document.getElementById('count-service-modes');
+  const elTorbox = document.getElementById('count-torbox-services');
+
+  const countConcurrency = document.querySelectorAll('select[id^="setting-service-max-"]').length;
+  const countModes = document.querySelectorAll('select[id^="setting-mode-"]').length;
+  const countTorbox = document.querySelectorAll('input[id^="setting-torbox-service-"]').length;
+
+  if (elConcurrency && countConcurrency > 0) elConcurrency.textContent = `${countConcurrency} Serviços`;
+  if (elModes && countModes > 0) elModes.textContent = `${countModes} Serviços`;
+  if (elTorbox && countTorbox > 0) elTorbox.textContent = `${countTorbox} Serviços`;
+}
+
+const allSupportedServicesList = ['gdrive', 'bunkr', 'mediafire', 'terabox', 'vik1ngfile', 'gofile', 'onedrive', 'torbox', 'drime', 'turbo', 'send', 'pixeldrain', 'mega', '1fichier', 'rapidgator', 'filester', 'megaup', 'generic', 'datanodes', 'filekeeper', 'fileditch'];
 
 allSupportedServicesList.forEach(svc => {
   const sel = document.getElementById(`setting-service-max-${svc}`);
@@ -1659,6 +1649,8 @@ function detectTorboxHoster(file) {
   if (str.includes('filefactory') || str.includes('filefactory.com')) return 'FileFactory';
   if (str.includes('sendspace') || str.includes('sendspace.com')) return 'SendSpace';
   if (str.includes('megaup') || str.includes('megaup.net')) return 'MegaUp';
+  if (str.includes('filester') || str.includes('filester.sh') || str.includes('filester.me')) return 'Filester';
+  if (str.includes('sites genéricos') || str.includes('sites genericos') || (file && file.service === 'generic')) return 'Sites Genéricos';
   if (str.includes('drop.download') || str.includes('dropapk')) return 'DropDownload';
   if (str.includes('terabox') || str.includes('1024tera') || str.includes('gibibox') || str.includes('freeterabox')) return 'TeraBox';
   if (str.includes('send.cm') || str.includes('send.now') || str.includes('sendit.cloud') || str.includes('userscloud') || str.includes('tusfiles') || str.includes('usersfiles')) return 'Send';
@@ -1812,54 +1804,84 @@ function getServiceTag(file) {
     return { text: 'Google Drive', bg: 'rgba(34, 197, 94, 0.18)', color: '#4ade80', border: 'rgba(34, 197, 94, 0.4)' };
   }
 
-  // 2. Bunkr (Exige id bunkr_ ou domínios oficiais Bunkr)
-  if (id.startsWith('bunkr_') || service === 'Bunkr' || url.includes('bunkr') || url.includes('balbums') || url.includes('.cdn.cr')) {
+  // 2. Filester (deve preceder Bunkr para evitar falso-positivo em .cdn.cr)
+  if (id.startsWith('filester_') || service.toLowerCase() === 'filester' || url.includes('filester.sh') || url.includes('filester.me') || url.includes('fsc2.cdn.cr')) {
+    return { text: 'Filester', bg: 'rgba(56, 189, 248, 0.18)', color: '#38bdf8', border: 'rgba(56, 189, 248, 0.4)' };
+  }
+
+  // 3. MegaUp
+  if (id.startsWith('megaup_') || service.toLowerCase() === 'megaup' || url.includes('megaup.net')) {
+    return { text: 'MegaUp', bg: 'rgba(168, 85, 247, 0.18)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.4)' };
+  }
+
+  // 4. Bunkr (Exige id bunkr_ ou domínios oficiais Bunkr, exceto Filester CDN)
+  if (id.startsWith('bunkr_') || service === 'Bunkr' || url.includes('bunkr') || url.includes('balbums') || (url.includes('.cdn.cr') && !url.includes('fsc2.cdn.cr'))) {
     return { text: 'Bunkr', bg: 'rgba(99, 102, 241, 0.18)', color: '#818cf8', border: 'rgba(99, 102, 241, 0.4)' };
   }
 
-  // 3. TeraBox (Exige id terabox_ ou domínios oficiais TeraBox)
+  // 5. TeraBox (Exige id terabox_ ou domínios oficiais TeraBox)
   if (id.startsWith('terabox_') || service === 'TeraBox' || url.includes('terabox') || url.includes('1024tera') || url.includes('freeterabox') || url.includes('gibibox') || url.includes('4funbox')) {
     return { text: 'TeraBox', bg: 'rgba(255, 170, 0, 0.18)', color: '#ffb703', border: 'rgba(255, 170, 0, 0.4)' };
   }
 
-  // 4. MediaFire (Exige id mediafire_ ou domínio mediafire.com)
+  // 6. MediaFire (Exige id mediafire_ ou domínio mediafire.com)
   if (id.startsWith('mediafire_') || service === 'MediaFire' || url.includes('mediafire.com')) {
     return { text: 'MediaFire', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
   }
 
-  // 5. Microsoft OneDrive / SharePoint
+  // 7. Microsoft OneDrive / SharePoint
   if (id.startsWith('onedrive_') || service === 'Microsoft OneDrive' || url.includes('onedrive') || url.includes('1drv.ms') || url.includes('sharepoint')) {
     return { text: 'Microsoft OneDrive', bg: 'rgba(255, 255, 255, 0.18)', color: '#ffffff', border: 'rgba(255, 255, 255, 0.4)' };
   }
 
-  // 6. Send
+  // 8. Send
   if (id.startsWith('send_') || service === 'Send' || url.includes('send.now') || url.includes('send.cm') || url.includes('sendit.cloud')) {
     return { text: 'Send', bg: 'rgba(236, 72, 153, 0.18)', color: '#f472b6', border: 'rgba(236, 72, 153, 0.4)' };
   }
 
-  // 7. PixelDrain
+  // 9. PixelDrain
   if (id.startsWith('pixeldrain_') || service === 'PixelDrain' || url.includes('pixeldrain.com')) {
     return { text: 'PixelDrain', bg: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: 'rgba(249, 115, 22, 0.4)' };
   }
 
-  // 8. Drime Cloud
+  // 10. Drime Cloud
   if (id.startsWith('drime_') || service === 'Drime Cloud' || url.includes('drime.cloud')) {
     return { text: 'Drime Cloud', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
   }
 
-  // 9. Turbo.cr
+  // 11. Turbo.cr
   if (id.startsWith('turbo_') || service === 'Turbo.cr' || url.includes('turbo.cr') || url.includes('turbocdn.st')) {
     return { text: 'Turbo.cr', bg: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: 'rgba(244, 63, 94, 0.4)' };
   }
 
-  // 10. Vik1ngFile
+  // 12. Vik1ngFile
   if (id.startsWith('vik1ng_') || service === 'Vik1ngFile' || url.includes('vik1ngfile') || url.includes('vikingfile')) {
     return { text: 'Vik1ngFile', bg: 'rgba(168, 85, 247, 0.18)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.4)' };
   }
 
-  // 11. GoFile
+  // 13. GoFile
   if (id.startsWith('gofile_') || service === 'GoFile' || url.includes('gofile.io') || url.includes('gofile')) {
     return { text: 'GoFile', bg: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.4)' };
+  }
+
+  // 14. MEGA
+  if (id.startsWith('mega_') || service.toLowerCase() === 'mega' || url.includes('mega.nz') || url.includes('mega.co.nz') || url.includes('mega.io')) {
+    return { text: 'MEGA', bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.4)' };
+  }
+
+  // 15. 1Fichier
+  if (id.startsWith('1fichier_') || id.startsWith('onefichier_') || service.toLowerCase() === '1fichier' || url.includes('1fichier.com')) {
+    return { text: '1Fichier', bg: 'rgba(99, 102, 241, 0.18)', color: '#818cf8', border: 'rgba(99, 102, 241, 0.4)' };
+  }
+
+  // 16. RapidGator
+  if (id.startsWith('rapidgator_') || service.toLowerCase() === 'rapidgator' || url.includes('rapidgator.net') || url.includes('rg.to')) {
+    return { text: 'RapidGator', bg: 'rgba(234, 88, 12, 0.18)', color: '#fb923c', border: 'rgba(234, 88, 12, 0.4)' };
+  }
+
+  // 17. Sites Genéricos
+  if (id.startsWith('generic_') || id.startsWith('scraper_') || service === 'generic' || service === 'Sites Genéricos' || (file && file.folderName && file.folderName.includes('Sites Genéricos'))) {
+    return { text: 'Sites Genéricos', bg: 'rgba(148, 163, 184, 0.18)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.4)' };
   }
 
   // 12. Torbox / Torrent / Debrid
@@ -1991,7 +2013,7 @@ function renderQueue(queue) {
       }
     }
 
-    const isTorboxActive = active && (active.id.startsWith('torbox_') || active.torboxType || active.torboxId);
+    const isTorboxActive = active && (String(active.id).startsWith('torbox_') || active.torboxType || active.torboxId || active.service === 'torbox');
     if (isTorboxActive && (active.downloadedBytes === 0 || active.downloadedBytes === undefined) && (active.cloudProgress === undefined && !active.cloudMessage)) {
       active.cloudProgress = active.progress || 0;
       active.cloudMessage = `Torbox baixando no servidor (${active.cloudProgress}%)...`;
@@ -2000,7 +2022,7 @@ function renderQueue(queue) {
     const activeBadgeEl = document.getElementById('active-badge-element');
     const activeCloudNotice = document.getElementById('active-cloud-notice-container');
 
-    if (active.cloudMessage || active.cloudProgress !== undefined) {
+    if (isTorboxActive && (active.cloudMessage || active.cloudProgress !== undefined)) {
       const cProg = active.cloudProgress !== undefined ? active.cloudProgress : (active.progress || 0);
       
       if (activeBadgeEl && activeBadgeEl.dataset.state !== 'cloud') {
@@ -2076,6 +2098,9 @@ function renderQueue(queue) {
   // Helper para identificar se um item está aguardando/processando exclusivamente na nuvem Torbox antes de baixar no PC
   const isTorboxPendingItem = (item) => {
     if (!item || item.status === 'completed') return false;
+    const isTb = !!(item.torboxType || item.torboxId || (item.id && String(item.id).startsWith('torbox_')) || item.service === 'torbox');
+    if (!isTb) return false;
+
     // Se o item já está sendo transferido/baixado localmente no PC (sem pendência na nuvem), vai para Em Andamento
     if (item.status === 'downloading' && !item.isCloudProcessing && !item.cloudMessage) return false;
 
@@ -2576,7 +2601,10 @@ function renderQueue(queue) {
         }
       });
 
-      const cloudDownloadingItem = folderItems.find(f => (f.cloudMessage || f.cloudProgress !== undefined || isTorboxPendingItem(f)) && f.status !== 'completed');
+      const cloudDownloadingItem = folderItems.find(f => {
+        const isTb = f && (String(f.id).startsWith('torbox_') || f.torboxType || f.torboxId || f.service === 'torbox');
+        return isTb && (f.cloudMessage || f.cloudProgress !== undefined || isTorboxPendingItem(f)) && f.status !== 'completed';
+      });
       if (cloudDownloadingItem) {
         const cProg = cloudDownloadingItem.cloudProgress !== undefined ? cloudDownloadingItem.cloudProgress : (cloudDownloadingItem.progress || 0);
         if (badgeSpan) {
@@ -2671,8 +2699,8 @@ function renderQueue(queue) {
         let showProgress = false;
 
         if (item.status === 'downloading') {
-          const isTbItem = item && (item.id.startsWith('torbox_') || item.torboxType || item.torboxId);
-          if (item.cloudMessage || item.cloudProgress !== undefined || (isTbItem && (item.downloadedBytes === 0 || item.downloadedBytes === undefined))) {
+          const isTbItem = item && (String(item.id).startsWith('torbox_') || item.torboxType || item.torboxId || item.service === 'torbox');
+          if (isTbItem && (item.cloudMessage || item.cloudProgress !== undefined || (item.downloadedBytes === 0 || item.downloadedBytes === undefined))) {
             const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
             statusText = `Torbox baixando no servidor (${cProg}%)... Aguardando término para iniciar local`;
             statusClass = 'status-downloading';
@@ -2683,8 +2711,8 @@ function renderQueue(queue) {
             showProgress = true;
           }
         } else if (item.status === 'pending' || !item.status) {
-          const isTbItem = item && (item.id.startsWith('torbox_') || item.torboxType || item.torboxId);
-          if (item.cloudMessage || item.cloudProgress !== undefined || (isTbItem && item.isFinished === false)) {
+          const isTbItem = item && (String(item.id).startsWith('torbox_') || item.torboxType || item.torboxId || item.service === 'torbox');
+          if (isTbItem && (item.cloudMessage || item.cloudProgress !== undefined || item.isFinished === false)) {
             const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
             statusText = `Torbox baixando no servidor (${cProg}%)... Aguardando término para iniciar local`;
             statusClass = 'status-downloading';
@@ -2933,7 +2961,8 @@ function updateQueueItemElement(itemEl, item, hasActiveDownloading = false) {
       spanStatus.className = statusClass;
     }
     let label = getStatusLabel(item.status, hasActiveDownloading);
-    if (item.cloudMessage || item.cloudProgress !== undefined) {
+    const isTb = item && (String(item.id).startsWith('torbox_') || item.torboxType || item.torboxId || item.service === 'torbox');
+    if (isTb && (item.cloudMessage || item.cloudProgress !== undefined)) {
       const cProg = item.cloudProgress !== undefined ? item.cloudProgress : (item.progress || 0);
       label = `Torbox (${cProg}%)`;
     }

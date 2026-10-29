@@ -2,7 +2,7 @@
    Nexus Downloader - Content Styles (HUD Flutuante & Modal In-Page)
    ============================================================ */
 
-:root {
+:root, :host {
   --nexus-bg-primary: #060810;
   --nexus-bg-glass: rgba(11, 15, 25, 0.94);
   --nexus-cyan: #00f2fe;
@@ -11,6 +11,11 @@
   --nexus-emerald: #00f5a0;
   --nexus-emerald-glow: rgba(0, 245, 160, 0.35);
   --nexus-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+:host {
+  all: initial !important;
+  display: contents !important;
 }
 
 /* CONTAINER PRINCIPAL DO HUD FLUTUANTE */
@@ -421,33 +426,43 @@
 }
 
 .nexus-btn-ctrl {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #f8fafc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  transition: all 0.2s;
+  all: unset !important;
+  box-sizing: border-box !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  border-radius: 50% !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #f8fafc !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+  transition: all 0.2s !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
 }
 
 .nexus-btn-ctrl:hover {
-  background: var(--nexus-cyan);
-  color: #060810;
-  border-color: var(--nexus-cyan);
-  box-shadow: 0 0 8px var(--nexus-cyan);
+  background: var(--nexus-cyan) !important;
+  color: #060810 !important;
+  border-color: var(--nexus-cyan) !important;
+  box-shadow: 0 0 8px var(--nexus-cyan) !important;
 }
 
 .nexus-btn-ctrl.close:hover {
-  background: #ef4444;
-  color: #ffffff;
-  border-color: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 8px #ef4444 !important;
 }
 
 /* ÍCONE DE ARRASTE (DRAG HANDLE) */
@@ -459,7 +474,8 @@
 }
 
 /* ============================================================
-   ESCUDO DE ISOLAMENTO TOTAL CONTRA RESETS EXTERNOS (EX: TERABOX [dir] *)
+   ESCUDO DE ISOLAMENTO TOTAL CONTRA RESETS E ESTILOS EXTERNOS
+   (ISOLAMENTO UNIVERSAL CONTRA BOOTSTRAP, TAILWIND, THEMES, MEGAUP, TERABOX)
    ============================================================ */
 #nexus-manager-overlay,
 #nexus-manager-overlay *,
@@ -485,8 +501,52 @@
   text-align: left;
   letter-spacing: normal;
   visibility: visible;
+  font-family: var(--nexus-font) !important;
+  -webkit-font-smoothing: antialiased !important;
+  text-rendering: optimizeLegibility !important;
+  float: none !important;
+  clear: none !important;
+  text-shadow: none !important;
+  text-decoration: none !important;
+  text-indent: 0 !important;
 }
 
+/* Neutralizar qualquer pseudo-elemento injetado por frameworks externos em labels, spans, botoes e divs */
+#nexus-manager-overlay label::before,
+#nexus-manager-overlay label::after,
+#nexus-manager-overlay span::before,
+#nexus-manager-overlay span::after,
+#nexus-manager-overlay button::before,
+#nexus-manager-overlay button::after,
+#nexus-modal-overlay label::before,
+#nexus-modal-overlay label::after,
+#nexus-modal-overlay span::before,
+#nexus-modal-overlay span::after,
+#nexus-modal-overlay button::before,
+#nexus-modal-overlay button::after,
+#nexus-inpage-options-backdrop label::before,
+#nexus-inpage-options-backdrop label::after,
+#nexus-inpage-options-backdrop span::before,
+#nexus-inpage-options-backdrop span::after,
+#nexus-inpage-options-backdrop button::before,
+#nexus-inpage-options-backdrop button::after,
+#nexus-confirm-overlay label::before,
+#nexus-confirm-overlay label::after,
+#nexus-confirm-overlay span::before,
+#nexus-confirm-overlay span::after,
+#nexus-confirm-overlay button::before,
+#nexus-confirm-overlay button::after,
+#nexus-hud-container label::before,
+#nexus-hud-container label::after,
+#nexus-hud-container span::before,
+#nexus-hud-container span::after,
+#nexus-hud-container button::before,
+#nexus-hud-container button::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Blindagem padrao de todos os botoes contra width: 100%, margin-top e resets de submit */
 #nexus-manager-overlay button,
 #nexus-modal-overlay button,
 #nexus-inpage-options-backdrop button,
@@ -497,10 +557,30 @@
 [dir] #nexus-inpage-options-backdrop button,
 [dir] #nexus-confirm-overlay button,
 [dir] #nexus-hud-container button {
+  all: unset;
+  box-sizing: border-box !important;
   font-family: var(--nexus-font) !important;
   cursor: pointer !important;
-  text-transform: none;
-  overflow: visible;
+  text-transform: none !important;
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  vertical-align: middle !important;
+  line-height: normal !important;
+  white-space: nowrap !important;
+  border: none;
+  background: transparent;
+  color: inherit;
 }
 
 /* ============================================================
@@ -914,12 +994,15 @@
 .nexus-manager-toolbar {
   padding: 10px 20px !important;
   display: flex !important;
+  flex-direction: row !important;
   align-items: center !important;
   justify-content: space-between !important;
   gap: 12px !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
   background: rgba(11, 15, 25, 0.7) !important;
-  flex-wrap: wrap !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
+  min-width: 0 !important;
   margin: 0 !important;
 }
 
@@ -927,12 +1010,24 @@
 [dir] #nexus-manager-overlay .nexus-manager-filter-tabs,
 .nexus-manager-filter-tabs {
   display: flex !important;
+  flex-direction: row !important;
   gap: 6px !important;
   align-items: center !important;
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+}
+
+#nexus-manager-overlay .nexus-manager-filter-tabs::-webkit-scrollbar,
+.nexus-manager-filter-tabs::-webkit-scrollbar {
+  display: none !important;
 }
 
 #nexus-manager-overlay .nexus-filter-tab-btn,
@@ -948,9 +1043,20 @@
   cursor: pointer !important;
   transition: all 0.2s ease !important;
   display: inline-flex !important;
+  flex-direction: row !important;
   align-items: center !important;
+  justify-content: center !important;
   gap: 4px !important;
   margin: 0 !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  line-height: 1.2 !important;
 }
 
 #nexus-manager-overlay .nexus-filter-tab-btn:hover,
@@ -982,8 +1088,12 @@
 [dir] #nexus-manager-overlay .nexus-manager-actions-row,
 .nexus-manager-actions-row {
   display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   gap: 8px !important;
   align-items: center !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
@@ -1002,11 +1112,21 @@
   border-radius: 8px !important;
   cursor: pointer !important;
   display: inline-flex !important;
+  flex-direction: row !important;
   align-items: center !important;
+  justify-content: center !important;
   gap: 6px !important;
   transition: all 0.2s ease !important;
   margin: 0 !important;
   white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  line-height: normal !important;
 }
 
 #nexus-manager-overlay .nexus-btn-manager-action:hover,
@@ -1111,6 +1231,8 @@
 [dir] #nexus-manager-overlay .nexus-manager-subbar,
 .nexus-manager-subbar {
   display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
   justify-content: space-between !important;
   padding: 8px 20px !important;
@@ -1119,7 +1241,8 @@
   font-size: 0.76rem !important;
   color: #94a3b8 !important;
   gap: 10px !important;
-  flex-wrap: wrap !important;
+  width: 100% !important;
+  min-width: 0 !important;
   margin: 0 !important;
 }
 
@@ -1127,27 +1250,88 @@
 [dir] #nexus-manager-overlay .nexus-subbar-select-all,
 .nexus-subbar-select-all {
   display: inline-flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
   gap: 8px !important;
   cursor: pointer !important;
   user-select: none !important;
   font-weight: 600 !important;
+  font-size: 0.76rem !important;
   color: #cbd5e1 !important;
   margin: 0 !important;
   padding: 0 !important;
+  line-height: normal !important;
+  border: none !important;
+  background: transparent !important;
+  flex-shrink: 0 !important;
+}
+
+#nexus-manager-overlay .nexus-subbar-select-all span,
+[dir] #nexus-manager-overlay .nexus-subbar-select-all span,
+.nexus-subbar-select-all span {
+  display: inline-block !important;
+  position: static !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  line-height: normal !important;
+  color: inherit !important;
+  vertical-align: middle !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+}
+
+.nexus-root-container input[type="checkbox"],
+#nexus-manager-overlay input[type="checkbox"],
+#nexus-hud-container input[type="checkbox"],
+#nexus-modal-overlay input[type="checkbox"],
+#nexus-inpage-options-backdrop input[type="checkbox"],
+.nexus-subbar-select-all input[type="checkbox"],
+.nexus-item-chk,
+#nexus-select-all,
+#nexus-subbar-chk-all {
+  all: revert !important;
+  appearance: auto !important;
+  -webkit-appearance: checkbox !important;
+  -moz-appearance: checkbox !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  accent-color: var(--nexus-cyan) !important;
+  flex-shrink: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  position: static !important;
+  opacity: 1 !important;
 }
 
 #nexus-manager-overlay .nexus-subbar-actions,
 [dir] #nexus-manager-overlay .nexus-subbar-actions,
 .nexus-subbar-actions {
   display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
   gap: 8px !important;
-  flex-wrap: wrap !important;
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
 }
 
 #nexus-manager-overlay .nexus-tag-engine,
@@ -1197,6 +1381,12 @@
   color: #94a3b8 !important;
   width: 24px !important;
   height: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   border-radius: 6px !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -1205,6 +1395,8 @@
   transition: all 0.2s ease !important;
   padding: 0 !important;
   margin: 0 !important;
+  box-sizing: border-box !important;
+  line-height: normal !important;
 }
 
 #nexus-manager-overlay .nexus-btn-item-action:hover,

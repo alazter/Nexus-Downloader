@@ -5,6 +5,8 @@ let activeBrowserDownloads = [];
 let lastReportedSpeed = '0.0 MB/s';
 let lastBytesTotal = 0;
 let lastSpeedCheckTime = Date.now();
+let pendingMegaUpDownloads = [];
+let megaUpTabs = new Map();
 
 // Inicialização padrão de configurações
 chrome.runtime.onInstalled.addListener(() => {
@@ -372,6 +374,18 @@ function isWebpageUrl(urlStr) {
         return true;
       }
     }
+
+    // 7. Vik1ngFile / VikingFile: rotas de páginas HTML de visualização do site
+    if (host.includes('vik1ngfile') || host.includes('vikingfile')) {
+      if (pathname.startsWith('/f/') || pathname.startsWith('/file/') || pathname === '/' || pathname === '') {
+        return true;
+      }
+    }
+
+    // 8. MegaUp: página do artigo / upload (não é arquivo binário direto)
+    if (host === 'megaup.net' || host === 'www.megaup.net') {
+      return true;
+    }
   } catch (e) {
     return false;
   }
@@ -630,7 +644,169 @@ async function resolveMediaFireDirectUrl(item) {
   return null;
 }
 
-// Resolução client-side / background de links diretos de download (MediaFire, Bunkr, etc.)
+/**
+ * Resolve a URL direta de download do Vik1ngFile / VikingFile
+ * Portado diretamente de vikingfile-scanner.js
+ */
+async function resolveVikingFileDirectUrl(item) {
+  try {
+    const rawUrl = item.downloadUrl || item.directUrl || item.url || '';
+    if (!rawUrl.includes('vik1ngfile') && !rawUrl.includes('vikingfile') && item.service !== 'Vik1ngFile') {
+      return null;
+    }
+
+    if (item.directUrl && !isWebpageUrl(item.directUrl) && item.directUrl.startsWith('http') && !item.directUrl.includes('/f/')) {
+      return item.directUrl;
+    }
+
+    // Normalizar vik1ngfile.site para vikingfile.com para evitar redirecionamento 301
+    let targetPageUrl = rawUrl.replace('vik1ngfile.site', 'vikingfile.com');
+
+    // 1. Requisicao GET para seguir redirecionamento e capturar dados do HTML
+    const ctrl = new AbortController();
+    const tId = setTimeout(() => ctrl.abort(), 6000);
+    const getResp = await fetch(targetPageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      },
+      signal: ctrl.signal
+    });
+    clearTimeout(tId);
+
+    let finalPageUrl = getResp.url || targetPageUrl;
+    let html = '';
+    if (getResp.ok) {
+      html = await getResp.text();
+      const nameMatch = html.match(/<h2[^>]*id=["']filename["'][^>]*>([^<]+)<\/h2>/i) ||
+                        html.match(/<title>([^<]+)<\/title>/i);
+      const sizeMatch = html.match(/<p[^>]*id=["']size["'][^>]*>([^<]+)<\/p>/i) ||
+                        html.match(/id=["']size["'][^>]*>([^<]+)</i);
+
+      if (nameMatch && nameMatch[1]) {
+        let clean = nameMatch[1].replace(/[-_] ViKiNG FiLE.*/i, '').replace(/[-_] Vik1ngFile.*/i, '').trim();
+        if (clean) {
+          item.filename = clean;
+          item.name = clean;
+        }
+      }
+      if (sizeMatch && sizeMatch[1]) {
+        const sm = sizeMatch[1].trim();
+        const m = sm.match(/([\d.,]+)\s*([KMGT]?B)/i);
+        if (m) {
+          const num = parseFloat(m[1].replace(',', '.'));
+          const unit = m[2].toUpperCase();
+          const mult = unit === 'GB' ? 1073741824 : unit === 'MB' ? 1048576 : unit === 'KB' ? 1024 : 1;
+          item.size = Math.round(num * mult);
+          item.sizeFormatted = sm;
+        }
+      }
+    }
+
+    // 2. Requisitar POST na URL final para obter o JSON com link direto (metodo oficial do site)
+    try {
+      const postCtrl = new AbortController();
+      const ptId = setTimeout(() => postCtrl.abort(), 6000);
+      const postResp = await fetch(finalPageUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': finalPageUrl
+        },
+        body: '',
+        signal: postCtrl.signal
+      });
+      clearTimeout(ptId);
+
+      if (postResp.ok) {
+        const text = await postResp.text();
+        try {
+          const data = JSON.parse(text);
+          if (data && data.link) {
+            if (data.name) {
+              item.filename = data.name;
+              item.name = data.name;
+            }
+            if (data.size) {
+              item.size = data.size;
+              item.sizeFormatted = formatBytes(data.size);
+            }
+            return data.link;
+          }
+        } catch (eJson) {}
+      }
+    } catch (ePost) {}
+
+    // 3. Fallback: procurar por link de download direto no proprio HTML retornado (apenas /d/, nunca fast-download)
+    if (html) {
+      const dlLinkMatch = html.match(/id=["']download-link["'][^>]*href=["'](https?:\/\/[^"']*\/d\/[^"']+)["']/i) ||
+                          html.match(/href=["'](https?:\/\/[^"']*\/d\/[^"']+)["']/i);
+      if (dlLinkMatch && dlLinkMatch[1]) {
+        const candidate = dlLinkMatch[1].trim();
+        return candidate;
+      }
+    }
+  } catch (err) {
+    console.warn('[Background Vik1ngFile] Erro ao resolver link:', err);
+  }
+  return null;
+}
+
+/**
+ * Resolve e pré-extrai a URL final de download do MegaUp (download.megaup.net/?url=...)
+ * a partir do script inline da página inicial, sem esperar o countdown de 5 segundos.
+ */
+async function resolveMegaUpDirectUrl(item) {
+  try {
+    const rawUrl = item.downloadUrl || item.directUrl || item.url || '';
+    if (!rawUrl.includes('megaup.net') && item.service !== 'MegaUp') return null;
+
+    if (rawUrl.includes('download.megaup.net/?url=')) {
+      return rawUrl;
+    }
+    if (item.directUrl && item.directUrl.includes('download.megaup.net/?url=')) {
+      return item.directUrl;
+    }
+
+    const ctrl = new AbortController();
+    const tId = setTimeout(() => ctrl.abort(), 5000);
+    const resp = await fetch(rawUrl, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    clearTimeout(tId);
+
+    if (resp.ok) {
+      const html = await resp.text();
+      const m = html.match(/https?:\/\/download\.megaup\.net\/\?url=[^\s"'<>]+/i);
+      if (m && m[0]) {
+        const directUrl = m[0].replace(/&amp;/g, '&');
+        item.directUrl = directUrl;
+        item.downloadUrl = directUrl;
+
+        const nameMatch = html.match(/<th[^>]*class=["']responsiveInfoTable["'][^>]*><strong>([^<]+)<\/strong>/i) ||
+                          html.match(/<title>([^<]+)<\/title>/i);
+        if (nameMatch && nameMatch[1]) {
+          const cleanName = nameMatch[1].replace(/[-_] MegaUp.*/i, '').trim();
+          if (cleanName) {
+            item.filename = cleanName;
+            item.name = cleanName;
+          }
+        }
+        return directUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('[Background MegaUp] Erro ao pre-extrair URL final:', err);
+  }
+  return null;
+}
+
+// Resolução client-side / background de links diretos de download (MediaFire, Bunkr, Vik1ngFile, MegaUp, etc.)
 async function resolveDirectDownloadUrl(item) {
   if (item.directUrl && !isWebpageUrl(item.directUrl)) return item.directUrl;
   if (item.downloadUrl && !isWebpageUrl(item.downloadUrl)) return item.downloadUrl;
@@ -670,12 +846,28 @@ async function resolveDirectDownloadUrl(item) {
     }
   }
 
-  // 4. Se já for uma URL direta de arquivo binário (não página web), retorna direto
+  // 4. Vik1ngFile direct resolver
+  if (rawUrl.includes('vik1ngfile') || rawUrl.includes('vikingfile') || item.service === 'Vik1ngFile') {
+    const vkResolved = await resolveVikingFileDirectUrl(item);
+    if (vkResolved && !isWebpageUrl(vkResolved)) {
+      return vkResolved;
+    }
+  }
+
+  // 5. MegaUp direct resolver
+  if (rawUrl.includes('megaup.net') || item.service === 'MegaUp') {
+    const megaResolved = await resolveMegaUpDirectUrl(item);
+    if (megaResolved) {
+      return megaResolved;
+    }
+  }
+
+  // 6. Se já for uma URL direta de arquivo binário (não página web), retorna direto
   if (!isWebpageUrl(rawUrl)) {
     return rawUrl;
   }
 
-  // 5. Se a URL ainda for uma página HTML não resolvida, NUNCA chamar o download nativo
+  // 7. Se a URL ainda for uma página HTML não resolvida, NUNCA chamar o download nativo
   console.warn('[Background] URL é uma página web intermediária não resolvida, evitando download de .html:', rawUrl);
   return null;
 }
@@ -713,7 +905,82 @@ async function startBrowserDownload(items, tabId) {
   }
 
   for (const item of items) {
-    const downloadUrl = await resolveDirectDownloadUrl(item);
+    // Tratamento especial para MegaUp (Cloudflare Managed Challenge / Turnstile)
+    const isMegaUpItem = (item.service === 'MegaUp') ||
+                         (item.url && (item.url.includes('megaup.net') || item.url.includes('megaupdownup.org'))) ||
+                         (item.downloadUrl && (item.downloadUrl.includes('megaup.net') || item.downloadUrl.includes('megaupdownup.org'))) ||
+                         (item.directUrl && (item.directUrl.includes('megaup.net') || item.directUrl.includes('megaupdownup.org')));
+
+    if (isMegaUpItem) {
+      let resolvedMegaUrl = await resolveMegaUpDirectUrl(item);
+      const targetMegaUrl = resolvedMegaUrl || item.directUrl || item.downloadUrl || item.url;
+      let cleanName = sanitizeDownloadFilename(item.filename || item.name) || 'arquivo.rar';
+      console.log('[Background] Iniciando download MegaUp via aba interativa (Cloudflare Turnstile):', targetMegaUrl);
+
+      pendingMegaUpDownloads.push({
+        item,
+        tabId,
+        targetFilename: folder ? `${folder}/${cleanName}` : cleanName,
+        cleanName,
+        timestamp: Date.now()
+      });
+
+      let alreadyOnDownloadPage = false;
+      let callerTab = null;
+      if (tabId) {
+        try {
+          callerTab = await chrome.tabs.get(tabId);
+          if (callerTab && callerTab.url && callerTab.url.includes('download.megaup.net')) {
+            alreadyOnDownloadPage = true;
+          }
+        } catch (e) {}
+      }
+
+      if (alreadyOnDownloadPage) {
+        chrome.tabs.sendMessage(tabId, { action: 'TRIGGER_MEGAUP_DOWNLOAD' }).catch(() => {});
+      } else {
+        // Se o usuário está na aba do megaup.net, navega diretamente na mesma aba para a página de download (sem popups)
+        if (tabId && callerTab && callerTab.url && (callerTab.url.includes('megaup.net') || callerTab.url.includes('megaupdownup.org'))) {
+          megaUpTabs.set(tabId, {
+            originalTabId: tabId,
+            item,
+            timestamp: Date.now()
+          });
+          chrome.tabs.update(tabId, { url: targetMegaUrl });
+        } else {
+          chrome.tabs.create({ url: targetMegaUrl, active: true }, (newTab) => {
+            if (newTab && newTab.id) {
+              megaUpTabs.set(newTab.id, {
+                originalTabId: tabId,
+                item,
+                timestamp: Date.now()
+              });
+              setTimeout(() => {
+                if (megaUpTabs.has(newTab.id)) {
+                  megaUpTabs.delete(newTab.id);
+                  try { chrome.tabs.remove(newTab.id); } catch (e) {}
+                }
+              }, 120000);
+            }
+          });
+        }
+      }
+
+      startedCount++;
+      continue;
+    }
+
+    let downloadUrl = await resolveDirectDownloadUrl(item);
+    if (!downloadUrl || isWebpageUrl(downloadUrl)) {
+      // Se for Vik1ngFile, tentar resolver explicitamente antes de desistir
+      if (item.service === 'Vik1ngFile' || (item.url && (item.url.includes('vik1ngfile') || item.url.includes('vikingfile')))) {
+        const retryVk = await resolveVikingFileDirectUrl(item);
+        if (retryVk && !isWebpageUrl(retryVk)) {
+          downloadUrl = retryVk;
+        }
+      }
+    }
+
     if (!downloadUrl || isWebpageUrl(downloadUrl)) {
       activeBrowserDownloads.push({
         id: `unres_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -745,7 +1012,7 @@ async function startBrowserDownload(items, tabId) {
       clearTimeout(preTimeout);
       const ct = (headResp.headers.get('content-type') || '').toLowerCase();
       const cd = (headResp.headers.get('content-disposition') || '').toLowerCase();
-      if (ct.includes('text/html') && !cd.includes('attachment')) {
+      if (ct.includes('text/html') && !cd.includes('attachment') && !downloadUrl.includes('megaup.net')) {
         isHtmlResponse = true;
       }
     } catch (eHead) {}
@@ -776,13 +1043,20 @@ async function startBrowserDownload(items, tabId) {
       }
       const targetFilename = folder ? `${folder}/${cleanName}` : cleanName;
 
+      const dlOptions = {
+        url: downloadUrl,
+        filename: targetFilename,
+        conflictAction: 'uniquify',
+        saveAs: false
+      };
+      if (item.service === 'MegaUp' || downloadUrl.includes('megaup.net')) {
+        dlOptions.headers = [{ name: 'Referer', value: item.url || 'https://megaup.net/' }];
+      } else if (item.service === 'Vik1ngFile' || downloadUrl.includes('vik1ngfile') || downloadUrl.includes('vikingfile')) {
+        dlOptions.headers = [{ name: 'Referer', value: item.url || 'https://vikingfile.com/' }];
+      }
+
       const downloadId = await new Promise((resolve, reject) => {
-        chrome.downloads.download({
-          url: downloadUrl,
-          filename: targetFilename,
-          conflictAction: 'uniquify',
-          saveAs: false
-        }, (id) => {
+        chrome.downloads.download(dlOptions, (id) => {
           if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
           else resolve(id);
         });
@@ -833,7 +1107,7 @@ async function startBrowserDownload(items, tabId) {
       total: items.length,
       speed: '0.0 MB/s',
       speedFormatted: '0.0 MB/s',
-      isCompleted: true,
+      isCompleted: false,
       items: activeBrowserDownloads
     }).catch(() => {});
   }
@@ -922,7 +1196,7 @@ function trackBrowserDownloads(ids, tabId, totalItems) {
           total: totalItems,
           speed: '0.0 MB/s',
           speedFormatted: '0.0 MB/s',
-          isCompleted: true,
+          isCompleted: (completed > 0 && completed >= totalItems),
           items: activeBrowserDownloads
         }).catch(() => {});
       }
@@ -931,6 +1205,122 @@ function trackBrowserDownloads(ids, tabId, totalItems) {
     }
   }, 800);
 }
+
+// Listener para capturar downloads iniciados no navegador (ex: MegaUp via Turnstile)
+chrome.downloads.onCreated.addListener((downloadItem) => {
+  console.log('[Background onCreated] Download nativo detectado:', downloadItem.id, downloadItem.url, downloadItem.filename);
+
+  const isMegaUp = (downloadItem.url && (downloadItem.url.includes('megaup.net') || downloadItem.url.includes('megaupdownup.org'))) ||
+                   (downloadItem.referrer && (downloadItem.referrer.includes('megaup.net') || downloadItem.referrer.includes('megaupdownup.org'))) ||
+                   pendingMegaUpDownloads.length > 0;
+
+  if (isMegaUp && pendingMegaUpDownloads.length > 0) {
+    const pending = pendingMegaUpDownloads.shift();
+    const item = pending.item;
+    const tabId = pending.tabId;
+
+    for (const [tId, tInfo] of megaUpTabs.entries()) {
+      megaUpTabs.delete(tId);
+      if (tId !== tabId && tId !== (tInfo ? tInfo.originalTabId : null)) {
+        try { chrome.tabs.remove(tId); } catch (e) {}
+      }
+    }
+
+    const cleanName = sanitizeDownloadFilename(downloadItem.filename || item.filename || item.name) || 'arquivo.rar';
+
+    chrome.storage.local.get(['downloadEngine', 'downloadOnlyViaExtension'], (st) => {
+      const isOnlyExt = st.downloadOnlyViaExtension === true;
+      const curEngine = isOnlyExt ? 'browser' : (st.downloadEngine || 'bridge');
+      if (curEngine === 'bridge') {
+        chrome.downloads.cancel(downloadItem.id, () => {
+          chrome.downloads.erase({ id: downloadItem.id }, () => {});
+        });
+        const bridgeItem = {
+          id: `megaup_${Date.now()}`,
+          name: cleanName,
+          filename: cleanName,
+          url: item.url || downloadItem.url,
+          directUrl: downloadItem.url,
+          downloadUrl: downloadItem.url,
+          size: downloadItem.totalBytes || item.size || 0,
+          sizeFormatted: downloadItem.totalBytes > 0 ? formatBytes(downloadItem.totalBytes) : (item.sizeFormatted || ''),
+          service: 'MegaUp',
+          isHttpDirect: true,
+          type: getFileType(cleanName)
+        };
+        fetch(`${BRIDGE_URL}/api/queue/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [bridgeItem], sourceTabId: tabId })
+        }).then(() => {
+          if (tabId) {
+            chrome.tabs.sendMessage(tabId, {
+              action: 'DOWNLOAD_STARTED',
+              itemsCount: 1,
+              engine: 'bridge',
+              items: [bridgeItem]
+            }).catch(() => {});
+            startBridgePolling(tabId, [bridgeItem]);
+          }
+        }).catch(() => {});
+        return;
+      }
+
+      activeBrowserDownloads.push({
+        id: downloadItem.id,
+        url: item.url || downloadItem.url,
+        directUrl: downloadItem.url,
+        name: cleanName,
+        status: 'downloading',
+        progress: 0,
+        speed: '',
+        size: downloadItem.totalBytes || item.size || 0,
+        sizeFormatted: downloadItem.totalBytes > 0 ? formatBytes(downloadItem.totalBytes) : (item.sizeFormatted || ''),
+        service: 'MegaUp',
+        type: getFileType(cleanName)
+      });
+
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'DOWNLOAD_STARTED',
+          itemsCount: 1,
+          engine: 'browser',
+          items: activeBrowserDownloads
+        }).catch(() => {});
+
+        trackBrowserDownloads([downloadItem.id], tabId, 1);
+      }
+    });
+  } else if (isMegaUp && pendingMegaUpDownloads.length === 0) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const activeTab = tabs && tabs[0];
+      const targetTabId = (activeTab && activeTab.url && (activeTab.url.includes('megaup.net') || activeTab.url.includes('megaupdownup.org'))) ? activeTab.id : null;
+      if (targetTabId) {
+        const cleanName = sanitizeDownloadFilename(downloadItem.filename) || 'arquivo.rar';
+        activeBrowserDownloads.push({
+          id: downloadItem.id,
+          url: downloadItem.url,
+          directUrl: downloadItem.url,
+          name: cleanName,
+          status: 'downloading',
+          progress: 0,
+          speed: '',
+          size: downloadItem.totalBytes || 0,
+          sizeFormatted: downloadItem.totalBytes > 0 ? formatBytes(downloadItem.totalBytes) : '',
+          service: 'MegaUp',
+          type: getFileType(cleanName)
+        });
+        chrome.tabs.sendMessage(targetTabId, {
+          action: 'DOWNLOAD_STARTED',
+          itemsCount: 1,
+          engine: 'browser',
+          items: activeBrowserDownloads
+        }).catch(() => {});
+        trackBrowserDownloads([downloadItem.id], targetTabId, 1);
+      }
+    });
+  }
+});
 
 // Pausar downloads do navegador
 async function pauseDownloads(ids) {
@@ -1069,7 +1459,10 @@ function getFilenameFromUrl(url) {
 function getFileType(url) {
   const lower = url.toLowerCase();
   if (lower.match(/\.(mp4|mkv|avi|mov|wmv|webm|flv|m4v)/)) return '.Vídeo';
-  if (lower.match(/\.(zip|rar|7z|tar|gz|bz2)/)) return '.Zip';
+  if (lower.match(/\.rar/)) return '.Rar';
+  if (lower.match(/\.zip/)) return '.Zip';
+  if (lower.match(/\.7z/)) return '.7z';
+  if (lower.match(/\.(tar|gz|bz2|xz|iso)/)) return '.Arquivo';
   if (lower.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)/)) return '.Foto';
   if (lower.match(/\.(torrent|magnet)/)) return '.Torrents';
   if (lower.match(/\.(mp3|wav|flac|aac|ogg|m4a)/)) return '.Áudio';
