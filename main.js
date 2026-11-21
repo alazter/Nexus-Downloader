@@ -9,13 +9,13 @@ const { google } = require('googleapis');
 const child_process = require('child_process');
 const crypto = require('crypto');
 const { isBunkrUrl, scanBunkrLink, resolveBunkrDirectUrl } = require('./bunkr-scanner');
-const { isMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
+const { isMediaFireUrl, parseMediaFireUrl, scanMediaFireLink, resolveMediaFireDirectUrl } = require('./mediafire-scanner');
 const { isTeraBoxUrl, scanTeraBoxLink, resolveTeraBoxDirectUrl } = require('./terabox-scanner');
 const { isOneDriveUrl, scanOneDriveLink, resolveOneDriveDirectUrl } = require('./onedrive-scanner');
 const { isTorboxUrl, scanTorboxLink, resolveTorboxDirectUrl, testTorboxApiKey, fetchTorboxUserDownloads, getTorboxActiveCloudJobsCount, waitForTorboxSlot, controlTorboxItem, extractRealReleaseName, extractCleanShowName } = require('./torbox-scanner');
 const { isDrimeUrl, scanDrimeLink } = require('./drime-scanner');
 const { isTurboUrl, scanTurboLink, resolveTurboDirectUrl } = require('./turbo-scanner');
-const { scanGenericLink, scanPixelDrain, scan1FichierDirectory } = require('./generic-scanner');
+const { scanGenericLink, scanPixelDrain, scan1FichierDirectory, parsePlayStationCdnInfo } = require('./generic-scanner');
 const { isSendUrl, scanSendLink, resolveSendDirectUrl } = require('./send-scanner');
 const { isVikingFileUrl, scanVikingFileLink, resolveVikingFileDirectUrl } = require('./vikingfile-scanner');
 const { isGoFileUrl, scanGoFileLink, resolveGoFileDirectUrl, getGoFileAccountToken } = require('./gofile-scanner');
@@ -25,6 +25,7 @@ const { isMegaUpUrl, scanMegaUpLink, resolveMegaUpDirectUrl } = require('./megau
 const { isFileditchUrl, scanFileditchLink, resolveFileditchDirectUrl } = require('./fileditch-scanner');
 const { isDataNodesUrl, scanDataNodesLink } = require('./datanodes-scanner');
 const { isFileKeeperUrl, scanFileKeeperLink, resolveFileKeeperDirectUrl } = require('./filekeeper-scanner');
+const { isGoogleDriveUrl, extractDriveId, scanPublicGoogleDriveFolder, scanPublicGoogleDriveFile, resolveGoogleDriveDirectUrl } = require('./gdrive-scanner');
 const { startBridgeServer, getBridgeActivity } = require('./bridge-server');
 const { initTelemetry, getTelemetryLogsDir, recordDownloadSuccess, recordDownloadFailure, syncWithGoogleDrive } = require('./telemetry-manager');
 
@@ -176,6 +177,7 @@ let config = {
     filester: 1,
     megaup: 1,
     generic: 1,
+    playstation: 3,
     datanodes: 1,
     filekeeper: 1,
     fileditch: 1
@@ -285,6 +287,7 @@ function getExtensionFromMime(mimeType) {
     'image/webp': '.webp',
     'image/bmp': '.bmp',
     'application/vnd.android.package-archive': '.apk',
+    'application/vnd.apple.installer+xml': '.pkg',
     'application/x-msdownload': '.exe'
   };
   return mimeMap[cleanMime] || '';
@@ -331,12 +334,16 @@ function saveQueue() {
       id: item.id,
       fileId: item.fileId || null,
       numericId: item.numericId || null,
-      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_'))),
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('psn_') || item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_') || item.id.startsWith('gdrive_'))),
       sendUrl: (item.sendUrl && isSendUrl(item.sendUrl)) ? item.sendUrl : (isSendUrl(item.url) ? item.url : null),
       url: item.url || item.downloadUrl || item.directUrl || null,
       directUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.directUrl || item.url || item.downloadUrl || null),
       downloadUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.downloadUrl || item.directUrl || item.url || null),
       mediafireUrl: item.mediafireUrl || null,
+      gdriveFileId: item.gdriveFileId || null,
+      resourceKey: item.resourceKey || null,
+      preserveRelativePath: !!item.preserveRelativePath,
+      service: item.service || null,
       teraboxUrl: item.teraboxUrl || null,
       teraboxDlink: item.teraboxDlink || null,
       teraboxCookie: item.teraboxCookie || null,
@@ -793,7 +800,7 @@ app.whenReady().then(() => {
               (isMediaFireUrl(itemUrl) && itemUrl.includes('/folder/')) ||
               (isGoFileUrl(itemUrl) && itemUrl.includes('/d/') && !item.fileId && !item.id?.startsWith('gofile_')) ||
               (isTeraBoxUrl(itemUrl) && (itemUrl.includes('/s/') || itemUrl.includes('/sharing/')) && !item.teraboxDlink) ||
-              (itemUrl.includes('drive.google.com') && itemUrl.includes('/folders/'))
+              (itemUrl.includes('drive.google.com') && itemUrl.includes('/folders/') && !item.gdriveFileId && !item.fileId && !(item.id && String(item.id).startsWith('gdrive_')))
             );
 
             if (isAlbumOrFolder) {
@@ -822,13 +829,33 @@ app.whenReady().then(() => {
             const isViking = (item.id && (String(item.id).startsWith('vik1ng_') || String(item.id).startsWith('viking_'))) || isVikingFileUrl(rawItemUrl) || item.service === 'Vik1ngFile' || item.service === 'vikingfile';
             const isFileditch = (item.id && String(item.id).startsWith('fileditch_')) || isFileditchUrl(rawItemUrl) || item.service === 'FileDitch' || item.service === 'fileditch';
 
+            const isGdrive = (item.id && String(item.id).startsWith('gdrive_')) || !!item.gdriveFileId || isGoogleDriveUrl(rawItemUrl) || item.service === 'Google Drive' || item.service === 'gdrive';
+            const isMediaFire = (item.id && String(item.id).startsWith('mediafire_')) || isMediaFireUrl(rawItemUrl) || isMediaFireUrl(item.mediafireUrl) || item.service === 'MediaFire' || item.service === 'mediafire';
+            const psnInfo = parsePlayStationCdnInfo(rawItemUrl, item.filename || item.name || '');
+            const isPlayStation = (item.id && String(item.id).startsWith('psn_')) || !!psnInfo || item.service === 'PlayStation' || item.service === 'playstation';
+
             let itemId = item.id;
             let fileId = item.fileId || null;
+            let resolvedNumericId = item.numericId || null;
 
             if (isBunkr) {
               const bunkrMatch = rawItemUrl.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i);
               fileId = item.bunkrSlug || item.fileId || (bunkrMatch ? bunkrMatch[1] : null);
               if (!itemId && fileId) itemId = `bunkr_${fileId}`;
+            } else if (isMediaFire) {
+              const mfParsed = parseMediaFireUrl(item.mediafireUrl || rawItemUrl);
+              const mfKey = resolvedNumericId || (mfParsed && mfParsed.key) || null;
+              if (mfKey) {
+                resolvedNumericId = mfKey;
+                fileId = fileId || `mf_${mfKey}`;
+                if (!itemId || itemId === 'mf-current' || !String(itemId).startsWith('mediafire_')) {
+                  itemId = `mediafire_${mfKey}`;
+                }
+              }
+            } else if (isGdrive) {
+              const gParsed = extractDriveId(rawItemUrl) || extractDriveId(item.directUrl || '') || extractDriveId(item.downloadUrl || '');
+              fileId = item.gdriveFileId || item.fileId || (gParsed && !gParsed.isFolder ? gParsed.id : null);
+              if (!itemId && fileId) itemId = `gdrive_${fileId}`;
             } else if (isFilester) {
               const fsMatch = rawItemUrl.match(/\/d\/([a-zA-Z0-9_-]+)/i);
               fileId = item.fileId || (fsMatch ? fsMatch[1] : null);
@@ -841,10 +868,14 @@ app.whenReady().then(() => {
               if (!itemId && fileId) itemId = `vik1ng_${fileId}`;
               else if (!itemId) itemId = `vik1ng_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
             } else if (isFileditch) {
-              const fdMatch = Buffer.from(rawItemUrl).toString('hex').slice(0, 16);
+              const fdMatch = crypto.createHash('sha256').update(String(rawItemUrl)).digest('hex').slice(0, 16);
               fileId = item.fileId || fdMatch;
               if (!itemId && fileId) itemId = `fileditch_${fileId}`;
               else if (!itemId) itemId = `fileditch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            } else if (isPlayStation) {
+              const psHash = crypto.createHash('sha256').update(String(rawItemUrl)).digest('hex').slice(0, 16);
+              fileId = item.fileId || `psn_${psHash}`;
+              if (!itemId) itemId = `psn_${psHash}`;
             }
 
             if (!itemId) {
@@ -854,6 +885,8 @@ app.whenReady().then(() => {
             let resolvedService = item.service;
             if (!resolvedService || resolvedService === 'Extension' || resolvedService === 'Web') {
               if (isBunkr) resolvedService = 'Bunkr';
+              else if (isGdrive) resolvedService = 'Google Drive';
+              else if (isPlayStation) resolvedService = 'PlayStation';
               else if (isFilester) resolvedService = 'Filester';
               else if (isMegaUp) resolvedService = 'MegaUp';
               else if (isViking) resolvedService = 'Vik1ngFile';
@@ -862,30 +895,41 @@ app.whenReady().then(() => {
               else resolvedService = 'generic';
             }
 
+            const itemBaseName = item.filename || item.name || 'download';
             const commonBatchId = item.batchId || (items.length > 1 ? `ext_batch_${Date.now()}` : null);
-            const commonFolder = item.folderName || (isMegaUp ? 'MegaUp' : (isFilester ? 'Filester' : (isViking ? 'Vik1ngFile' : (item.albumTitle || item.albumName || null))));
+            const commonFolder = item.folderName || (psnInfo ? psnInfo.folderName : null) || (isMegaUp ? 'MegaUp' : (isFilester ? 'Filester' : (isViking ? 'Vik1ngFile' : (item.albumTitle || item.albumName || null))));
+            const computedRelPath = item.relativePath || (psnInfo ? `${psnInfo.folderName}/${itemBaseName}` : null);
+            const hasNestedRelPath = !!(computedRelPath && (computedRelPath.includes('/') || computedRelPath.includes('\\')));
+
+            const resolvedMfUrl = item.mediafireUrl || (isMediaFireUrl(rawItemUrl) ? rawItemUrl : null);
+            const hasDirectMfCdn = item.directUrl && /^https?:\/\/download\d*\.mediafire\.com\//i.test(item.directUrl);
 
             expandedFiles.push({
               id: itemId,
               fileId: fileId,
-              numericId: item.numericId || null,
-              name: item.filename || item.name || 'download',
+              gdriveFileId: item.gdriveFileId || (isGdrive ? fileId : null),
+              resourceKey: item.resourceKey || null,
+              numericId: resolvedNumericId,
+              name: itemBaseName,
               url: item.url || rawItemUrl,
-              directUrl: item.directUrl || item.url || rawItemUrl,
+              directUrl: isMediaFire ? (hasDirectMfCdn ? item.directUrl : '') : (item.directUrl || item.url || rawItemUrl),
               sourceUrl: item.sourceUrl || item.url || rawItemUrl,
-              downloadUrl: item.downloadUrl || item.directUrl || item.url || rawItemUrl,
+              downloadUrl: isMediaFire ? (hasDirectMfCdn ? item.directUrl : '') : (item.downloadUrl || item.directUrl || item.url || rawItemUrl),
               bunkrPageUrl: isBunkr ? (item.url || item.sourceUrl || rawItemUrl) : null,
-              mediafireUrl: item.mediafireUrl || (isMediaFireUrl(rawItemUrl) ? rawItemUrl : null),
+              mediafireUrl: resolvedMfUrl,
               size: item.size || 0,
               sizeFormatted: item.sizeFormatted || '',
               service: resolvedService,
-              type: item.type || '.Arquivo',
+              type: item.type || (isPlayStation ? '.Pkg' : '.Arquivo'),
               folderName: commonFolder,
+              folderPath: item.folderPath || null,
+              relativePath: computedRelPath,
+              preserveRelativePath: item.preserveRelativePath !== undefined ? !!item.preserveRelativePath : ((isGdrive || isPlayStation) && hasNestedRelPath),
               batchId: commonBatchId,
               source: 'extension',
               origin: 'extension',
               isWeb: true,
-              referer: item.referer || item.sourceUrl || (isFilester ? 'https://filester.sh/' : (isMegaUp ? (item.url || 'https://megaup.net/') : (isViking ? 'https://vikingfile.com/' : null))),
+              referer: isPlayStation ? '' : (item.referer || item.sourceUrl || (isGdrive ? 'https://drive.google.com/' : (isFilester ? 'https://filester.sh/' : (isMegaUp ? (item.url || 'https://megaup.net/') : (isViking ? 'https://vikingfile.com/' : null))))),
               cookieHeader: item.cookieHeader || null,
               megaFolderId: item.megaFolderId || null,
               megaNodeId: item.megaNodeId || null,
@@ -1053,33 +1097,10 @@ function startLocalOAuthServer(resolve, reject) {
 // ==========================================
 // Módulo de Gerenciamento do Google Drive
 // ==========================================
-function extractDriveId(link) {
-  // Regex para achar ID de Pasta
-  const folderMatch = link.match(/\/folders\/([a-zA-Z0-9-_]{25,})/);
-  if (folderMatch) return { id: folderMatch[1], isFolder: true };
-
-  // Regex para achar ID de Arquivo
-  const fileMatch = link.match(/\/file\/d\/([a-zA-Z0-9-_]{25,})/);
-  if (fileMatch) return { id: fileMatch[1], isFolder: false };
-
-  // Regex para query params 'id='
-  const idQueryMatch = link.match(/[?&]id=([a-zA-Z0-9-_]{25,})/);
-  if (idQueryMatch) {
-    // Se conter a palavra 'folders', assume que é pasta
-    const isFolder = link.includes('folder');
-    return { id: idQueryMatch[1], isFolder };
-  }
-
-  // Se for apenas o ID cru com tamanho apropriado
-  const rawIdMatch = link.match(/^([a-zA-Z0-9-_]{25,})$/);
-  if (rawIdMatch) return { id: rawIdMatch[1], isFolder: false }; // assume arquivo por padrão se for cru
-
-  return null;
-}
-
-// Escaneamento Recursivo de Pasta no Google Drive
-async function scanGoogleDriveFolder(folderId, relativePath = '') {
+// Escaneamento Recursivo de Pasta no Google Drive (API OAuth)
+async function scanGoogleDriveFolder(folderId, relativePath = '', rootFolderId = null) {
   if (!driveService) throw new Error('Google Drive não está conectado.');
+  const originRootId = rootFolderId || folderId;
 
   let filesList = [];
   let pageToken = null;
@@ -1096,19 +1117,27 @@ async function scanGoogleDriveFolder(folderId, relativePath = '') {
 
     const files = response.data.files || [];
     for (const file of files) {
-      const currentRelativePath = path.join(relativePath, file.name);
+      const normalizedParent = relativePath ? relativePath.replace(/\\/g, '/') : '';
+      const currentRelativePath = normalizedParent ? `${normalizedParent}/${file.name}` : file.name;
       if (file.mimeType === 'application/vnd.google-apps.folder') {
-        const subFiles = await scanGoogleDriveFolder(file.id, currentRelativePath);
+        const subFiles = await scanGoogleDriveFolder(file.id, currentRelativePath, originRootId);
         filesList = filesList.concat(subFiles);
       } else {
-        const rootFolderName = relativePath.split(path.sep)[0] || relativePath || 'Pasta_Google_Drive';
+        const rootFolderName = currentRelativePath.split('/')[0] || 'Pasta_Google_Drive';
         filesList.push({
           id: file.id,
+          fileId: file.id,
+          gdriveFileId: file.id,
           name: file.name,
           size: parseInt(file.size || '0'),
           mimeType: file.mimeType,
           relativePath: currentRelativePath,
-          folderName: rootFolderName
+          folderPath: normalizedParent || rootFolderName,
+          folderName: rootFolderName,
+          preserveRelativePath: true,
+          service: 'Google Drive',
+          url: `https://drive.google.com/file/d/${file.id}/view`,
+          sourceUrl: `https://drive.google.com/drive/folders/${originRootId}`
         });
       }
     }
@@ -1128,10 +1157,14 @@ async function getFileInfo(fileId) {
   const file = response.data;
   return {
     id: file.id,
+    fileId: file.id,
+    gdriveFileId: file.id,
     name: file.name,
     size: parseInt(file.size || '0'),
     mimeType: file.mimeType,
-    relativePath: file.name
+    relativePath: file.name,
+    service: 'Google Drive',
+    url: `https://drive.google.com/file/d/${file.id}/view`
   };
 }
 
@@ -1147,7 +1180,9 @@ function updateQueueUI() {
       name: item.name,
       size: item.size,
       relativePath: item.relativePath,
-      folderName: item.folderName || (item.relativePath ? item.relativePath.split(path.sep)[0] : 'Downloads'),
+      folderName: item.folderName || (item.relativePath ? item.relativePath.split(/[/\\]/)[0] : 'Downloads'),
+      service: item.service || null,
+      gdriveFileId: item.gdriveFileId || null,
       batchId: item.batchId || null,
       source: item.source || (item.isWeb ? 'extension' : 'portable'),
       origin: item.origin || item.source || (item.isWeb ? 'extension' : 'portable'),
@@ -1169,7 +1204,7 @@ function updateQueueUI() {
       directUrl: (item.id && item.id.startsWith('bunkr_')) ? null : (item.directUrl || item.url || item.downloadUrl || null),
       numericId: item.numericId || null,
       fileId: item.fileId || null,
-      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('mega_') || item.id.startsWith('filester_') || item.id.startsWith('megaup_') || item.id.startsWith('generic_') || item.id.startsWith('onefichier_') || item.id.startsWith('gofile_') || item.id.startsWith('vik1ng_') || item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_')))
+      isHttpDirect: item.isHttpDirect || (item.id && (item.id.startsWith('psn_') || item.id.startsWith('mega_') || item.id.startsWith('filester_') || item.id.startsWith('megaup_') || item.id.startsWith('generic_') || item.id.startsWith('onefichier_') || item.id.startsWith('gofile_') || item.id.startsWith('vik1ng_') || item.id.startsWith('send_') || item.id.startsWith('drime_') || item.id.startsWith('turbo_') || item.id.startsWith('terabox_') || item.id.startsWith('mediafire_') || item.id.startsWith('bunkr_') || item.id.startsWith('onedrive_') || item.id.startsWith('torbox_') || item.id.startsWith('gdrive_')))
     }));
     mainWindow.webContents.send('queue-updated', serializedQueue);
   }
@@ -1181,6 +1216,7 @@ function getItemServiceKey(item) {
   const url = String(item.url || item.bunkrPageUrl || item.sourceUrl || item.downloadUrl || item.originalUrl || item.teraboxUrl || item.mediafireUrl || item.oneDriveUrl || item.sendUrl || '').toLowerCase();
 
   // 1. Identifica primeiro o serviço REAL de origem (hoster) por URL ou prefixo de ID
+  if (id.startsWith('gdrive_') || url.includes('drive.google.com') || url.includes('drive.usercontent.google.com') || url.includes('docs.google.com') || item.service === 'gdrive' || item.service === 'Google Drive' || item.gdriveFileId) return 'gdrive';
   if (id.startsWith('bunkr_') || url.includes('bunkr') || url.includes('balbums')) return 'bunkr';
   if (id.startsWith('mediafire_') || url.includes('mediafire')) return 'mediafire';
   if (id.startsWith('terabox_') || url.includes('terabox') || url.includes('1024tera') || url.includes('freeterabox')) return 'terabox';
@@ -1199,6 +1235,7 @@ function getItemServiceKey(item) {
   if (id.startsWith('fileditch_') || url.includes('fileditch') || url.includes('blehpooffileditchvids') || item.service === 'fileditch' || item.service === 'FileDitch') return 'fileditch';
   if (id.startsWith('datanodes_') || url.includes('datanodes') || item.service === 'datanodes' || item.service === 'DataNodes') return 'datanodes';
   if (id.startsWith('filekeeper_') || url.includes('filekeeper') || item.service === 'filekeeper' || item.service === 'FileKeeper') return 'filekeeper';
+  if (id.startsWith('psn_') || url.includes('dl.playstation.net') || url.includes('playstation.net') || item.service === 'playstation' || item.service === 'PlayStation') return 'playstation';
   if (id.startsWith('generic_') || id.startsWith('scraper_') || item.service === 'generic' || (item.folderName && item.folderName.includes('Sites Genéricos'))) return 'generic';
 
   // 2. Se for Torrent nativo, Magnet link ou item puro da nuvem Torbox
@@ -2174,11 +2211,28 @@ function downloadBunkrFile(queueItem) {
         cookieHeader = tbInfo.cookie || '';
         queueItem.directUrl = directUrl;
         queueItem.downloadUrl = directUrl;
-      } else if (queueItem.id && queueItem.id.startsWith('mediafire_')) {
+      } else if (
+        !(queueItem.id && String(queueItem.id).startsWith('torbox_')) && !queueItem.torboxType && (
+          (queueItem.id && queueItem.id.startsWith('mediafire_')) ||
+          queueItem.service === 'MediaFire' ||
+          queueItem.service === 'mediafire' ||
+          isMediaFireUrl(queueItem.mediafireUrl || queueItem.url || queueItem.sourceUrl)
+        )
+      ) {
         console.log(`[MediaFire Worker] Resolvendo link direto CDN para "${queueItem.name}"...`);
-        const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, queueItem.mediafireUrl);
+        const mfKey = queueItem.numericId || (String(queueItem.id || '').startsWith('mediafire_') ? String(queueItem.id).replace('mediafire_', '') : null);
+        const mfTargetUrl = queueItem.mediafireUrl || (isMediaFireUrl(queueItem.url) ? queueItem.url : null) || (isMediaFireUrl(queueItem.sourceUrl) ? queueItem.sourceUrl : null);
+        const mfInfo = await resolveMediaFireDirectUrl(mfKey, mfTargetUrl);
         directUrl = mfInfo.directUrl;
         referer = mfInfo.referer || 'https://www.mediafire.com/';
+        cookieHeader = mfInfo.cookieHeader || '';
+        if (mfInfo.fileName && (!queueItem.name || /^(arquivo|download|arquivo_mediafire)/i.test(queueItem.name))) {
+          queueItem.name = sanitizePathSegment(mfInfo.fileName);
+        }
+        if (mfInfo.size && (!queueItem.size || queueItem.size === 0)) {
+          queueItem.size = mfInfo.size;
+          queueItem.sizeFormatted = formatBytes(mfInfo.size);
+        }
       } else if (queueItem.id && (queueItem.id.startsWith('onedrive_') || isOneDriveUrl(queueItem.oneDriveUrl))) {
         console.log(`[OneDrive Worker] Resolvendo link direto para "${queueItem.name}"...`);
         const odInfo = await resolveOneDriveDirectUrl(queueItem.numericId, queueItem.oneDriveUrl, queueItem.oneDriveDirectUrl);
@@ -2215,10 +2269,12 @@ function downloadBunkrFile(queueItem) {
             referer = 'https://pixeldrain.com/';
           } else if (underlyingService === 'mediafire') {
             console.log(`[MediaFire Worker] Resolvendo link direto CDN nativo para "${queueItem.name}"...`);
-            const mfUrl = queueItem.mediafireUrl || queueItem.sourceUrl || queueItem.url;
-            const mfInfo = await resolveMediaFireDirectUrl(queueItem.numericId, mfUrl);
+            const mfUrl = queueItem.mediafireUrl || (isMediaFireUrl(queueItem.sourceUrl) ? queueItem.sourceUrl : null) || (isMediaFireUrl(queueItem.url) ? queueItem.url : null);
+            const mfKey = queueItem.numericId || (String(queueItem.id || '').startsWith('mediafire_') ? String(queueItem.id).replace('mediafire_', '') : null);
+            const mfInfo = await resolveMediaFireDirectUrl(mfKey, mfUrl);
             directUrl = mfInfo.directUrl;
             referer = mfInfo.referer || 'https://www.mediafire.com/';
+            cookieHeader = mfInfo.cookieHeader || '';
           } else if (underlyingService === 'terabox') {
             console.log(`[TeraBox Worker] Resolvendo link direto nativo para "${queueItem.name}"...`);
             const tbUrl = queueItem.teraboxUrl || queueItem.sourceUrl || queueItem.url || queueItem.originalUrl;
@@ -2799,6 +2855,42 @@ function downloadBunkrFile(queueItem) {
             return downloadMegaUpViaElectron(queueItem, abortController, localFilePath, resolve, reject);
           }
         }
+      } else if (
+        (queueItem.id && String(queueItem.id).startsWith('gdrive_')) ||
+        queueItem.gdriveFileId ||
+        isGoogleDriveUrl(queueItem.url || queueItem.downloadUrl || queueItem.directUrl)
+      ) {
+        const gParsed = extractDriveId(queueItem.url || queueItem.downloadUrl || queueItem.directUrl || '');
+        const gFileId = queueItem.gdriveFileId || queueItem.fileId || (gParsed && !gParsed.isFolder ? gParsed.id : String(queueItem.id || '').replace(/^gdrive_/, ''));
+        if (gFileId) {
+          console.log(`[Google Drive Public Worker] Resolvendo stream direto para "${queueItem.name}" (ID: ${gFileId})...`);
+          try {
+            const gdInfo = await resolveGoogleDriveDirectUrl(gFileId, queueItem.resourceKey, queueItem.directUrl || queueItem.downloadUrl);
+            directUrl = gdInfo.directUrl;
+            referer = gdInfo.referer || 'https://drive.google.com/';
+            if (gdInfo.cookieHeader) cookieHeader = gdInfo.cookieHeader;
+            if (gdInfo.size && (!queueItem.size || queueItem.size === 0)) {
+              queueItem.size = gdInfo.size;
+              queueItem.sizeFormatted = formatBytes(gdInfo.size);
+            }
+            if (gdInfo.fileName && (!queueItem.name || /^arquivo_/i.test(queueItem.name) || !path.extname(queueItem.name))) {
+              queueItem.name = sanitizePathSegment(gdInfo.fileName);
+            }
+          } catch (gdErr) {
+            if (driveService && (gdErr.isQuotaError || (gdErr.message && (gdErr.message.includes('401') || gdErr.message.includes('403') || gdErr.message.includes('privado'))))) {
+              console.log(`[Google Drive Public Worker] Delegando "${queueItem.name}" para API OAuth conectada...`);
+              queueItem.id = gFileId;
+              queueItem.isHttpDirect = false;
+              queueItem.downloadUrl = null;
+              queueItem.directUrl = null;
+              return downloadFile(queueItem).then(resolve).catch(reject);
+            }
+            throw gdErr;
+          }
+        } else {
+          directUrl = queueItem.directUrl || queueItem.downloadUrl || queueItem.url || '';
+          referer = queueItem.referer || 'https://drive.google.com/';
+        }
       } else {
         directUrl = queueItem.directUrl || queueItem.downloadUrl || queueItem.url || '';
         referer = queueItem.referer || referer;
@@ -2824,11 +2916,11 @@ function downloadBunkrFile(queueItem) {
 
       const refererToUse = (service === 'bunkr')
         ? (referer || 'https://dl.bunkrr.cr/')
-        : (service === 'terabox' ? (referer || 'https://teraboxdl.site/') : referer);
+        : (service === 'terabox' ? (referer || 'https://teraboxdl.site/') : (service === 'playstation' ? '' : referer));
 
       const reqHeaders = {
         'User-Agent': userAgentToUse,
-        'Referer': refererToUse,
+        ...(refererToUse ? { 'Referer': refererToUse } : {}),
         ...(queueItem.headers || {})
       };
       if (cookieHeader && String(cookieHeader).trim()) {
@@ -2950,7 +3042,10 @@ function downloadBunkrFile(queueItem) {
               }
             }
 
-            if (queueItem.folderName && queueItem.folderName !== 'Downloads' && !queueItem.folderName.toLowerCase().includes('avulso')) {
+            if (queueItem.preserveRelativePath && queueItem.relativePath && (queueItem.relativePath.includes('/') || queueItem.relativePath.includes('\\'))) {
+              const dirPart = queueItem.relativePath.replace(/\\/g, '/').split('/').slice(0, -1).map(s => sanitizePathSegment(s)).filter(Boolean).join('/');
+              queueItem.relativePath = dirPart ? `${dirPart}/${queueItem.name}` : queueItem.name;
+            } else if (queueItem.folderName && queueItem.folderName !== 'Downloads' && !queueItem.folderName.toLowerCase().includes('avulso')) {
               queueItem.relativePath = `${sanitizePathSegment(queueItem.folderName)}/${queueItem.name}`;
             } else {
               queueItem.relativePath = queueItem.name;
@@ -3068,6 +3163,10 @@ function downloadBunkrFile(queueItem) {
 
                 if (res.statusCode !== 200 && res.statusCode !== 206) {
                   return rejSeg(new Error(`Servidor retornou HTTP ${res.statusCode}`));
+                }
+                if (res.headers['content-type'] && res.headers['content-type'].toLowerCase().includes('text/html')) {
+                  req.destroy();
+                  return rejSeg(new Error('Servidor retornou HTML no segmento em vez de binario'));
                 }
 
                 const writeStream = fs.createWriteStream(localFilePath, {
@@ -3284,9 +3383,12 @@ function downloadBunkrFile(queueItem) {
 
 function downloadFile(queueItem) {
   const id = (queueItem && queueItem.id) || '';
-  const isGoogleDrive = !queueItem.isHttpDirect && !queueItem.downloadUrl && (id.length === 33 || id.length === 19 || (!id.includes('_') && !id.startsWith('send') && !id.startsWith('drime') && !id.startsWith('turbo') && !id.startsWith('torbox') && !id.startsWith('gofile') && !id.startsWith('onedrive') && !id.startsWith('terabox') && !id.startsWith('mediafire') && !id.startsWith('bunkr') && !id.startsWith('megaup') && !id.startsWith('generic') && !id.startsWith('scraper')));
+  const isGoogleDrive = !queueItem.isHttpDirect && !queueItem.downloadUrl && (id.length === 33 || id.length === 19 || (!id.includes('_') && !id.startsWith('psn') && !id.startsWith('send') && !id.startsWith('drime') && !id.startsWith('turbo') && !id.startsWith('torbox') && !id.startsWith('gofile') && !id.startsWith('onedrive') && !id.startsWith('terabox') && !id.startsWith('mediafire') && !id.startsWith('bunkr') && !id.startsWith('megaup') && !id.startsWith('generic') && !id.startsWith('scraper')));
 
-  if (!isGoogleDrive || queueItem.downloadUrl || queueItem.isHttpDirect || queueItem.sendUrl) {
+  if (!isGoogleDrive || queueItem.downloadUrl || queueItem.isHttpDirect || queueItem.sendUrl || !driveService) {
+    if (isGoogleDrive && !driveService && !queueItem.gdriveFileId) {
+      queueItem.gdriveFileId = id;
+    }
     return downloadBunkrFile(queueItem);
   }
 
@@ -3761,6 +3863,7 @@ function detectHosterNameFromUrl(url) {
   if (u.includes('send.cm') || u.includes('send.now') || u.includes('sendit.cloud')) return 'Send';
   if (u.includes('onedrive') || u.includes('sharepoint')) return 'Microsoft OneDrive';
   if (u.includes('drive.google')) return 'Google Drive';
+  if (u.includes('dl.playstation.net') || u.includes('playstation.net')) return 'PlayStation';
   if (u.startsWith('magnet:') || u.endsWith('.torrent')) return 'Torrent';
   
   try {
@@ -3959,29 +4062,38 @@ async function scanSingleUrl(link) {
   const driveInfo = extractDriveId(link);
   if (driveInfo) {
     if (driveInfo.isFolder) {
-      if (!driveService) {
-        throw new Error('Para escanear pastas do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+      if (driveService) {
+        try {
+          let folderName = 'Pasta_Google_Drive';
+          try {
+            const metadata = await driveService.files.get({ fileId: driveInfo.id, fields: 'name', supportsAllDrives: true }, { httpsAgent });
+            folderName = metadata.data.name || folderName;
+          } catch (e) {}
+          const apiFiles = await scanGoogleDriveFolder(driveInfo.id, folderName, driveInfo.id);
+          if (apiFiles && apiFiles.length > 0) return apiFiles;
+        } catch (apiErr) {
+          console.warn('[Google Drive Scanner] Falha na API OAuth, tentando modo público:', apiErr.message);
+        }
       }
-      let folderName = 'Pasta_Google_Drive';
-      try {
-        const metadata = await driveService.files.get({ fileId: driveInfo.id, fields: 'name', supportsAllDrives: true }, { httpsAgent });
-        folderName = metadata.data.name || folderName;
-      } catch (e) {}
-      return await scanGoogleDriveFolder(driveInfo.id, folderName);
+      return await scanPublicGoogleDriveFolder(driveInfo.id, driveInfo.resourceKey);
     } else {
       if (isTorboxEnabledForService('gdrive')) {
         const tbFiles = await scanTorboxWithFastTimeout(link, config.torboxApiKey, 12000);
         if (tbFiles && tbFiles.length > 0) return tbFiles;
       }
-      if (!driveService) {
-        throw new Error('Para escanear links do Google Drive, por favor conecte sua conta Google primeiro nas configurações.');
+      if (driveService) {
+        try {
+          const file = await getFileInfo(driveInfo.id);
+          file.folderName = null;
+          file.isAvulso = true;
+          file.isSingleFile = true;
+          file.service = 'Google Drive';
+          return [file];
+        } catch (apiErr) {
+          console.warn('[Google Drive Scanner] Falha no arquivo via OAuth, tentando modo público:', apiErr.message);
+        }
       }
-      const file = await getFileInfo(driveInfo.id);
-      file.folderName = null;
-      file.isAvulso = true;
-      file.isSingleFile = true;
-      file.service = 'gdrive';
-      return [file];
+      return await scanPublicGoogleDriveFile(driveInfo.id, driveInfo.resourceKey);
     }
   }
 
@@ -4094,37 +4206,97 @@ ipcMain.handle('scan-link', async (event, inputLinks) => {
   let aggregatedFiles = [];
   const summaryResults = [];
 
-  for (const link of lines) {
-    const hosterName = detectHosterNameFromUrl(link);
-    try {
-      const linkFiles = await scanSingleUrl(link);
-      if (linkFiles && linkFiles.length > 0) {
-        linkFiles.forEach(f => {
-          if (!f.sourceUrl) f.sourceUrl = link;
-          if (!f.url) f.url = link;
-        });
-        aggregatedFiles = aggregatedFiles.concat(linkFiles);
-        summaryResults.push({
-          url: link,
-          status: 'success',
-          filesFound: linkFiles.length,
-          hoster: hosterName
-        });
-      } else {
+  const canBatchConcurrently = lines.length > 1 && lines.every(l => !!parsePlayStationCdnInfo(l));
+  if (canBatchConcurrently) {
+    const batchResults = new Array(lines.length);
+    const maxConcurrency = Math.min(6, lines.length);
+    let cursor = 0;
+
+    async function worker() {
+      while (cursor < lines.length) {
+        const idx = cursor++;
+        const link = lines[idx];
+        const hosterName = detectHosterNameFromUrl(link);
+        try {
+          const linkFiles = await scanSingleUrl(link);
+          if (linkFiles && linkFiles.length > 0) {
+            linkFiles.forEach(f => {
+              if (!f.sourceUrl) f.sourceUrl = link;
+              if (!f.url) f.url = link;
+            });
+            batchResults[idx] = {
+              files: linkFiles,
+              summary: {
+                url: link,
+                status: 'success',
+                filesFound: linkFiles.length,
+                hoster: hosterName
+              }
+            };
+          } else {
+            batchResults[idx] = {
+              files: [],
+              summary: {
+                url: link,
+                status: 'error',
+                error: 'Nenhum arquivo disponível encontrado neste link.',
+                hoster: hosterName
+              }
+            };
+          }
+        } catch (err) {
+          batchResults[idx] = {
+            files: [],
+            summary: {
+              url: link,
+              status: 'error',
+              error: err.message || 'Falha ao acessar o link.',
+              hoster: hosterName
+            }
+          };
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: maxConcurrency }, () => worker()));
+    for (const r of batchResults) {
+      if (!r) continue;
+      if (r.files && r.files.length > 0) aggregatedFiles = aggregatedFiles.concat(r.files);
+      if (r.summary) summaryResults.push(r.summary);
+    }
+  } else {
+    for (const link of lines) {
+      const hosterName = detectHosterNameFromUrl(link);
+      try {
+        const linkFiles = await scanSingleUrl(link);
+        if (linkFiles && linkFiles.length > 0) {
+          linkFiles.forEach(f => {
+            if (!f.sourceUrl) f.sourceUrl = link;
+            if (!f.url) f.url = link;
+          });
+          aggregatedFiles = aggregatedFiles.concat(linkFiles);
+          summaryResults.push({
+            url: link,
+            status: 'success',
+            filesFound: linkFiles.length,
+            hoster: hosterName
+          });
+        } else {
+          summaryResults.push({
+            url: link,
+            status: 'error',
+            error: 'Nenhum arquivo disponível encontrado neste link.',
+            hoster: hosterName
+          });
+        }
+      } catch (err) {
         summaryResults.push({
           url: link,
           status: 'error',
-          error: 'Nenhum arquivo disponível encontrado neste link.',
+          error: err.message || 'Falha ao acessar o link.',
           hoster: hosterName
         });
       }
-    } catch (err) {
-      summaryResults.push({
-        url: link,
-        status: 'error',
-        error: err.message || 'Falha ao acessar o link.',
-        hoster: hosterName
-      });
     }
   }
 
@@ -4208,39 +4380,53 @@ function addFilesToQueue(files) {
       downloadQueue.splice(existingIndex, 1);
     }
     const itemSourceUrl = file.bunkrPageUrl || file.sourceUrl || file.originUrl || file.albumUrl || file.pageUrl || file.teraboxUrl || file.mediafireUrl || file.oneDriveUrl || file.url || file.directUrl || file.link || null;
-    let rawFolderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
-    
-    // Extrai o nome real se o nome da pasta for genérico (Torrentio/Stremio)
-    rawFolderName = extractRealReleaseName(rawFolderName, itemSourceUrl || file.magnetUrl, [file]);
-    
-    // Extrai o nome limpo da série/show para agrupar episódios em uma única pasta
-    let folderName = extractCleanShowName(rawFolderName);
-
-    if (!file.batchId && (!folderName || folderName === 'Downloads' || folderName.toLowerCase().includes('avulso'))) {
-      folderName = extractCleanShowName(file.name || 'Downloads');
-    }
 
     let pureFileName = file.name || 'Arquivo';
     if (pureFileName.includes('/')) pureFileName = pureFileName.split('/').pop();
     if (pureFileName.includes('\\')) pureFileName = pureFileName.split('\\').pop();
 
-    let folderSegment = sanitizePathSegment(folderName);
-    const extIdx = folderSegment.lastIndexOf('.');
-    if (extIdx > 0 && extIdx > folderSegment.length - 6) {
-      folderSegment = folderSegment.substring(0, extIdx);
-    }
+    let folderName;
+    let finalRelativePath;
+    const isPreserveTree = !!(file.preserveRelativePath && file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')));
 
-    let pureNameWithoutExt = pureFileName;
-    const pExtIdx = pureNameWithoutExt.lastIndexOf('.');
-    if (pExtIdx > 0 && pExtIdx > pureNameWithoutExt.length - 6) {
-      pureNameWithoutExt = pureNameWithoutExt.substring(0, pExtIdx);
-    }
+    if (isPreserveTree) {
+      const normalizedSegs = file.relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+      const dirSegs = normalizedSegs.slice(0, -1).map(s => sanitizePathSegment(s)).filter(Boolean);
+      const safeFile = sanitizePathSegment(pureFileName);
+      pureFileName = safeFile;
+      folderName = dirSegs[0] || (file.folderName ? sanitizePathSegment(file.folderName) : 'Pasta_Google_Drive');
+      finalRelativePath = dirSegs.length > 0 ? `${dirSegs.join('/')}/${pureFileName}` : pureFileName;
+    } else {
+      let rawFolderName = file.folderName || (file.relativePath && (file.relativePath.includes('/') || file.relativePath.includes('\\')) ? file.relativePath.split(/[/\\]/)[0] : file.name);
+      
+      // Extrai o nome real se o nome da pasta for genérico (Torrentio/Stremio)
+      rawFolderName = extractRealReleaseName(rawFolderName, itemSourceUrl || file.magnetUrl, [file]);
+      
+      // Extrai o nome limpo da série/show para agrupar episódios em uma única pasta
+      folderName = extractCleanShowName(rawFolderName);
 
-    let finalRelativePath = `${folderSegment}/${pureFileName}`;
-    if (!file.batchId && (file.isSingleFile || file.isAvulso || !file.folderName || file.folderName === 'Downloads' || file.folderName.toLowerCase().includes('avulso'))) {
-      if (folderSegment.toLowerCase() === pureNameWithoutExt.toLowerCase() || folderSegment.toLowerCase() === pureFileName.toLowerCase() || folderSegment.toLowerCase() === 'downloads') {
-        finalRelativePath = pureFileName;
-        folderName = null;
+      if (!file.batchId && (!folderName || folderName === 'Downloads' || folderName.toLowerCase().includes('avulso'))) {
+        folderName = extractCleanShowName(file.name || 'Downloads');
+      }
+
+      let folderSegment = sanitizePathSegment(folderName);
+      const extIdx = folderSegment.lastIndexOf('.');
+      if (extIdx > 0 && extIdx > folderSegment.length - 6) {
+        folderSegment = folderSegment.substring(0, extIdx);
+      }
+
+      let pureNameWithoutExt = pureFileName;
+      const pExtIdx = pureNameWithoutExt.lastIndexOf('.');
+      if (pExtIdx > 0 && pExtIdx > pureNameWithoutExt.length - 6) {
+        pureNameWithoutExt = pureNameWithoutExt.substring(0, pExtIdx);
+      }
+
+      finalRelativePath = `${folderSegment}/${pureFileName}`;
+      if (!file.batchId && (file.isSingleFile || file.isAvulso || !file.folderName || file.folderName === 'Downloads' || file.folderName.toLowerCase().includes('avulso'))) {
+        if (folderSegment.toLowerCase() === pureNameWithoutExt.toLowerCase() || folderSegment.toLowerCase() === pureFileName.toLowerCase() || folderSegment.toLowerCase() === 'downloads') {
+          finalRelativePath = pureFileName;
+          folderName = null;
+        }
       }
     }
 
@@ -4252,11 +4438,15 @@ function addFilesToQueue(files) {
     downloadQueue.push({
       id: file.id || `file_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       fileId: extractedFileId,
+      gdriveFileId: file.gdriveFileId || null,
+      resourceKey: file.resourceKey || null,
+      preserveRelativePath: isPreserveTree || !!file.preserveRelativePath,
+      service: file.service || null,
       numericId: file.numericId || null,
       bunkrPageUrl: file.bunkrPageUrl || (isBunkr ? (file.url || itemSourceUrl) : null),
-      isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('send_') || file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_') || file.id.startsWith('gofile_'))),
+      isHttpDirect: file.isHttpDirect || (file.id && (file.id.startsWith('psn_') || file.id.startsWith('send_') || file.id.startsWith('drime_') || file.id.startsWith('turbo_') || file.id.startsWith('terabox_') || file.id.startsWith('mediafire_') || file.id.startsWith('bunkr_') || file.id.startsWith('onedrive_') || file.id.startsWith('torbox_') || file.id.startsWith('gofile_') || file.id.startsWith('gdrive_'))),
       sendUrl: cleanSendUrl,
-      mediafireUrl: file.mediafireUrl || null,
+      mediafireUrl: file.mediafireUrl || (isMediaFireUrl(file.url || itemSourceUrl) ? (file.url || itemSourceUrl) : null),
       teraboxUrl: file.teraboxUrl || (isTeraBoxUrl(file.url || itemSourceUrl) ? (file.url || itemSourceUrl) : null),
       teraboxDlink: file.teraboxDlink || file.directUrl || null,
       teraboxCookie: file.teraboxCookie || null,

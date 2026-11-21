@@ -27,6 +27,9 @@
   let downloadManagerInterval = null;
   let activeManagerFilter = localStorage.getItem('nexus_mgr_active_tab') || 'all';
   let selectedItemIds = new Set();
+  let expandedExtFolders = new Set();
+  let initializedFolderTreeKey = '';
+  let lastScannedUrl = window.location.href;
   let torboxCloudData = null;
   let torboxLoading = false;
 
@@ -74,7 +77,7 @@
   }
 
   // Folha de Estilos Oficial Injetada de Forma Sincrona (Zero Latencia / Imune a CSP / Imune a CSS Externo)
-  const NEXUS_INLINE_CSS = "/* ============================================================\n   Nexus Downloader - Content Styles (HUD Flutuante & Modal In-Page)\n   ============================================================ */\n\n:root, :host {\n  --nexus-bg-primary: #060810;\n  --nexus-bg-glass: rgba(11, 15, 25, 0.94);\n  --nexus-cyan: #00f2fe;\n  --nexus-cyan-glow: rgba(0, 242, 254, 0.35);\n  --nexus-purple: #7f00ff;\n  --nexus-emerald: #00f5a0;\n  --nexus-emerald-glow: rgba(0, 245, 160, 0.35);\n  --nexus-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n}\n\n:host {\n  all: initial !important;\n  display: contents !important;\n}\n\n/* CONTAINER PRINCIPAL DO HUD FLUTUANTE */\n#nexus-hud-container {\n  position: fixed;\n  bottom: 24px;\n  right: 24px;\n  z-index: 2147483640;\n  font-family: var(--nexus-font);\n  user-select: none;\n  -webkit-font-smoothing: antialiased;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n/* WIDGET HUD CIRCULAR */\n.nexus-floating-hud {\n  position: relative;\n  background: var(--nexus-bg-glass);\n  backdrop-filter: blur(20px) saturate(180%);\n  -webkit-backdrop-filter: blur(20px) saturate(180%);\n  border-radius: 50%;\n  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),\n              height 0.35s cubic-bezier(0.16, 1, 0.3, 1),\n              box-shadow 0.35s ease;\n  overflow: visible;\n}\n\n/* 1. VERSÃO PEQUENA PADRÃO (~58px) */\n.nexus-floating-hud.compact {\n  width: 58px;\n  height: 58px;\n  box-shadow: 0 0 18px var(--nexus-cyan-glow), 0 6px 20px rgba(0, 0, 0, 0.7);\n}\n\n.nexus-floating-hud.compact.completed {\n  box-shadow: 0 0 20px var(--nexus-emerald-glow), 0 6px 20px rgba(0, 0, 0, 0.7);\n}\n\n/* LOGO OFICIAL COMO MARCA D'ÁGUA NO BACKGROUND */\n.nexus-hud-bg-logo {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  transform: translate(-50%, -50%);\n  width: 72%;\n  height: 72%;\n  opacity: 0.22;\n  pointer-events: none;\n  z-index: 1;\n  transition: opacity 0.3s ease;\n}\n\n/* No modo expandido, oculta completamente a logo do background para ZERO sobreposição com textos e botões */\n.nexus-floating-hud.expanded .nexus-hud-bg-logo {\n  display: none !important;\n}\n\n/* ANEL DE PROGRESSO SVG NO CONTORNO INTERNO */\n.nexus-hud-svg-ring {\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%;\n  transform: rotate(-90deg);\n  pointer-events: none;\n  z-index: 2;\n}\n\n.nexus-hud-ring-track {\n  fill: none;\n  stroke: rgba(255, 255, 255, 0.08);\n}\n\n.nexus-hud-ring-bar {\n  fill: none;\n  stroke: var(--nexus-cyan);\n  stroke-linecap: round;\n  transition: stroke-dashoffset 0.4s ease, stroke 0.4s ease, opacity 0.3s ease;\n  filter: drop-shadow(0 0 6px var(--nexus-cyan));\n}\n\n.nexus-hud-ring-bar.inactive {\n  stroke: transparent !important;\n  opacity: 0 !important;\n  visibility: hidden;\n}\n\n.nexus-hud-ring-bar.completed {\n  stroke: var(--nexus-emerald);\n  filter: drop-shadow(0 0 7px var(--nexus-emerald));\n}\n\n/* DADOS NO CENTRO DO MODO COMPACTO */\n.nexus-hud-compact-data {\n  position: relative;\n  z-index: 3;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  text-align: center;\n  cursor: pointer;\n  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;\n  padding: 4px;\n  border-radius: 50%;\n  width: 100%;\n  height: 100%;\n}\n\n.nexus-hud-compact-data:hover {\n  transform: scale(1.1);\n  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.8));\n}\n\n.nexus-compact-stack {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  gap: 1px;\n  pointer-events: none;\n  width: 100%;\n  line-height: 1.1;\n}\n\n.nexus-compact-speed-val {\n  font-size: 8.5px;\n  font-weight: 800;\n  color: #38bdf8;\n  letter-spacing: -0.2px;\n  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 242, 254, 0.4);\n  white-space: nowrap;\n  line-height: 1;\n}\n\n.nexus-compact-count-val {\n  font-size: 11px;\n  font-weight: 800;\n  color: #ffffff;\n  letter-spacing: -0.2px;\n  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95);\n  white-space: nowrap;\n  line-height: 1.1;\n}\n\n.nexus-hud-check {\n  font-size: 1.25rem;\n  font-weight: 900;\n  color: var(--nexus-emerald);\n  line-height: 1;\n  text-shadow: 0 0 10px rgba(0, 245, 160, 0.8);\n}\n\n/* 2. VERSÃO EXPANDIDA (~184px - Espaçosa e Sem Sobreposição) */\n.nexus-floating-hud.expanded {\n  width: 184px;\n  height: 184px;\n  box-shadow: 0 0 32px var(--nexus-cyan-glow), 0 14px 44px rgba(0, 0, 0, 0.9);\n  cursor: pointer;\n}\n\n.nexus-floating-hud.expanded.completed {\n  box-shadow: 0 0 32px var(--nexus-emerald-glow), 0 14px 44px rgba(0, 0, 0, 0.9);\n}\n\n.nexus-hud-expanded-data {\n  display: none;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  text-align: center;\n  z-index: 3;\n  gap: 3px;\n  width: 100%;\n  height: 100%;\n  padding: 14px 12px 16px 12px;\n  box-sizing: border-box;\n  cursor: pointer;\n}\n\n.nexus-floating-hud.expanded .nexus-hud-expanded-data {\n  display: flex;\n}\n\n.nexus-floating-hud.expanded .nexus-hud-compact-data {\n  display: none;\n}\n\n/* BLOCO UNIFICADO: STATUS + CONTADOR (UM SÓ ELEMENTO INTERATIVO NO HOVER) */\n.nexus-exp-header-group {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n  padding: 5px 12px;\n  border-radius: 12px;\n  border: 1px solid transparent;\n  background: transparent;\n  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);\n  margin-bottom: 2px;\n  width: 90%;\n  box-sizing: border-box;\n}\n\n.nexus-exp-header-group:hover {\n  background: transparent !important;\n  border-color: transparent !important;\n  box-shadow: none !important;\n  transform: translateY(-1px) scale(1.015);\n}\n\n.nexus-exp-header-group:hover .nexus-exp-status-row,\n.nexus-exp-header-group:hover .nexus-exp-counter,\n.nexus-exp-header-group:hover .nexus-exp-sub {\n  filter: none !important;\n  -webkit-text-stroke: 0 !important;\n}\n\n.nexus-exp-header-group:hover .nexus-exp-counter {\n  color: #38bdf8 !important;\n  text-shadow: 0 0 6px rgba(56, 189, 248, 0.5) !important;\n}\n\n.nexus-exp-header-group:hover .nexus-exp-status {\n  text-shadow: 0 0 5px rgba(56, 189, 248, 0.4) !important;\n}\n\n.nexus-exp-header-group:hover .nexus-exp-sub {\n  color: #bae6fd !important;\n  text-shadow: 0 0 4px rgba(56, 189, 248, 0.3) !important;\n}\n\n.nexus-exp-header-group:active {\n  transform: scale(0.98);\n}\n\n.nexus-exp-status-row {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 4px;\n}\n\n.nexus-exp-status {\n  font-size: 0.76rem;\n  font-weight: 800;\n  color: var(--nexus-emerald);\n  letter-spacing: 0.2px;\n  line-height: 1.1;\n  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);\n  transition: all 0.2s ease;\n  pointer-events: none;\n}\n\n.nexus-exp-status.downloading {\n  color: #38bdf8;\n}\n\n.nexus-exp-check {\n  font-size: 1.1rem;\n  color: var(--nexus-emerald);\n  font-weight: 900;\n  line-height: 1;\n  pointer-events: none;\n}\n\n.nexus-exp-counter {\n  font-size: 1.25rem;\n  font-weight: 800;\n  color: #ffffff;\n  line-height: 1.1;\n  margin: 1px 0;\n  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);\n  transition: all 0.2s ease;\n  pointer-events: none;\n}\n\n.nexus-exp-sub {\n  font-size: 0.54rem;\n  font-weight: 700;\n  letter-spacing: 0.6px;\n  color: #94a3b8;\n  text-transform: uppercase;\n  line-height: 1;\n  margin-bottom: 2px;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\n  pointer-events: none;\n}\n\n.nexus-exp-tags {\n  display: flex;\n  gap: 5px;\n  margin: 1px 0 0 0;\n  align-items: center;\n  justify-content: center;\n  max-width: 120px;\n  flex-wrap: nowrap;\n}\n\n.nexus-tag-service {\n  background: rgba(167, 139, 250, 0.18);\n  color: #c084fc;\n  border: 1px solid rgba(167, 139, 250, 0.4);\n  font-weight: 700;\n  padding: 1.5px 6px;\n  border-radius: 999px;\n  font-size: 8px;\n  line-height: 1.2;\n  white-space: nowrap;\n  max-width: 58px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.nexus-tag-type {\n  background: rgba(0, 242, 254, 0.15);\n  color: #38bdf8;\n  border: 1px solid rgba(0, 242, 254, 0.35);\n  font-weight: 700;\n  padding: 1.5px 6px;\n  border-radius: 999px;\n  font-size: 8px;\n  line-height: 1.2;\n  white-space: nowrap;\n  max-width: 58px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n/* BOTÃO ABRIR PASTA / BAIXAR LOTE / VER DOWNLOADS */\n.nexus-btn-open-folder {\n  background: rgba(0, 242, 254, 0.1);\n  border: 1px solid rgba(0, 242, 254, 0.45);\n  color: #00f2fe;\n  font-size: 0.72rem;\n  font-weight: 700;\n  padding: 5px 14px;\n  border-radius: 12px;\n  cursor: pointer;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 4px;\n  transition: all 0.2s;\n  text-decoration: none;\n  white-space: nowrap;\n  max-width: 154px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  margin-top: 2px;\n}\n\n.nexus-btn-open-folder:hover {\n  background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);\n  color: #060810;\n  border-color: #00f2fe;\n  box-shadow: 0 0 12px rgba(0, 242, 254, 0.5);\n}\n\n/* BOTÕES DE CONTROLE NO HOVER (EXPANDIDO & COMPACTO) */\n.nexus-hud-hover-controls {\n  position: absolute;\n  top: -16px;\n  left: 0;\n  right: 0;\n  display: flex;\n  justify-content: center;\n  gap: 10px;\n  opacity: 0;\n  pointer-events: none;\n  transform: translateY(4px);\n  transition: opacity 0.2s ease, transform 0.2s ease;\n  z-index: 25;\n}\n\n.nexus-floating-hud.compact .nexus-hud-hover-controls {\n  top: -14px;\n  gap: 6px;\n}\n\n/* Ponte de hover contínua entre o topo do círculo e os botões */\n.nexus-hud-hover-controls::after {\n  content: '';\n  position: absolute;\n  top: -8px;\n  left: -25px;\n  right: -25px;\n  bottom: -22px;\n  z-index: -1;\n  pointer-events: auto;\n}\n\n.nexus-floating-hud.expanded:hover .nexus-hud-hover-controls,\n.nexus-floating-hud.compact:hover .nexus-hud-hover-controls,\n.nexus-hud-hover-controls:hover {\n  opacity: 1;\n  pointer-events: auto;\n  transform: translateY(0);\n}\n\n.nexus-btn-ctrl {\n  all: unset !important;\n  box-sizing: border-box !important;\n  width: 24px !important;\n  height: 24px !important;\n  min-width: 24px !important;\n  max-width: 24px !important;\n  min-height: 24px !important;\n  max-height: 24px !important;\n  border-radius: 50% !important;\n  background: rgba(15, 23, 42, 0.95) !important;\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\n  color: #f8fafc !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  font-size: 11px !important;\n  cursor: pointer !important;\n  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;\n  transition: all 0.2s !important;\n  padding: 0 !important;\n  margin: 0 !important;\n  flex-shrink: 0 !important;\n  overflow: hidden !important;\n}\n\n.nexus-btn-ctrl:hover {\n  background: var(--nexus-cyan) !important;\n  color: #060810 !important;\n  border-color: var(--nexus-cyan) !important;\n  box-shadow: 0 0 8px var(--nexus-cyan) !important;\n}\n\n.nexus-btn-ctrl.close:hover {\n  background: #ef4444 !important;\n  color: #ffffff !important;\n  border-color: #ef4444 !important;\n  box-shadow: 0 0 8px #ef4444 !important;\n}\n\n/* ÍCONE DE ARRASTE (DRAG HANDLE) */\n.nexus-drag-handle {\n  cursor: grab;\n}\n.nexus-drag-handle:active {\n  cursor: grabbing;\n}\n\n/* ============================================================\n   ESCUDO DE ISOLAMENTO TOTAL CONTRA RESETS E ESTILOS EXTERNOS\n   (ISOLAMENTO UNIVERSAL CONTRA BOOTSTRAP, TAILWIND, THEMES, MEGAUP, TERABOX)\n   ============================================================ */\n#nexus-manager-overlay,\n#nexus-manager-overlay *,\n#nexus-modal-overlay,\n#nexus-modal-overlay *,\n#nexus-inpage-options-backdrop,\n#nexus-inpage-options-backdrop *,\n#nexus-confirm-overlay,\n#nexus-confirm-overlay *,\n#nexus-hud-container,\n#nexus-hud-container *,\n[dir] #nexus-manager-overlay,\n[dir] #nexus-manager-overlay *,\n[dir] #nexus-modal-overlay,\n[dir] #nexus-modal-overlay *,\n[dir] #nexus-inpage-options-backdrop,\n[dir] #nexus-inpage-options-backdrop *,\n[dir] #nexus-confirm-overlay,\n[dir] #nexus-confirm-overlay *,\n[dir] #nexus-hud-container,\n[dir] #nexus-hud-container * {\n  box-sizing: border-box !important;\n  text-align: left;\n  letter-spacing: normal;\n  visibility: visible;\n  font-family: var(--nexus-font) !important;\n  -webkit-font-smoothing: antialiased !important;\n  text-rendering: optimizeLegibility !important;\n  float: none !important;\n  clear: none !important;\n  text-shadow: none !important;\n  text-decoration: none !important;\n  text-indent: 0 !important;\n}\n\n/* Neutralizar qualquer pseudo-elemento injetado por frameworks externos em labels, spans, botoes e divs */\n#nexus-manager-overlay label::before,\n#nexus-manager-overlay label::after,\n#nexus-manager-overlay span::before,\n#nexus-manager-overlay span::after,\n#nexus-manager-overlay button::before,\n#nexus-manager-overlay button::after,\n#nexus-modal-overlay label::before,\n#nexus-modal-overlay label::after,\n#nexus-modal-overlay span::before,\n#nexus-modal-overlay span::after,\n#nexus-modal-overlay button::before,\n#nexus-modal-overlay button::after,\n#nexus-inpage-options-backdrop label::before,\n#nexus-inpage-options-backdrop label::after,\n#nexus-inpage-options-backdrop span::before,\n#nexus-inpage-options-backdrop span::after,\n#nexus-inpage-options-backdrop button::before,\n#nexus-inpage-options-backdrop button::after,\n#nexus-confirm-overlay label::before,\n#nexus-confirm-overlay label::after,\n#nexus-confirm-overlay span::before,\n#nexus-confirm-overlay span::after,\n#nexus-confirm-overlay button::before,\n#nexus-confirm-overlay button::after,\n#nexus-hud-container label::before,\n#nexus-hud-container label::after,\n#nexus-hud-container span::before,\n#nexus-hud-container span::after,\n#nexus-hud-container button::before,\n#nexus-hud-container button::after {\n  content: none !important;\n  display: none !important;\n}\n\n/* Blindagem padrao de todos os botoes contra width: 100%, margin-top e resets de submit */\n#nexus-manager-overlay button,\n#nexus-modal-overlay button,\n#nexus-inpage-options-backdrop button,\n#nexus-confirm-overlay button,\n#nexus-hud-container button,\n[dir] #nexus-manager-overlay button,\n[dir] #nexus-modal-overlay button,\n[dir] #nexus-inpage-options-backdrop button,\n[dir] #nexus-confirm-overlay button,\n[dir] #nexus-hud-container button {\n  all: unset;\n  box-sizing: border-box !important;\n  font-family: var(--nexus-font) !important;\n  cursor: pointer !important;\n  text-transform: none !important;\n  overflow: visible !important;\n  margin: 0 !important;\n  padding: 0;\n  width: auto !important;\n  min-width: 0 !important;\n  max-width: none !important;\n  height: auto !important;\n  display: inline-flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  justify-content: center !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n  vertical-align: middle !important;\n  line-height: normal !important;\n  white-space: nowrap !important;\n  border: none;\n  background: transparent;\n  color: inherit;\n}\n\n/* ============================================================\n   MINI JANELA MODAL DE ARQUIVOS DETECTADOS NA PÁGINA\n   ============================================================ */\n#nexus-modal-overlay,\n[dir] #nexus-modal-overlay {\n  position: fixed !important;\n  top: 0 !important;\n  left: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  background: rgba(3, 5, 10, 0.6) !important;\n  backdrop-filter: blur(8px) !important;\n  -webkit-backdrop-filter: blur(8px) !important;\n  z-index: 2147483645 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n}\n\n#nexus-modal-overlay .nexus-modal-card,\n[dir] #nexus-modal-overlay .nexus-modal-card,\n.nexus-modal-card {\n  width: 90% !important;\n  max-width: 440px !important;\n  background: rgba(10, 15, 30, 0.95) !important;\n  border: 1px solid rgba(0, 242, 254, 0.3) !important;\n  box-shadow: 0 0 35px rgba(0, 242, 254, 0.25), 0 20px 50px rgba(0, 0, 0, 0.8) !important;\n  border-radius: 18px !important;\n  padding: 22px !important;\n  font-family: var(--nexus-font) !important;\n  color: #f8fafc !important;\n  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  margin: auto !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n}\n\n@keyframes nexus-modal-in {\n  from { opacity: 0; transform: scale(0.92) translateY(10px); }\n  to { opacity: 1; transform: scale(1) translateY(0); }\n}\n\n#nexus-modal-overlay .nexus-modal-header,\n[dir] #nexus-modal-overlay .nexus-modal-header,\n.nexus-modal-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding-bottom: 14px !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\n  margin-bottom: 14px !important;\n  background: transparent !important;\n}\n\n#nexus-modal-overlay .nexus-modal-brand,\n#nexus-manager-overlay .nexus-modal-brand,\n[dir] #nexus-modal-overlay .nexus-modal-brand,\n[dir] #nexus-manager-overlay .nexus-modal-brand,\n.nexus-modal-brand {\n  display: flex !important;\n  align-items: center !important;\n  gap: 12px !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-modal-overlay .nexus-modal-brand svg,\n#nexus-manager-overlay .nexus-modal-brand svg,\n[dir] #nexus-modal-overlay .nexus-modal-brand svg,\n[dir] #nexus-manager-overlay .nexus-modal-brand svg,\n.nexus-modal-brand svg {\n  width: 38px !important;\n  height: 38px !important;\n  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.65)) !important;\n  flex-shrink: 0 !important;\n  display: block !important;\n}\n\n#nexus-modal-overlay .nexus-modal-title-nexus,\n#nexus-manager-overlay .nexus-modal-title-nexus,\n[dir] #nexus-modal-overlay .nexus-modal-title-nexus,\n[dir] #nexus-manager-overlay .nexus-modal-title-nexus,\n.nexus-modal-title-nexus {\n  font-size: 1.25rem !important;\n  font-weight: 800 !important;\n  letter-spacing: 0.5px !important;\n  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;\n  -webkit-background-clip: text !important;\n  -webkit-text-fill-color: transparent !important;\n  color: #00f2fe !important;\n  line-height: 1.1 !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-modal-overlay .nexus-modal-title-downloader,\n#nexus-manager-overlay .nexus-modal-title-downloader,\n[dir] #nexus-modal-overlay .nexus-modal-title-downloader,\n[dir] #nexus-manager-overlay .nexus-modal-title-downloader,\n.nexus-modal-title-downloader {\n  font-size: 0.68rem !important;\n  font-weight: 700 !important;\n  letter-spacing: 1.5px !important;\n  text-transform: uppercase !important;\n  color: #94a3b8 !important;\n  display: block !important;\n  line-height: 1.2 !important;\n  margin-top: 2px !important;\n  padding: 0 !important;\n}\n\n#nexus-modal-overlay .nexus-modal-subbar,\n[dir] #nexus-modal-overlay .nexus-modal-subbar,\n.nexus-modal-subbar {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  margin-bottom: 12px !important;\n  font-size: 0.82rem !important;\n  padding: 0 !important;\n}\n\n#nexus-modal-overlay .nexus-modal-files-list,\n[dir] #nexus-modal-overlay .nexus-modal-files-list,\n.nexus-modal-files-list {\n  max-height: 240px !important;\n  overflow-y: auto !important;\n  margin-bottom: 16px !important;\n  padding-right: 4px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 6px !important;\n  padding-left: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar,\n.nexus-modal-files-list::-webkit-scrollbar {\n  width: 5px !important;\n}\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-track,\n.nexus-modal-files-list::-webkit-scrollbar-track {\n  background: rgba(15, 23, 42, 0.4) !important;\n  border-radius: 4px !important;\n}\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-thumb,\n.nexus-modal-files-list::-webkit-scrollbar-thumb {\n  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;\n  border-radius: 4px !important;\n}\n\n#nexus-modal-overlay .nexus-modal-file-row,\n[dir] #nexus-modal-overlay .nexus-modal-file-row,\n.nexus-modal-file-row {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding: 8px 10px !important;\n  background: rgba(15, 23, 42, 0.5) !important;\n  border: 1px solid rgba(255, 255, 255, 0.05) !important;\n  border-radius: 8px !important;\n  margin-bottom: 6px !important;\n  font-size: 0.8rem !important;\n}\n\n#nexus-modal-overlay .nexus-modal-file-info,\n[dir] #nexus-modal-overlay .nexus-modal-file-info,\n.nexus-modal-file-info {\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n  white-space: nowrap !important;\n}\n\n#nexus-modal-overlay .nexus-btn-download-action,\n[dir] #nexus-modal-overlay .nexus-btn-download-action,\n.nexus-btn-download-action {\n  width: 100% !important;\n  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;\n  color: #060810 !important;\n  font-weight: 800 !important;\n  font-size: 0.92rem !important;\n  padding: 12px 18px !important;\n  border: none !important;\n  border-radius: 12px !important;\n  cursor: pointer !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 10px !important;\n  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.4) !important;\n  transition: all 0.25s !important;\n}\n\n#nexus-modal-overlay .nexus-btn-download-action:hover,\n[dir] #nexus-modal-overlay .nexus-btn-download-action:hover,\n.nexus-btn-download-action:hover {\n  box-shadow: 0 6px 28px rgba(0, 242, 254, 0.7) !important;\n  transform: translateY(-1px) !important;\n}\n\n/* ============================================================\n   JANELA DE GERENCIAMENTO DE DOWNLOADS IN-PAGE (ESTILO PORTABLE)\n   ============================================================ */\n#nexus-manager-overlay,\n[dir] #nexus-manager-overlay {\n  position: fixed !important;\n  top: 0 !important;\n  left: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  background: rgba(3, 5, 10, 0.75) !important;\n  backdrop-filter: blur(12px) saturate(160%) !important;\n  -webkit-backdrop-filter: blur(12px) saturate(160%) !important;\n  z-index: 2147483646 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  font-family: var(--nexus-font) !important;\n  color: #f8fafc !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-card,\n[dir] #nexus-manager-overlay .nexus-manager-card,\n.nexus-manager-card {\n  width: 92% !important;\n  max-width: 680px !important;\n  max-height: 86vh !important;\n  background: rgba(8, 12, 24, 0.96) !important;\n  border: 1px solid rgba(0, 242, 254, 0.35) !important;\n  box-shadow: 0 0 45px rgba(0, 242, 254, 0.2), 0 24px 60px rgba(0, 0, 0, 0.85) !important;\n  border-radius: 20px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  animation: nexus-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  margin: auto !important;\n  padding: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-header,\n[dir] #nexus-manager-overlay .nexus-manager-header,\n.nexus-manager-header {\n  padding: 16px 20px !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\n  background: rgba(15, 23, 42, 0.45) !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-btn-ctrl.close,\n#nexus-modal-overlay .nexus-btn-ctrl.close,\n[dir] #nexus-manager-overlay .nexus-btn-ctrl.close,\n[dir] #nexus-modal-overlay .nexus-btn-ctrl.close,\n.nexus-btn-ctrl.close {\n  width: 28px !important;\n  height: 28px !important;\n  border-radius: 50% !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\n  color: #94a3b8 !important;\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  font-size: 13px !important;\n  transition: all 0.2s ease !important;\n  padding: 0 !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-btn-ctrl.close:hover,\n#nexus-modal-overlay .nexus-btn-ctrl.close:hover,\n[dir] #nexus-manager-overlay .nexus-btn-ctrl.close:hover,\n[dir] #nexus-modal-overlay .nexus-btn-ctrl.close:hover,\n.nexus-btn-ctrl.close:hover {\n  background: rgba(239, 68, 68, 0.8) !important;\n  border-color: #ef4444 !important;\n  color: #ffffff !important;\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;\n}\n\n#nexus-manager-overlay .nexus-manager-stats-panel,\n[dir] #nexus-manager-overlay .nexus-manager-stats-panel,\n.nexus-manager-stats-panel {\n  padding: 16px 20px !important;\n  background: linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(6, 8, 16, 0.6) 100%) !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\n  display: block !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-stats-grid,\n[dir] #nexus-manager-overlay .nexus-manager-stats-grid,\n.nexus-manager-stats-grid {\n  display: grid !important;\n  grid-template-columns: repeat(3, 1fr) !important;\n  gap: 12px !important;\n  margin-bottom: 12px !important;\n  margin-top: 0 !important;\n  margin-left: 0 !important;\n  margin-right: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-stat-box,\n[dir] #nexus-manager-overlay .nexus-stat-box,\n.nexus-stat-box {\n  background: rgba(15, 23, 42, 0.6) !important;\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\n  border-radius: 10px !important;\n  padding: 8px 12px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 2px !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-stat-box-label,\n[dir] #nexus-manager-overlay .nexus-stat-box-label,\n.nexus-stat-box-label {\n  font-size: 0.64rem !important;\n  font-weight: 700 !important;\n  text-transform: uppercase !important;\n  color: #94a3b8 !important;\n  letter-spacing: 0.5px !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-stat-box-val,\n[dir] #nexus-manager-overlay .nexus-stat-box-val,\n.nexus-stat-box-val {\n  font-size: 1.05rem !important;\n  font-weight: 800 !important;\n  color: #ffffff !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-stat-box-val.highlight,\n[dir] #nexus-manager-overlay .nexus-stat-box-val.highlight,\n.nexus-stat-box-val.highlight {\n  color: #00f2fe !important;\n  text-shadow: 0 0 10px rgba(0, 242, 254, 0.5) !important;\n}\n\n#nexus-manager-overlay .nexus-stat-box-val.success,\n[dir] #nexus-manager-overlay .nexus-stat-box-val.success,\n.nexus-stat-box-val.success {\n  color: #00f5a0 !important;\n  text-shadow: 0 0 10px rgba(0, 245, 160, 0.5) !important;\n}\n\n#nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,\n.nexus-manager-main-progress-bar-wrap {\n  width: 100% !important;\n  height: 8px !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n  border-radius: 999px !important;\n  overflow: hidden !important;\n  position: relative !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-main-progress-bar-fill,\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill,\n.nexus-manager-main-progress-bar-fill {\n  height: 100% !important;\n  background: linear-gradient(90deg, #00f2fe 0%, #38bdf8 50%, #7f00ff 100%) !important;\n  border-radius: 999px !important;\n  transition: width 0.35s ease !important;\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.7) !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,\n.nexus-manager-main-progress-bar-fill.completed {\n  background: linear-gradient(90deg, #00f5a0 0%, #10b981 100%) !important;\n  box-shadow: 0 0 10px rgba(0, 245, 160, 0.7) !important;\n}\n\n#nexus-manager-overlay .nexus-manager-toolbar,\n[dir] #nexus-manager-overlay .nexus-manager-toolbar,\n.nexus-manager-toolbar {\n  padding: 10px 20px !important;\n  display: flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  gap: 12px !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\n  background: rgba(11, 15, 25, 0.7) !important;\n  flex-wrap: nowrap !important;\n  width: 100% !important;\n  min-width: 0 !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-filter-tabs,\n[dir] #nexus-manager-overlay .nexus-manager-filter-tabs,\n.nexus-manager-filter-tabs {\n  display: flex !important;\n  flex-direction: row !important;\n  gap: 6px !important;\n  align-items: center !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n  flex-wrap: nowrap !important;\n  overflow-x: auto !important;\n  flex: 1 1 auto !important;\n  min-width: 0 !important;\n  -webkit-overflow-scrolling: touch !important;\n  scrollbar-width: none !important;\n}\n\n#nexus-manager-overlay .nexus-manager-filter-tabs::-webkit-scrollbar,\n.nexus-manager-filter-tabs::-webkit-scrollbar {\n  display: none !important;\n}\n\n#nexus-manager-overlay .nexus-filter-tab-btn,\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn,\n.nexus-filter-tab-btn {\n  background: rgba(15, 23, 42, 0.5) !important;\n  border: 1px solid rgba(255, 255, 255, 0.1) !important;\n  color: #94a3b8 !important;\n  font-size: 0.72rem !important;\n  font-weight: 700 !important;\n  padding: 5px 10px !important;\n  border-radius: 6px !important;\n  cursor: pointer !important;\n  transition: all 0.2s ease !important;\n  display: inline-flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 4px !important;\n  margin: 0 !important;\n  white-space: nowrap !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n  width: auto !important;\n  min-width: 0 !important;\n  max-width: none !important;\n  height: auto !important;\n  box-sizing: border-box !important;\n  line-height: 1.2 !important;\n}\n\n#nexus-manager-overlay .nexus-filter-tab-btn:hover,\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn:hover,\n.nexus-filter-tab-btn:hover {\n  background: rgba(255, 255, 255, 0.08) !important;\n  color: #ffffff !important;\n}\n\n#nexus-manager-overlay .nexus-filter-tab-btn.active,\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn.active,\n.nexus-filter-tab-btn.active {\n  background: rgba(0, 242, 254, 0.15) !important;\n  border-color: rgba(0, 242, 254, 0.5) !important;\n  color: #00f2fe !important;\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;\n}\n\n#nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,\n.nexus-filter-tab-btn.torbox.active {\n  background: rgba(167, 139, 250, 0.2) !important;\n  border-color: #a78bfa !important;\n  color: #c084fc !important;\n  box-shadow: 0 0 10px rgba(167, 139, 250, 0.4) !important;\n}\n\n#nexus-manager-overlay .nexus-manager-actions-row,\n[dir] #nexus-manager-overlay .nexus-manager-actions-row,\n.nexus-manager-actions-row {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  gap: 8px !important;\n  align-items: center !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action,\n.nexus-btn-manager-action {\n  background: rgba(15, 23, 42, 0.8) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  color: #f8fafc !important;\n  font-size: 0.72rem !important;\n  font-weight: 700 !important;\n  padding: 5px 12px !important;\n  border-radius: 8px !important;\n  cursor: pointer !important;\n  display: inline-flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 6px !important;\n  transition: all 0.2s ease !important;\n  margin: 0 !important;\n  white-space: nowrap !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n  width: auto !important;\n  min-width: 0 !important;\n  max-width: none !important;\n  height: auto !important;\n  box-sizing: border-box !important;\n  line-height: normal !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action:hover,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action:hover,\n.nexus-btn-manager-action:hover {\n  background: rgba(0, 242, 254, 0.15) !important;\n  border-color: var(--nexus-cyan) !important;\n  color: var(--nexus-cyan) !important;\n}\n\n#nexus-manager-overlay .nexus-subbar-left,\n[dir] #nexus-manager-overlay .nexus-subbar-left,\n.nexus-subbar-left {\n  display: flex !important;\n  align-items: center !important;\n  gap: 12px !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action.primary,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary,\n.nexus-btn-manager-action.primary {\n  background: rgba(0, 242, 254, 0.12) !important;\n  border: 1px solid var(--nexus-cyan) !important;\n  color: #00f2fe !important;\n  font-weight: 800 !important;\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2) !important;\n  transition: all 0.2s ease !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action.primary:hover,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary:hover,\n.nexus-btn-manager-action.primary:hover {\n  background: rgba(0, 242, 254, 0.2) !important;\n  color: #00f2fe !important;\n  border-color: #00f2fe !important;\n  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4) !important;\n  text-shadow: 0 0 6px rgba(0, 242, 254, 0.5) !important;\n  filter: none !important;\n  -webkit-text-stroke: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-tag-origin,\n[dir] #nexus-manager-overlay .nexus-tag-origin,\n.nexus-tag-origin {\n  background: rgba(56, 189, 248, 0.15) !important;\n  color: #38bdf8 !important;\n  border: 1px solid rgba(56, 189, 248, 0.35) !important;\n  font-weight: 700 !important;\n  padding: 1px 6px !important;\n  border-radius: 4px !important;\n  font-size: 8.5px !important;\n  line-height: 1.2 !important;\n  margin: 0 !important;\n  display: inline-block !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action.restart:hover,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.restart:hover,\n.nexus-btn-manager-action.restart:hover {\n  background: rgba(245, 158, 11, 0.15) !important;\n  border-color: #f59e0b !important;\n  color: #f59e0b !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action.clear:hover,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.clear:hover,\n.nexus-btn-manager-action.clear:hover {\n  background: rgba(168, 85, 247, 0.2) !important;\n  border-color: #c084fc !important;\n  color: #c084fc !important;\n  box-shadow: 0 0 10px rgba(192, 132, 252, 0.35) !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,\n.nexus-btn-manager-action.cancel:hover {\n  background: rgba(239, 68, 68, 0.2) !important;\n  border-color: #ef4444 !important;\n  color: #fca5a5 !important;\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35) !important;\n}\n\n#nexus-manager-overlay .nexus-item-btn-remove,\n[dir] #nexus-manager-overlay .nexus-item-btn-remove,\n.nexus-item-btn-remove {\n  background: transparent !important;\n  border: 1px solid transparent !important;\n  color: #64748b !important;\n  font-size: 11px !important;\n  cursor: pointer !important;\n  padding: 2px 6px !important;\n  border-radius: 4px !important;\n  transition: all 0.2s !important;\n  line-height: 1 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-subbar,\n[dir] #nexus-manager-overlay .nexus-manager-subbar,\n.nexus-manager-subbar {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding: 8px 20px !important;\n  background: rgba(15, 23, 42, 0.5) !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\n  font-size: 0.76rem !important;\n  color: #94a3b8 !important;\n  gap: 10px !important;\n  width: 100% !important;\n  min-width: 0 !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-subbar-select-all,\n[dir] #nexus-manager-overlay .nexus-subbar-select-all,\n.nexus-subbar-select-all {\n  display: inline-flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  align-items: center !important;\n  gap: 8px !important;\n  cursor: pointer !important;\n  user-select: none !important;\n  font-weight: 600 !important;\n  font-size: 0.76rem !important;\n  color: #cbd5e1 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  line-height: normal !important;\n  border: none !important;\n  background: transparent !important;\n  flex-shrink: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-subbar-select-all span,\n[dir] #nexus-manager-overlay .nexus-subbar-select-all span,\n.nexus-subbar-select-all span {\n  display: inline-block !important;\n  position: static !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  font-size: inherit !important;\n  line-height: normal !important;\n  color: inherit !important;\n  vertical-align: middle !important;\n  letter-spacing: normal !important;\n  white-space: nowrap !important;\n}\n\n.nexus-root-container input[type=\"checkbox\"],\n#nexus-manager-overlay input[type=\"checkbox\"],\n#nexus-hud-container input[type=\"checkbox\"],\n#nexus-modal-overlay input[type=\"checkbox\"],\n#nexus-inpage-options-backdrop input[type=\"checkbox\"],\n.nexus-subbar-select-all input[type=\"checkbox\"],\n.nexus-item-chk,\n#nexus-select-all,\n#nexus-subbar-chk-all {\n  all: revert !important;\n  appearance: auto !important;\n  -webkit-appearance: checkbox !important;\n  -moz-appearance: checkbox !important;\n  width: 16px !important;\n  height: 16px !important;\n  min-width: 16px !important;\n  max-width: 16px !important;\n  min-height: 16px !important;\n  max-height: 16px !important;\n  box-sizing: border-box !important;\n  padding: 0 !important;\n  margin: 0 !important;\n  cursor: pointer !important;\n  display: inline-block !important;\n  vertical-align: middle !important;\n  accent-color: var(--nexus-cyan) !important;\n  flex-shrink: 0 !important;\n  background: transparent !important;\n  background-color: transparent !important;\n  border: none !important;\n  outline: none !important;\n  box-shadow: none !important;\n  position: static !important;\n  opacity: 1 !important;\n}\n\n#nexus-manager-overlay .nexus-subbar-actions,\n[dir] #nexus-manager-overlay .nexus-subbar-actions,\n.nexus-subbar-actions {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  align-items: center !important;\n  gap: 8px !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-tag-engine,\n[dir] #nexus-manager-overlay .nexus-tag-engine,\n.nexus-tag-engine {\n  background: rgba(59, 130, 246, 0.15) !important;\n  color: #60a5fa !important;\n  border: 1px solid rgba(59, 130, 246, 0.35) !important;\n  font-weight: 700 !important;\n  padding: 1px 6px !important;\n  border-radius: 4px !important;\n  font-size: 8.5px !important;\n  line-height: 1.2 !important;\n  margin: 0 !important;\n  display: inline-block !important;\n}\n\n#nexus-manager-overlay .nexus-item-chk,\n[dir] #nexus-manager-overlay .nexus-item-chk,\n.nexus-item-chk {\n  accent-color: #00f2fe !important;\n  width: 15px !important;\n  height: 15px !important;\n  cursor: pointer !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  display: inline-block !important;\n}\n\n#nexus-manager-overlay .nexus-item-actions-btn-group,\n[dir] #nexus-manager-overlay .nexus-item-actions-btn-group,\n.nexus-item-actions-btn-group {\n  display: flex !important;\n  align-items: center !important;\n  gap: 4px !important;\n  margin-left: 6px !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-btn-item-action,\n[dir] #nexus-manager-overlay .nexus-btn-item-action,\n.nexus-btn-item-action {\n  background: rgba(255, 255, 255, 0.05) !important;\n  border: 1px solid rgba(255, 255, 255, 0.1) !important;\n  color: #94a3b8 !important;\n  width: 24px !important;\n  height: 24px !important;\n  min-width: 24px !important;\n  max-width: 24px !important;\n  min-height: 24px !important;\n  max-height: 24px !important;\n  flex-shrink: 0 !important;\n  flex-grow: 0 !important;\n  border-radius: 6px !important;\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  transition: all 0.2s ease !important;\n  padding: 0 !important;\n  margin: 0 !important;\n  box-sizing: border-box !important;\n  line-height: normal !important;\n}\n\n#nexus-manager-overlay .nexus-btn-item-action:hover,\n[dir] #nexus-manager-overlay .nexus-btn-item-action:hover,\n.nexus-btn-item-action:hover {\n  background: rgba(0, 242, 254, 0.15) !important;\n  border-color: rgba(0, 242, 254, 0.4) !important;\n  color: #00f2fe !important;\n  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3) !important;\n}\n\n#nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,\n[dir] #nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,\n.nexus-btn-item-action.open-browser:hover {\n  background: rgba(167, 139, 250, 0.15) !important;\n  border-color: rgba(167, 139, 250, 0.4) !important;\n  color: #c084fc !important;\n  box-shadow: 0 0 8px rgba(167, 139, 250, 0.3) !important;\n}\n\n#nexus-manager-overlay .nexus-btn-manager-action:disabled,\n[dir] #nexus-manager-overlay .nexus-btn-manager-action:disabled,\n.nexus-btn-manager-action:disabled {\n  opacity: 0.45 !important;\n  cursor: not-allowed !important;\n  pointer-events: none !important;\n  border-color: rgba(255, 255, 255, 0.08) !important;\n  color: #64748b !important;\n  background: rgba(15, 23, 42, 0.5) !important;\n  box-shadow: none !important;\n}\n\n#nexus-manager-overlay .nexus-manager-list,\n[dir] #nexus-manager-overlay .nexus-manager-list,\n.nexus-manager-list {\n  flex: 1 !important;\n  overflow-y: auto !important;\n  padding: 12px 20px !important;\n  max-height: 380px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 8px !important;\n  margin: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar,\n.nexus-manager-list::-webkit-scrollbar {\n  width: 6px !important;\n}\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-track,\n.nexus-manager-list::-webkit-scrollbar-track {\n  background: rgba(15, 23, 42, 0.3) !important;\n  border-radius: 4px !important;\n}\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-thumb,\n.nexus-manager-list::-webkit-scrollbar-thumb {\n  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;\n  border-radius: 4px !important;\n}\n\n#nexus-manager-overlay .nexus-manager-item,\n[dir] #nexus-manager-overlay .nexus-manager-item,\n.nexus-manager-item {\n  background: rgba(15, 23, 42, 0.55) !important;\n  border: 1px solid rgba(255, 255, 255, 0.06) !important;\n  border-radius: 10px !important;\n  padding: 10px 14px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 6px !important;\n  transition: border-color 0.2s, background 0.2s !important;\n  margin: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-manager-item:hover,\n[dir] #nexus-manager-overlay .nexus-manager-item:hover,\n.nexus-manager-item:hover {\n  background: rgba(15, 23, 42, 0.75) !important;\n  border-color: rgba(0, 242, 254, 0.25) !important;\n}\n\n#nexus-manager-overlay .nexus-item-row-top,\n[dir] #nexus-manager-overlay .nexus-item-row-top,\n.nexus-item-row-top {\n  display: flex !important;\n  align-items: center !important;\n  gap: 10px !important;\n  width: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-item-title-group,\n[dir] #nexus-manager-overlay .nexus-item-title-group,\n.nexus-item-title-group {\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n  overflow: hidden !important;\n  width: 100% !important;\n  flex: 1 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-item-name,\n[dir] #nexus-manager-overlay .nexus-item-name,\n.nexus-item-name {\n  font-size: 0.85rem !important;\n  font-weight: 700 !important;\n  color: #f8fafc !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n  white-space: nowrap !important;\n  flex: 1 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  line-height: normal !important;\n}\n\n#nexus-manager-overlay .nexus-item-meta,\n[dir] #nexus-manager-overlay .nexus-item-meta,\n.nexus-item-meta {\n  display: none !important;\n}\n\n#nexus-manager-overlay .nexus-item-progress-bar-wrap,\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-wrap,\n.nexus-item-progress-bar-wrap {\n  width: 100% !important;\n  height: 4px !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n  border-radius: 4px !important;\n  overflow: hidden !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-item-progress-bar-fill,\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill,\n.nexus-item-progress-bar-fill {\n  height: 100% !important;\n  background: linear-gradient(90deg, #00f2fe, #38bdf8) !important;\n  border-radius: 4px !important;\n  transition: width 0.3s ease !important;\n  display: block !important;\n  margin: 0 !important;\n  padding: 0 !important;\n}\n\n#nexus-manager-overlay .nexus-item-progress-bar-fill.completed,\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill.completed,\n.nexus-item-progress-bar-fill.completed {\n  background: #00f5a0 !important;\n}\n\n#nexus-manager-overlay .nexus-item-row-bottom,\n[dir] #nexus-manager-overlay .nexus-item-row-bottom,\n.nexus-item-row-bottom {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  font-size: 0.72rem !important;\n  font-weight: 600 !important;\n  color: #94a3b8 !important;\n  gap: 8px !important;\n  flex-wrap: wrap !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-item-bottom-left,\n[dir] #nexus-manager-overlay .nexus-item-bottom-left,\n.nexus-item-bottom-left {\n  display: flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  flex-wrap: wrap !important;\n  flex: 1 !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n}\n\n#nexus-manager-overlay .nexus-item-size,\n[dir] #nexus-manager-overlay .nexus-item-size,\n.nexus-item-size {\n  color: #cbd5e1 !important;\n  font-size: 0.74rem !important;\n  font-weight: 700 !important;\n  margin-right: 2px !important;\n  display: inline-block !important;\n}\n\n#nexus-manager-overlay .nexus-item-status-tag,\n[dir] #nexus-manager-overlay .nexus-item-status-tag,\n.nexus-item-status-tag {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 4px !important;\n  font-weight: 700 !important;\n  margin-right: 2px !important;\n}\n\n#nexus-manager-overlay .nexus-item-status-tag.downloading,\n[dir] #nexus-manager-overlay .nexus-item-status-tag.downloading,\n.nexus-item-status-tag.downloading {\n  color: #38bdf8 !important;\n}\n\n#nexus-manager-overlay .nexus-item-status-tag.completed,\n[dir] #nexus-manager-overlay .nexus-item-status-tag.completed,\n.nexus-item-status-tag.completed {\n  color: #00f5a0 !important;\n}\n\n#nexus-manager-overlay .nexus-item-status-tag.pending,\n[dir] #nexus-manager-overlay .nexus-item-status-tag.pending,\n.nexus-item-status-tag.pending {\n  color: #f59e0b !important;\n}\n\n#nexus-manager-overlay .nexus-item-status-tag.failed,\n[dir] #nexus-manager-overlay .nexus-item-status-tag.failed,\n.nexus-item-status-tag.failed {\n  color: #ef4444 !important;\n}\n\n/* ============================================================\n   POPUP DE CONFIRMAÇÃO DE REINÍCIO (ESTILO DARK GLASS OBSIDIAN)\n   ============================================================ */\n#nexus-confirm-overlay,\n[dir] #nexus-confirm-overlay {\n  position: fixed !important;\n  top: 0 !important;\n  left: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  background: rgba(2, 3, 8, 0.82) !important;\n  backdrop-filter: blur(10px) !important;\n  -webkit-backdrop-filter: blur(10px) !important;\n  z-index: 2147483647 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  font-family: var(--nexus-font) !important;\n  color: #f8fafc !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: 0 !important;\n}\n\n#nexus-confirm-overlay .nexus-confirm-card,\n[dir] #nexus-confirm-overlay .nexus-confirm-card,\n.nexus-confirm-card {\n  width: 90% !important;\n  max-width: 420px !important;\n  background: rgba(10, 15, 30, 0.98) !important;\n  border: 1px solid rgba(245, 158, 11, 0.45) !important;\n  box-shadow: 0 0 35px rgba(245, 158, 11, 0.25), 0 20px 50px rgba(0, 0, 0, 0.9) !important;\n  border-radius: 18px !important;\n  padding: 24px !important;\n  text-align: center !important;\n  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  margin: auto !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n}\n\n#nexus-confirm-overlay .nexus-confirm-icon,\n[dir] #nexus-confirm-overlay .nexus-confirm-icon,\n.nexus-confirm-icon {\n  font-size: 2.2rem !important;\n  margin-bottom: 12px !important;\n  display: inline-block !important;\n  animation: nexus-pulse-warning 2s infinite ease-in-out !important;\n}\n\n@keyframes nexus-pulse-warning {\n  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4)); }\n  50% { transform: scale(1.1); filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.8)); }\n}\n\n#nexus-confirm-overlay .nexus-confirm-title,\n[dir] #nexus-confirm-overlay .nexus-confirm-title,\n.nexus-confirm-title {\n  font-size: 1.2rem !important;\n  font-weight: 800 !important;\n  color: #f8fafc !important;\n  margin-bottom: 8px !important;\n}\n\n#nexus-confirm-overlay .nexus-confirm-desc,\n[dir] #nexus-confirm-overlay .nexus-confirm-desc,\n.nexus-confirm-desc {\n  font-size: 0.85rem !important;\n  color: #cbd5e1 !important;\n  line-height: 1.45 !important;\n  margin-bottom: 20px !important;\n}\n\n#nexus-confirm-overlay .nexus-confirm-actions,\n[dir] #nexus-confirm-overlay .nexus-confirm-actions,\n.nexus-confirm-actions {\n  display: flex !important;\n  gap: 10px !important;\n  justify-content: center !important;\n  width: 100% !important;\n}\n\n#nexus-confirm-overlay .nexus-btn-confirm-cancel,\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel,\n.nexus-btn-confirm-cancel {\n  flex: 1 !important;\n  padding: 10px 16px !important;\n  border-radius: 10px !important;\n  border: 1px solid rgba(255, 255, 255, 0.18) !important;\n  background: rgba(255, 255, 255, 0.06) !important;\n  color: #f8fafc !important;\n  font-weight: 700 !important;\n  font-size: 0.82rem !important;\n  cursor: pointer !important;\n  transition: all 0.2s ease !important;\n}\n\n#nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,\n.nexus-btn-confirm-cancel:hover {\n  background: rgba(255, 255, 255, 0.12) !important;\n  border-color: rgba(255, 255, 255, 0.3) !important;\n}\n\n#nexus-confirm-overlay .nexus-btn-confirm-restart,\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart,\n.nexus-btn-confirm-restart {\n  flex: 1 !important;\n  padding: 10px 16px !important;\n  border-radius: 10px !important;\n  border: none !important;\n  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%) !important;\n  color: #ffffff !important;\n  font-weight: 800 !important;\n  font-size: 0.82rem !important;\n  cursor: pointer !important;\n  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4) !important;\n  transition: all 0.2s ease !important;\n}\n\n#nexus-confirm-overlay .nexus-btn-confirm-restart:hover,\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart:hover,\n.nexus-btn-confirm-restart:hover {\n  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6) !important;\n  transform: translateY(-1px) !important;\n}\n\n/* ============================================================\n   JANELA IN-PAGE DE CONFIGURAÇÕES COMPLETAS DA EXTENSÃO\n   Obsidian Glass, Overlay com Blur e Toggle Roxo Oficial\n   ============================================================ */\n#nexus-inpage-options-backdrop {\n  position: fixed !important;\n  inset: 0 !important;\n  background: rgba(3, 7, 18, 0.78) !important;\n  backdrop-filter: blur(10px) !important;\n  -webkit-backdrop-filter: blur(10px) !important;\n  z-index: 2147483648 !important;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\n}\n\n#nexus-inpage-options-backdrop.active {\n  opacity: 1 !important;\n  pointer-events: auto !important;\n}\n\n#nexus-inpage-options-window {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) scale(0.96) !important;\n  width: 720px !important;\n  max-width: 94vw !important;\n  max-height: 90vh !important;\n  background: rgba(11, 15, 25, 0.98) !important;\n  border: 1px solid rgba(255, 255, 255, 0.14) !important;\n  border-radius: 18px !important;\n  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 242, 254, 0.15) !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  z-index: 2147483649 !important;\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;\n  color: #f8fafc !important;\n  opacity: 0;\n  pointer-events: none;\n  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\n}\n\n#nexus-inpage-options-backdrop.active #nexus-inpage-options-window {\n  opacity: 1 !important;\n  pointer-events: auto !important;\n  transform: translate(-50%, -50%) scale(1) !important;\n}\n\n.nexus-inpage-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding: 16px 22px !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;\n  background: rgba(15, 23, 42, 0.6) !important;\n}\n\n.nexus-inpage-header-left {\n  display: flex !important;\n  align-items: center !important;\n  gap: 12px !important;\n}\n\n.nexus-inpage-title {\n  font-size: 1.05rem !important;\n  font-weight: 800 !important;\n  letter-spacing: 0.5px !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n}\n\n.nexus-inpage-btn-close {\n  width: 32px !important;\n  height: 32px !important;\n  border-radius: 50% !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  background: rgba(255, 255, 255, 0.06) !important;\n  color: #cbd5e1 !important;\n  font-size: 15px !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  transition: all 0.2s ease !important;\n}\n\n.nexus-inpage-btn-close:hover {\n  background: rgba(239, 68, 68, 0.8) !important;\n  color: #ffffff !important;\n  border-color: #ef4444 !important;\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;\n  transform: scale(1.05) !important;\n}\n\n.nexus-inpage-body {\n  padding: 20px 24px !important;\n  overflow-y: auto !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 16px !important;\n  max-height: calc(90vh - 130px) !important;\n}\n\n.nexus-inpage-card {\n  background: rgba(15, 23, 42, 0.45) !important;\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\n  border-radius: 14px !important;\n  padding: 16px 18px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 12px !important;\n}\n\n.nexus-inpage-card-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  gap: 16px !important;\n}\n\n.nexus-inpage-card-title {\n  font-size: 0.95rem !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  margin-bottom: 3px !important;\n}\n\n.nexus-inpage-card-desc {\n  font-size: 0.8rem !important;\n  color: #94a3b8 !important;\n  line-height: 1.4 !important;\n}\n\n/* TOGGLE ROXO NEXUS */\n.nexus-purple-toggle {\n  position: relative !important;\n  display: inline-block !important;\n  width: 48px !important;\n  height: 26px !important;\n  flex-shrink: 0 !important;\n}\n\n.nexus-purple-toggle input {\n  opacity: 0 !important;\n  width: 0 !important;\n  height: 0 !important;\n}\n\n.nexus-purple-slider {\n  position: absolute !important;\n  cursor: pointer !important;\n  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;\n  background-color: rgba(255, 255, 255, 0.12) !important;\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  border-radius: 26px !important;\n}\n\n.nexus-purple-slider:before {\n  position: absolute !important;\n  content: \"\" !important;\n  height: 18px !important;\n  width: 18px !important;\n  left: 3px !important;\n  bottom: 3px !important;\n  background-color: #ffffff !important;\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  border-radius: 50% !important;\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;\n}\n\n.nexus-purple-toggle input:checked + .nexus-purple-slider {\n  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;\n  border-color: #c084fc !important;\n  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6) !important;\n}\n\n.nexus-purple-toggle input:checked + .nexus-purple-slider:before {\n  transform: translateX(22px) !important;\n}\n\n/* TOGGLE VERDE (RECURSOS EXCLUSIVOS DA EXTENSÃO) */\n.nexus-green-toggle {\n  position: relative !important;\n  display: inline-block !important;\n  width: 48px !important;\n  height: 26px !important;\n  flex-shrink: 0 !important;\n}\n\n.nexus-green-toggle input {\n  opacity: 0 !important;\n  width: 0 !important;\n  height: 0 !important;\n}\n\n.nexus-green-slider {\n  position: absolute !important;\n  cursor: pointer !important;\n  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;\n  background-color: rgba(255, 255, 255, 0.12) !important;\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  border-radius: 26px !important;\n}\n\n.nexus-green-slider:before {\n  position: absolute !important;\n  content: \"\" !important;\n  height: 18px !important;\n  width: 18px !important;\n  left: 3px !important;\n  bottom: 3px !important;\n  background-color: #ffffff !important;\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\n  border-radius: 50% !important;\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;\n}\n\n.nexus-green-toggle input:checked + .nexus-green-slider {\n  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;\n  border-color: #10b981 !important;\n  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6) !important;\n}\n\n.nexus-green-toggle input:checked + .nexus-green-slider:before {\n  transform: translateX(22px) !important;\n}\n\n/* CHAVE TORBOX E GATE VISUAL */\n.nexus-inpage-torbox-row {\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n  flex-wrap: wrap !important;\n}\n\n.nexus-inpage-torbox-input {\n  flex: 1 1 240px !important;\n  background: rgba(0, 0, 0, 0.35) !important;\n  border: 1px solid rgba(255, 255, 255, 0.14) !important;\n  color: #ffffff !important;\n  padding: 8px 12px !important;\n  border-radius: 8px !important;\n  font-size: 0.85rem !important;\n  outline: none !important;\n  transition: border-color 0.2s !important;\n}\n\n.nexus-inpage-torbox-input:focus {\n  border-color: var(--nexus-cyan) !important;\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;\n}\n\n.nexus-inpage-torbox-input:disabled {\n  background: rgba(15, 23, 42, 0.6) !important;\n  color: #94a3b8 !important;\n  border-color: rgba(255, 255, 255, 0.08) !important;\n  cursor: not-allowed !important;\n  letter-spacing: 2px !important;\n}\n\n.nexus-inpage-btn-action {\n  padding: 8px 14px !important;\n  border-radius: 8px !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  background: rgba(255, 255, 255, 0.06) !important;\n  color: #e2e8f0 !important;\n  font-size: 0.82rem !important;\n  font-weight: 700 !important;\n  cursor: pointer !important;\n  transition: all 0.2s !important;\n  white-space: nowrap !important;\n}\n\n.nexus-inpage-btn-action:hover:not(:disabled) {\n  background: rgba(0, 242, 254, 0.15) !important;\n  border-color: var(--nexus-cyan) !important;\n  color: #00f2fe !important;\n}\n\n.nexus-inpage-btn-action:disabled {\n  opacity: 0.45 !important;\n  cursor: not-allowed !important;\n  border-color: rgba(255, 255, 255, 0.05) !important;\n}\n\n.nexus-inpage-chips-row {\n  display: flex !important;\n  gap: 8px !important;\n  flex-wrap: wrap !important;\n}\n\n.nexus-inpage-chip {\n  padding: 7px 14px !important;\n  border-radius: 20px !important;\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\n  background: rgba(15, 23, 42, 0.6) !important;\n  color: #94a3b8 !important;\n  font-size: 0.78rem !important;\n  font-weight: 700 !important;\n  cursor: pointer !important;\n  transition: all 0.2s !important;\n}\n\n.nexus-inpage-chip:hover {\n  background: rgba(0, 242, 254, 0.08) !important;\n  color: #e2e8f0 !important;\n  border-color: rgba(0, 242, 254, 0.3) !important;\n}\n\n.nexus-inpage-chip.active {\n  background: rgba(16, 185, 129, 0.18) !important;\n  border-color: #10b981 !important;\n  color: #34d399 !important;\n  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;\n}\n\n.nexus-inpage-footer {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: flex-end !important;\n  gap: 12px !important;\n  padding: 16px 22px !important;\n  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;\n  background: rgba(15, 23, 42, 0.7) !important;\n}\n\n.nexus-inpage-btn-save {\n  padding: 9px 22px !important;\n  border-radius: 10px !important;\n  border: 1px solid rgba(168, 85, 247, 0.6) !important;\n  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;\n  color: #ffffff !important;\n  font-weight: 800 !important;\n  font-size: 0.85rem !important;\n  cursor: pointer !important;\n  box-shadow: 0 0 16px rgba(168, 85, 247, 0.4) !important;\n  transition: all 0.2s ease !important;\n}\n\n.nexus-inpage-btn-save:hover {\n  box-shadow: 0 0 24px rgba(192, 132, 252, 0.7) !important;\n  transform: translateY(-1px) !important;\n}\n\n/* SELETOR DUAL NO MODAL IN-PAGE */\n.nexus-inpage-engine-modes {\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 10px !important;\n  margin-top: 8px !important;\n}\n\n.nexus-inpage-engine-option {\n  display: flex !important;\n  align-items: flex-start !important;\n  gap: 12px !important;\n  padding: 10px 14px !important;\n  border-radius: 10px !important;\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\n  background: rgba(15, 23, 42, 0.5) !important;\n  cursor: pointer !important;\n  transition: all 0.22s ease !important;\n  user-select: none !important;\n}\n\n.nexus-inpage-engine-option:hover {\n  background: rgba(30, 41, 59, 0.65) !important;\n  border-color: rgba(255, 255, 255, 0.2) !important;\n  transform: translateY(-1px) !important;\n}\n\n.nexus-inpage-engine-radio {\n  width: 18px !important;\n  height: 18px !important;\n  border-radius: 50% !important;\n  border: 2px solid #64748b !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  flex-shrink: 0 !important;\n  margin-top: 2px !important;\n  transition: all 0.2s ease !important;\n}\n\n.nexus-inpage-radio-dot {\n  width: 8px !important;\n  height: 8px !important;\n  border-radius: 50% !important;\n  background: transparent !important;\n  transition: all 0.2s ease !important;\n}\n\n.nexus-inpage-engine-opt-title {\n  font-size: 0.84rem !important;\n  font-weight: 700 !important;\n  color: #f1f5f9 !important;\n  transition: color 0.2s ease !important;\n}\n\n.nexus-inpage-engine-opt-desc {\n  font-size: 0.74rem !important;\n  color: #94a3b8 !important;\n  line-height: 1.3 !important;\n  margin-top: 2px !important;\n}\n\n/* Modo Portable Ativo (Roxo Oficial) */\n.nexus-inpage-engine-option.mode-portable.active {\n  background: rgba(168, 85, 247, 0.12) !important;\n  border-color: rgba(168, 85, 247, 0.6) !important;\n  box-shadow: 0 0 16px rgba(168, 85, 247, 0.25) !important;\n}\n\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-radio {\n  border-color: #c084fc !important;\n  box-shadow: 0 0 8px rgba(192, 132, 252, 0.6) !important;\n}\n\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-radio-dot {\n  background: #c084fc !important;\n}\n\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-opt-title {\n  color: #e9d5ff !important;\n}\n\n/* Modo Extensão Ativo (Verde Esmeralda) */\n.nexus-inpage-engine-option.mode-extension.active {\n  background: rgba(16, 185, 129, 0.12) !important;\n  border-color: rgba(16, 185, 129, 0.6) !important;\n  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25) !important;\n}\n\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-radio {\n  border-color: #34d399 !important;\n  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6) !important;\n}\n\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-radio-dot {\n  background: #34d399 !important;\n}\n\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-opt-title {\n  color: #a7f3d0 !important;\n}\n\n/* Efeito highlight quando direcionado para configurar pasta */\n@keyframes nexusPulseGlow {\n  0% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.7); }\n  50% { box-shadow: 0 0 22px 6px rgba(0, 242, 254, 0.6); }\n  100% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0); }\n}\n\n.nexus-highlight-pulse {\n  animation: nexusPulseGlow 1.4s ease-out !important;\n  border-color: #00f2fe !important;\n}\n";
+  const NEXUS_INLINE_CSS = "/* ============================================================\r\n   Nexus Downloader - Content Styles (HUD Flutuante & Modal In-Page)\r\n   ============================================================ */\r\n\r\n:root, :host {\r\n  --nexus-bg-primary: #060810;\r\n  --nexus-bg-glass: rgba(11, 15, 25, 0.94);\r\n  --nexus-cyan: #00f2fe;\r\n  --nexus-cyan-glow: rgba(0, 242, 254, 0.35);\r\n  --nexus-purple: #7f00ff;\r\n  --nexus-emerald: #00f5a0;\r\n  --nexus-emerald-glow: rgba(0, 245, 160, 0.35);\r\n  --nexus-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\r\n}\r\n\r\n:host {\r\n  all: initial !important;\r\n  display: contents !important;\r\n}\r\n\r\n/* CONTAINER PRINCIPAL DO HUD FLUTUANTE */\r\n#nexus-hud-container {\r\n  position: fixed;\r\n  bottom: 24px;\r\n  right: 24px;\r\n  z-index: 2147483640;\r\n  font-family: var(--nexus-font);\r\n  user-select: none;\r\n  -webkit-font-smoothing: antialiased;\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n}\r\n\r\n/* WIDGET HUD CIRCULAR */\r\n.nexus-floating-hud {\r\n  position: relative;\r\n  background: var(--nexus-bg-glass);\r\n  backdrop-filter: blur(20px) saturate(180%);\r\n  -webkit-backdrop-filter: blur(20px) saturate(180%);\r\n  border-radius: 50%;\r\n  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  cursor: pointer;\r\n  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1),\r\n              height 0.35s cubic-bezier(0.16, 1, 0.3, 1),\r\n              box-shadow 0.35s ease;\r\n  overflow: visible;\r\n}\r\n\r\n/* 1. VERSÃO PEQUENA PADRÃO (~58px) */\r\n.nexus-floating-hud.compact {\r\n  width: 58px;\r\n  height: 58px;\r\n  box-shadow: 0 0 18px var(--nexus-cyan-glow), 0 6px 20px rgba(0, 0, 0, 0.7);\r\n}\r\n\r\n.nexus-floating-hud.compact.completed {\r\n  box-shadow: 0 0 20px var(--nexus-emerald-glow), 0 6px 20px rgba(0, 0, 0, 0.7);\r\n}\r\n\r\n/* LOGO OFICIAL COMO MARCA D'ÁGUA NO BACKGROUND */\r\n.nexus-hud-bg-logo {\r\n  position: absolute;\r\n  top: 50%;\r\n  left: 50%;\r\n  transform: translate(-50%, -50%);\r\n  width: 72%;\r\n  height: 72%;\r\n  opacity: 0.22;\r\n  pointer-events: none;\r\n  z-index: 1;\r\n  transition: opacity 0.3s ease;\r\n}\r\n\r\n/* No modo expandido, oculta completamente a logo do background para ZERO sobreposição com textos e botões */\r\n.nexus-floating-hud.expanded .nexus-hud-bg-logo {\r\n  display: none !important;\r\n}\r\n\r\n/* ANEL DE PROGRESSO SVG NO CONTORNO INTERNO */\r\n.nexus-hud-svg-ring {\r\n  position: absolute;\r\n  top: 0;\r\n  left: 0;\r\n  width: 100%;\r\n  height: 100%;\r\n  transform: rotate(-90deg);\r\n  pointer-events: none;\r\n  z-index: 2;\r\n}\r\n\r\n.nexus-hud-ring-track {\r\n  fill: none;\r\n  stroke: rgba(255, 255, 255, 0.08);\r\n}\r\n\r\n.nexus-hud-ring-bar {\r\n  fill: none;\r\n  stroke: var(--nexus-cyan);\r\n  stroke-linecap: round;\r\n  transition: stroke-dashoffset 0.4s ease, stroke 0.4s ease, opacity 0.3s ease;\r\n  filter: drop-shadow(0 0 6px var(--nexus-cyan));\r\n}\r\n\r\n.nexus-hud-ring-bar.inactive {\r\n  stroke: transparent !important;\r\n  opacity: 0 !important;\r\n  visibility: hidden;\r\n}\r\n\r\n.nexus-hud-ring-bar.completed {\r\n  stroke: var(--nexus-emerald);\r\n  filter: drop-shadow(0 0 7px var(--nexus-emerald));\r\n}\r\n\r\n/* DADOS NO CENTRO DO MODO COMPACTO */\r\n.nexus-hud-compact-data {\r\n  position: relative;\r\n  z-index: 3;\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  justify-content: center;\r\n  text-align: center;\r\n  cursor: pointer;\r\n  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;\r\n  padding: 4px;\r\n  border-radius: 50%;\r\n  width: 100%;\r\n  height: 100%;\r\n}\r\n\r\n.nexus-hud-compact-data:hover {\r\n  transform: scale(1.1);\r\n  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.8));\r\n}\r\n\r\n.nexus-compact-stack {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 1px;\r\n  pointer-events: none;\r\n  width: 100%;\r\n  line-height: 1.1;\r\n}\r\n\r\n.nexus-compact-speed-val {\r\n  font-size: 8.5px;\r\n  font-weight: 800;\r\n  color: #38bdf8;\r\n  letter-spacing: -0.2px;\r\n  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 242, 254, 0.4);\r\n  white-space: nowrap;\r\n  line-height: 1;\r\n}\r\n\r\n.nexus-compact-count-val {\r\n  font-size: 11px;\r\n  font-weight: 800;\r\n  color: #ffffff;\r\n  letter-spacing: -0.2px;\r\n  text-shadow: 0 0 6px rgba(0, 0, 0, 0.95);\r\n  white-space: nowrap;\r\n  line-height: 1.1;\r\n}\r\n\r\n.nexus-hud-check {\r\n  font-size: 1.25rem;\r\n  font-weight: 900;\r\n  color: var(--nexus-emerald);\r\n  line-height: 1;\r\n  text-shadow: 0 0 10px rgba(0, 245, 160, 0.8);\r\n}\r\n\r\n/* 2. VERSÃO EXPANDIDA (~184px - Espaçosa e Sem Sobreposição) */\r\n.nexus-floating-hud.expanded {\r\n  width: 184px;\r\n  height: 184px;\r\n  box-shadow: 0 0 32px var(--nexus-cyan-glow), 0 14px 44px rgba(0, 0, 0, 0.9);\r\n  cursor: pointer;\r\n}\r\n\r\n.nexus-floating-hud.expanded.completed {\r\n  box-shadow: 0 0 32px var(--nexus-emerald-glow), 0 14px 44px rgba(0, 0, 0, 0.9);\r\n}\r\n\r\n.nexus-hud-expanded-data {\r\n  display: none;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  justify-content: center;\r\n  text-align: center;\r\n  z-index: 3;\r\n  gap: 3px;\r\n  width: 100%;\r\n  height: 100%;\r\n  padding: 14px 12px 16px 12px;\r\n  box-sizing: border-box;\r\n  cursor: pointer;\r\n}\r\n\r\n.nexus-floating-hud.expanded .nexus-hud-expanded-data {\r\n  display: flex;\r\n}\r\n\r\n.nexus-floating-hud.expanded .nexus-hud-compact-data {\r\n  display: none;\r\n}\r\n\r\n/* BLOCO UNIFICADO: STATUS + CONTADOR (UM SÓ ELEMENTO INTERATIVO NO HOVER) */\r\n.nexus-exp-header-group {\r\n  display: flex;\r\n  flex-direction: column;\r\n  align-items: center;\r\n  justify-content: center;\r\n  cursor: pointer;\r\n  padding: 5px 12px;\r\n  border-radius: 12px;\r\n  border: 1px solid transparent;\r\n  background: transparent;\r\n  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);\r\n  margin-bottom: 2px;\r\n  width: 90%;\r\n  box-sizing: border-box;\r\n}\r\n\r\n.nexus-exp-header-group:hover {\r\n  background: transparent !important;\r\n  border-color: transparent !important;\r\n  box-shadow: none !important;\r\n  transform: translateY(-1px) scale(1.015);\r\n}\r\n\r\n.nexus-exp-header-group:hover .nexus-exp-status-row,\r\n.nexus-exp-header-group:hover .nexus-exp-counter,\r\n.nexus-exp-header-group:hover .nexus-exp-sub {\r\n  filter: none !important;\r\n  -webkit-text-stroke: 0 !important;\r\n}\r\n\r\n.nexus-exp-header-group:hover .nexus-exp-counter {\r\n  color: #38bdf8 !important;\r\n  text-shadow: 0 0 6px rgba(56, 189, 248, 0.5) !important;\r\n}\r\n\r\n.nexus-exp-header-group:hover .nexus-exp-status {\r\n  text-shadow: 0 0 5px rgba(56, 189, 248, 0.4) !important;\r\n}\r\n\r\n.nexus-exp-header-group:hover .nexus-exp-sub {\r\n  color: #bae6fd !important;\r\n  text-shadow: 0 0 4px rgba(56, 189, 248, 0.3) !important;\r\n}\r\n\r\n.nexus-exp-header-group:active {\r\n  transform: scale(0.98);\r\n}\r\n\r\n.nexus-exp-status-row {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 4px;\r\n}\r\n\r\n.nexus-exp-status {\r\n  font-size: 0.76rem;\r\n  font-weight: 800;\r\n  color: var(--nexus-emerald);\r\n  letter-spacing: 0.2px;\r\n  line-height: 1.1;\r\n  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);\r\n  transition: all 0.2s ease;\r\n  pointer-events: none;\r\n}\r\n\r\n.nexus-exp-status.downloading {\r\n  color: #38bdf8;\r\n}\r\n\r\n.nexus-exp-check {\r\n  font-size: 1.1rem;\r\n  color: var(--nexus-emerald);\r\n  font-weight: 900;\r\n  line-height: 1;\r\n  pointer-events: none;\r\n}\r\n\r\n.nexus-exp-counter {\r\n  font-size: 1.25rem;\r\n  font-weight: 800;\r\n  color: #ffffff;\r\n  line-height: 1.1;\r\n  margin: 1px 0;\r\n  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);\r\n  transition: all 0.2s ease;\r\n  pointer-events: none;\r\n}\r\n\r\n.nexus-exp-sub {\r\n  font-size: 0.54rem;\r\n  font-weight: 700;\r\n  letter-spacing: 0.6px;\r\n  color: #94a3b8;\r\n  text-transform: uppercase;\r\n  line-height: 1;\r\n  margin-bottom: 2px;\r\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\r\n  pointer-events: none;\r\n}\r\n\r\n.nexus-exp-tags {\r\n  display: flex;\r\n  gap: 5px;\r\n  margin: 1px 0 0 0;\r\n  align-items: center;\r\n  justify-content: center;\r\n  max-width: 120px;\r\n  flex-wrap: nowrap;\r\n}\r\n\r\n.nexus-tag-service {\r\n  background: rgba(167, 139, 250, 0.18);\r\n  color: #c084fc;\r\n  border: 1px solid rgba(167, 139, 250, 0.4);\r\n  font-weight: 700;\r\n  padding: 1.5px 6px;\r\n  border-radius: 999px;\r\n  font-size: 8px;\r\n  line-height: 1.2;\r\n  white-space: nowrap;\r\n  max-width: 58px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n.nexus-tag-type {\r\n  background: rgba(0, 242, 254, 0.15);\r\n  color: #38bdf8;\r\n  border: 1px solid rgba(0, 242, 254, 0.35);\r\n  font-weight: 700;\r\n  padding: 1.5px 6px;\r\n  border-radius: 999px;\r\n  font-size: 8px;\r\n  line-height: 1.2;\r\n  white-space: nowrap;\r\n  max-width: 58px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n}\r\n\r\n/* BOTÃO ABRIR PASTA / BAIXAR LOTE / VER DOWNLOADS */\r\n.nexus-btn-open-folder {\r\n  background: rgba(0, 242, 254, 0.1);\r\n  border: 1px solid rgba(0, 242, 254, 0.45);\r\n  color: #00f2fe;\r\n  font-size: 0.72rem;\r\n  font-weight: 700;\r\n  padding: 5px 14px;\r\n  border-radius: 12px;\r\n  cursor: pointer;\r\n  display: inline-flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 4px;\r\n  transition: all 0.2s;\r\n  text-decoration: none;\r\n  white-space: nowrap;\r\n  max-width: 154px;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  margin-top: 2px;\r\n}\r\n\r\n.nexus-btn-open-folder:hover {\r\n  background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);\r\n  color: #060810;\r\n  border-color: #00f2fe;\r\n  box-shadow: 0 0 12px rgba(0, 242, 254, 0.5);\r\n}\r\n\r\n/* BOTÕES DE CONTROLE NO HOVER (EXPANDIDO & COMPACTO) */\r\n.nexus-hud-hover-controls {\r\n  position: absolute;\r\n  top: -16px;\r\n  left: 0;\r\n  right: 0;\r\n  display: flex;\r\n  justify-content: center;\r\n  gap: 10px;\r\n  opacity: 0;\r\n  pointer-events: none;\r\n  transform: translateY(4px);\r\n  transition: opacity 0.2s ease, transform 0.2s ease;\r\n  z-index: 25;\r\n}\r\n\r\n.nexus-floating-hud.compact .nexus-hud-hover-controls {\r\n  top: -14px;\r\n  gap: 6px;\r\n}\r\n\r\n/* Ponte de hover contínua entre o topo do círculo e os botões */\r\n.nexus-hud-hover-controls::after {\r\n  content: '';\r\n  position: absolute;\r\n  top: -8px;\r\n  left: -25px;\r\n  right: -25px;\r\n  bottom: -22px;\r\n  z-index: -1;\r\n  pointer-events: auto;\r\n}\r\n\r\n.nexus-floating-hud.expanded:hover .nexus-hud-hover-controls,\r\n.nexus-floating-hud.compact:hover .nexus-hud-hover-controls,\r\n.nexus-hud-hover-controls:hover {\r\n  opacity: 1;\r\n  pointer-events: auto;\r\n  transform: translateY(0);\r\n}\r\n\r\n.nexus-btn-ctrl {\r\n  all: unset !important;\r\n  box-sizing: border-box !important;\r\n  width: 24px !important;\r\n  height: 24px !important;\r\n  min-width: 24px !important;\r\n  max-width: 24px !important;\r\n  min-height: 24px !important;\r\n  max-height: 24px !important;\r\n  border-radius: 50% !important;\r\n  background: rgba(15, 23, 42, 0.95) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\r\n  color: #f8fafc !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  font-size: 11px !important;\r\n  cursor: pointer !important;\r\n  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;\r\n  transition: all 0.2s !important;\r\n  padding: 0 !important;\r\n  margin: 0 !important;\r\n  flex-shrink: 0 !important;\r\n  overflow: hidden !important;\r\n}\r\n\r\n.nexus-btn-ctrl:hover {\r\n  background: var(--nexus-cyan) !important;\r\n  color: #060810 !important;\r\n  border-color: var(--nexus-cyan) !important;\r\n  box-shadow: 0 0 8px var(--nexus-cyan) !important;\r\n}\r\n\r\n.nexus-btn-ctrl.close:hover {\r\n  background: #ef4444 !important;\r\n  color: #ffffff !important;\r\n  border-color: #ef4444 !important;\r\n  box-shadow: 0 0 8px #ef4444 !important;\r\n}\r\n\r\n/* ÍCONE DE ARRASTE (DRAG HANDLE) */\r\n.nexus-drag-handle {\r\n  cursor: grab;\r\n}\r\n.nexus-drag-handle:active {\r\n  cursor: grabbing;\r\n}\r\n\r\n/* ============================================================\r\n   ESCUDO DE ISOLAMENTO TOTAL CONTRA RESETS E ESTILOS EXTERNOS\r\n   (ISOLAMENTO UNIVERSAL CONTRA BOOTSTRAP, TAILWIND, THEMES, MEGAUP, TERABOX)\r\n   ============================================================ */\r\n#nexus-manager-overlay,\r\n#nexus-manager-overlay *,\r\n#nexus-modal-overlay,\r\n#nexus-modal-overlay *,\r\n#nexus-inpage-options-backdrop,\r\n#nexus-inpage-options-backdrop *,\r\n#nexus-confirm-overlay,\r\n#nexus-confirm-overlay *,\r\n#nexus-hud-container,\r\n#nexus-hud-container *,\r\n[dir] #nexus-manager-overlay,\r\n[dir] #nexus-manager-overlay *,\r\n[dir] #nexus-modal-overlay,\r\n[dir] #nexus-modal-overlay *,\r\n[dir] #nexus-inpage-options-backdrop,\r\n[dir] #nexus-inpage-options-backdrop *,\r\n[dir] #nexus-confirm-overlay,\r\n[dir] #nexus-confirm-overlay *,\r\n[dir] #nexus-hud-container,\r\n[dir] #nexus-hud-container * {\r\n  box-sizing: border-box !important;\r\n  text-align: left;\r\n  letter-spacing: normal;\r\n  visibility: visible;\r\n  font-family: var(--nexus-font) !important;\r\n  -webkit-font-smoothing: antialiased !important;\r\n  text-rendering: optimizeLegibility !important;\r\n  float: none !important;\r\n  clear: none !important;\r\n  text-shadow: none !important;\r\n  text-decoration: none !important;\r\n  text-indent: 0 !important;\r\n}\r\n\r\n/* Neutralizar qualquer pseudo-elemento injetado por frameworks externos em labels, spans, botoes e divs */\r\n#nexus-manager-overlay label::before,\r\n#nexus-manager-overlay label::after,\r\n#nexus-manager-overlay span::before,\r\n#nexus-manager-overlay span::after,\r\n#nexus-manager-overlay button::before,\r\n#nexus-manager-overlay button::after,\r\n#nexus-modal-overlay label::before,\r\n#nexus-modal-overlay label::after,\r\n#nexus-modal-overlay span::before,\r\n#nexus-modal-overlay span::after,\r\n#nexus-modal-overlay button::before,\r\n#nexus-modal-overlay button::after,\r\n#nexus-inpage-options-backdrop label::before,\r\n#nexus-inpage-options-backdrop label::after,\r\n#nexus-inpage-options-backdrop span::before,\r\n#nexus-inpage-options-backdrop span::after,\r\n#nexus-inpage-options-backdrop button::before,\r\n#nexus-inpage-options-backdrop button::after,\r\n#nexus-confirm-overlay label::before,\r\n#nexus-confirm-overlay label::after,\r\n#nexus-confirm-overlay span::before,\r\n#nexus-confirm-overlay span::after,\r\n#nexus-confirm-overlay button::before,\r\n#nexus-confirm-overlay button::after,\r\n#nexus-hud-container label::before,\r\n#nexus-hud-container label::after,\r\n#nexus-hud-container span::before,\r\n#nexus-hud-container span::after,\r\n#nexus-hud-container button::before,\r\n#nexus-hud-container button::after {\r\n  content: none !important;\r\n  display: none !important;\r\n}\r\n\r\n/* Blindagem padrao de todos os botoes contra width: 100%, margin-top e resets de submit */\r\n#nexus-manager-overlay button,\r\n#nexus-modal-overlay button,\r\n#nexus-inpage-options-backdrop button,\r\n#nexus-confirm-overlay button,\r\n#nexus-hud-container button,\r\n[dir] #nexus-manager-overlay button,\r\n[dir] #nexus-modal-overlay button,\r\n[dir] #nexus-inpage-options-backdrop button,\r\n[dir] #nexus-confirm-overlay button,\r\n[dir] #nexus-hud-container button {\r\n  all: unset;\r\n  box-sizing: border-box !important;\r\n  font-family: var(--nexus-font) !important;\r\n  cursor: pointer !important;\r\n  text-transform: none !important;\r\n  overflow: visible !important;\r\n  margin: 0 !important;\r\n  padding: 0;\r\n  width: auto !important;\r\n  min-width: 0 !important;\r\n  max-width: none !important;\r\n  height: auto !important;\r\n  display: inline-flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n  vertical-align: middle !important;\r\n  line-height: normal !important;\r\n  white-space: nowrap !important;\r\n  border: none;\r\n  background: transparent;\r\n  color: inherit;\r\n}\r\n\r\n/* ============================================================\r\n   MINI JANELA MODAL DE ARQUIVOS DETECTADOS NA PÁGINA\r\n   ============================================================ */\r\n#nexus-modal-overlay,\r\n[dir] #nexus-modal-overlay {\r\n  position: fixed !important;\r\n  top: 0 !important;\r\n  left: 0 !important;\r\n  width: 100vw !important;\r\n  height: 100vh !important;\r\n  background: rgba(3, 5, 10, 0.6) !important;\r\n  backdrop-filter: blur(8px) !important;\r\n  -webkit-backdrop-filter: blur(8px) !important;\r\n  z-index: 2147483645 !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-card,\r\n[dir] #nexus-modal-overlay .nexus-modal-card,\r\n.nexus-modal-card {\r\n  width: 90% !important;\r\n  max-width: 440px !important;\r\n  background: rgba(10, 15, 30, 0.95) !important;\r\n  border: 1px solid rgba(0, 242, 254, 0.3) !important;\r\n  box-shadow: 0 0 35px rgba(0, 242, 254, 0.25), 0 20px 50px rgba(0, 0, 0, 0.8) !important;\r\n  border-radius: 18px !important;\r\n  padding: 22px !important;\r\n  font-family: var(--nexus-font) !important;\r\n  color: #f8fafc !important;\r\n  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  margin: auto !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  overflow: hidden !important;\r\n}\r\n\r\n@keyframes nexus-modal-in {\r\n  from { opacity: 0; transform: scale(0.92) translateY(10px); }\r\n  to { opacity: 1; transform: scale(1) translateY(0); }\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-header,\r\n[dir] #nexus-modal-overlay .nexus-modal-header,\r\n.nexus-modal-header {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  padding-bottom: 14px !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\r\n  margin-bottom: 14px !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-brand,\r\n#nexus-manager-overlay .nexus-modal-brand,\r\n[dir] #nexus-modal-overlay .nexus-modal-brand,\r\n[dir] #nexus-manager-overlay .nexus-modal-brand,\r\n.nexus-modal-brand {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 12px !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-brand svg,\r\n#nexus-manager-overlay .nexus-modal-brand svg,\r\n[dir] #nexus-modal-overlay .nexus-modal-brand svg,\r\n[dir] #nexus-manager-overlay .nexus-modal-brand svg,\r\n.nexus-modal-brand svg {\r\n  width: 38px !important;\r\n  height: 38px !important;\r\n  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.65)) !important;\r\n  flex-shrink: 0 !important;\r\n  display: block !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-title-nexus,\r\n#nexus-manager-overlay .nexus-modal-title-nexus,\r\n[dir] #nexus-modal-overlay .nexus-modal-title-nexus,\r\n[dir] #nexus-manager-overlay .nexus-modal-title-nexus,\r\n.nexus-modal-title-nexus {\r\n  font-size: 1.25rem !important;\r\n  font-weight: 800 !important;\r\n  letter-spacing: 0.5px !important;\r\n  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;\r\n  -webkit-background-clip: text !important;\r\n  -webkit-text-fill-color: transparent !important;\r\n  color: #00f2fe !important;\r\n  line-height: 1.1 !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-title-downloader,\r\n#nexus-manager-overlay .nexus-modal-title-downloader,\r\n[dir] #nexus-modal-overlay .nexus-modal-title-downloader,\r\n[dir] #nexus-manager-overlay .nexus-modal-title-downloader,\r\n.nexus-modal-title-downloader {\r\n  font-size: 0.68rem !important;\r\n  font-weight: 700 !important;\r\n  letter-spacing: 1.5px !important;\r\n  text-transform: uppercase !important;\r\n  color: #94a3b8 !important;\r\n  display: block !important;\r\n  line-height: 1.2 !important;\r\n  margin-top: 2px !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-subbar,\r\n[dir] #nexus-modal-overlay .nexus-modal-subbar,\r\n.nexus-modal-subbar {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  margin-bottom: 12px !important;\r\n  font-size: 0.82rem !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-files-list,\r\n[dir] #nexus-modal-overlay .nexus-modal-files-list,\r\n.nexus-modal-files-list {\r\n  max-height: 240px !important;\r\n  overflow-y: auto !important;\r\n  margin-bottom: 16px !important;\r\n  padding-right: 4px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 6px !important;\r\n  padding-left: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar,\r\n.nexus-modal-files-list::-webkit-scrollbar {\r\n  width: 5px !important;\r\n}\r\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-track,\r\n.nexus-modal-files-list::-webkit-scrollbar-track {\r\n  background: rgba(15, 23, 42, 0.4) !important;\r\n  border-radius: 4px !important;\r\n}\r\n#nexus-modal-overlay .nexus-modal-files-list::-webkit-scrollbar-thumb,\r\n.nexus-modal-files-list::-webkit-scrollbar-thumb {\r\n  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;\r\n  border-radius: 4px !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-file-row,\r\n[dir] #nexus-modal-overlay .nexus-modal-file-row,\r\n.nexus-modal-file-row {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  padding: 8px 10px !important;\r\n  background: rgba(15, 23, 42, 0.5) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.05) !important;\r\n  border-radius: 8px !important;\r\n  margin-bottom: 6px !important;\r\n  font-size: 0.8rem !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-modal-file-info,\r\n[dir] #nexus-modal-overlay .nexus-modal-file-info,\r\n.nexus-modal-file-info {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  overflow: hidden !important;\r\n  text-overflow: ellipsis !important;\r\n  white-space: nowrap !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-btn-download-action,\r\n[dir] #nexus-modal-overlay .nexus-btn-download-action,\r\n.nexus-btn-download-action {\r\n  width: 100% !important;\r\n  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7f00ff 100%) !important;\r\n  color: #060810 !important;\r\n  font-weight: 800 !important;\r\n  font-size: 0.92rem !important;\r\n  padding: 12px 18px !important;\r\n  border: none !important;\r\n  border-radius: 12px !important;\r\n  cursor: pointer !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  gap: 10px !important;\r\n  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.4) !important;\r\n  transition: all 0.25s !important;\r\n}\r\n\r\n#nexus-modal-overlay .nexus-btn-download-action:hover,\r\n[dir] #nexus-modal-overlay .nexus-btn-download-action:hover,\r\n.nexus-btn-download-action:hover {\r\n  box-shadow: 0 6px 28px rgba(0, 242, 254, 0.7) !important;\r\n  transform: translateY(-1px) !important;\r\n}\r\n\r\n/* ============================================================\r\n   JANELA DE GERENCIAMENTO DE DOWNLOADS IN-PAGE (ESTILO PORTABLE)\r\n   ============================================================ */\r\n#nexus-manager-overlay,\r\n[dir] #nexus-manager-overlay {\r\n  position: fixed !important;\r\n  top: 0 !important;\r\n  left: 0 !important;\r\n  width: 100vw !important;\r\n  height: 100vh !important;\r\n  background: rgba(3, 5, 10, 0.75) !important;\r\n  backdrop-filter: blur(12px) saturate(160%) !important;\r\n  -webkit-backdrop-filter: blur(12px) saturate(160%) !important;\r\n  z-index: 2147483646 !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  font-family: var(--nexus-font) !important;\r\n  color: #f8fafc !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-card,\r\n[dir] #nexus-manager-overlay .nexus-manager-card,\r\n.nexus-manager-card {\r\n  width: 92% !important;\r\n  max-width: 680px !important;\r\n  max-height: 86vh !important;\r\n  background: rgba(8, 12, 24, 0.96) !important;\r\n  border: 1px solid rgba(0, 242, 254, 0.35) !important;\r\n  box-shadow: 0 0 45px rgba(0, 242, 254, 0.2), 0 24px 60px rgba(0, 0, 0, 0.85) !important;\r\n  border-radius: 20px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  overflow: hidden !important;\r\n  animation: nexus-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  margin: auto !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-header,\r\n[dir] #nexus-manager-overlay .nexus-manager-header,\r\n.nexus-manager-header {\r\n  padding: 16px 20px !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\r\n  background: rgba(15, 23, 42, 0.45) !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-ctrl.close,\r\n#nexus-modal-overlay .nexus-btn-ctrl.close,\r\n[dir] #nexus-manager-overlay .nexus-btn-ctrl.close,\r\n[dir] #nexus-modal-overlay .nexus-btn-ctrl.close,\r\n.nexus-btn-ctrl.close {\r\n  width: 28px !important;\r\n  height: 28px !important;\r\n  border-radius: 50% !important;\r\n  background: rgba(255, 255, 255, 0.08) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\r\n  color: #94a3b8 !important;\r\n  display: inline-flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  cursor: pointer !important;\r\n  font-size: 13px !important;\r\n  transition: all 0.2s ease !important;\r\n  padding: 0 !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-ctrl.close:hover,\r\n#nexus-modal-overlay .nexus-btn-ctrl.close:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-ctrl.close:hover,\r\n[dir] #nexus-modal-overlay .nexus-btn-ctrl.close:hover,\r\n.nexus-btn-ctrl.close:hover {\r\n  background: rgba(239, 68, 68, 0.8) !important;\r\n  border-color: #ef4444 !important;\r\n  color: #ffffff !important;\r\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-stats-panel,\r\n[dir] #nexus-manager-overlay .nexus-manager-stats-panel,\r\n.nexus-manager-stats-panel {\r\n  padding: 16px 20px !important;\r\n  background: linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(6, 8, 16, 0.6) 100%) !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-stats-grid,\r\n[dir] #nexus-manager-overlay .nexus-manager-stats-grid,\r\n.nexus-manager-stats-grid {\r\n  display: grid !important;\r\n  grid-template-columns: repeat(3, 1fr) !important;\r\n  gap: 12px !important;\r\n  margin-bottom: 12px !important;\r\n  margin-top: 0 !important;\r\n  margin-left: 0 !important;\r\n  margin-right: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-stat-box,\r\n[dir] #nexus-manager-overlay .nexus-stat-box,\r\n.nexus-stat-box {\r\n  background: rgba(15, 23, 42, 0.6) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\r\n  border-radius: 10px !important;\r\n  padding: 8px 12px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 2px !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-stat-box-label,\r\n[dir] #nexus-manager-overlay .nexus-stat-box-label,\r\n.nexus-stat-box-label {\r\n  font-size: 0.64rem !important;\r\n  font-weight: 700 !important;\r\n  text-transform: uppercase !important;\r\n  color: #94a3b8 !important;\r\n  letter-spacing: 0.5px !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-stat-box-val,\r\n[dir] #nexus-manager-overlay .nexus-stat-box-val,\r\n.nexus-stat-box-val {\r\n  font-size: 1.05rem !important;\r\n  font-weight: 800 !important;\r\n  color: #ffffff !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-stat-box-val.highlight,\r\n[dir] #nexus-manager-overlay .nexus-stat-box-val.highlight,\r\n.nexus-stat-box-val.highlight {\r\n  color: #00f2fe !important;\r\n  text-shadow: 0 0 10px rgba(0, 242, 254, 0.5) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-stat-box-val.success,\r\n[dir] #nexus-manager-overlay .nexus-stat-box-val.success,\r\n.nexus-stat-box-val.success {\r\n  color: #00f5a0 !important;\r\n  text-shadow: 0 0 10px rgba(0, 245, 160, 0.5) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,\r\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-wrap,\r\n.nexus-manager-main-progress-bar-wrap {\r\n  width: 100% !important;\r\n  height: 8px !important;\r\n  background: rgba(255, 255, 255, 0.08) !important;\r\n  border-radius: 999px !important;\r\n  overflow: hidden !important;\r\n  position: relative !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-main-progress-bar-fill,\r\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill,\r\n.nexus-manager-main-progress-bar-fill {\r\n  height: 100% !important;\r\n  background: linear-gradient(90deg, #00f2fe 0%, #38bdf8 50%, #7f00ff 100%) !important;\r\n  border-radius: 999px !important;\r\n  transition: width 0.35s ease !important;\r\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.7) !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,\r\n[dir] #nexus-manager-overlay .nexus-manager-main-progress-bar-fill.completed,\r\n.nexus-manager-main-progress-bar-fill.completed {\r\n  background: linear-gradient(90deg, #00f5a0 0%, #10b981 100%) !important;\r\n  box-shadow: 0 0 10px rgba(0, 245, 160, 0.7) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-toolbar,\r\n[dir] #nexus-manager-overlay .nexus-manager-toolbar,\r\n.nexus-manager-toolbar {\r\n  padding: 10px 20px !important;\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  gap: 12px !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\r\n  background: rgba(11, 15, 25, 0.7) !important;\r\n  flex-wrap: nowrap !important;\r\n  width: 100% !important;\r\n  min-width: 0 !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-filter-tabs,\r\n[dir] #nexus-manager-overlay .nexus-manager-filter-tabs,\r\n.nexus-manager-filter-tabs {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  gap: 6px !important;\r\n  align-items: center !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n  flex-wrap: nowrap !important;\r\n  overflow-x: auto !important;\r\n  flex: 1 1 auto !important;\r\n  min-width: 0 !important;\r\n  -webkit-overflow-scrolling: touch !important;\r\n  scrollbar-width: none !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-filter-tabs::-webkit-scrollbar,\r\n.nexus-manager-filter-tabs::-webkit-scrollbar {\r\n  display: none !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-filter-tab-btn,\r\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn,\r\n.nexus-filter-tab-btn {\r\n  background: rgba(15, 23, 42, 0.5) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.1) !important;\r\n  color: #94a3b8 !important;\r\n  font-size: 0.72rem !important;\r\n  font-weight: 700 !important;\r\n  padding: 5px 10px !important;\r\n  border-radius: 6px !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s ease !important;\r\n  display: inline-flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  gap: 4px !important;\r\n  margin: 0 !important;\r\n  white-space: nowrap !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n  width: auto !important;\r\n  min-width: 0 !important;\r\n  max-width: none !important;\r\n  height: auto !important;\r\n  box-sizing: border-box !important;\r\n  line-height: 1.2 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-filter-tab-btn:hover,\r\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn:hover,\r\n.nexus-filter-tab-btn:hover {\r\n  background: rgba(255, 255, 255, 0.08) !important;\r\n  color: #ffffff !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-filter-tab-btn.active,\r\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn.active,\r\n.nexus-filter-tab-btn.active {\r\n  background: rgba(0, 242, 254, 0.15) !important;\r\n  border-color: rgba(0, 242, 254, 0.5) !important;\r\n  color: #00f2fe !important;\r\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,\r\n[dir] #nexus-manager-overlay .nexus-filter-tab-btn.torbox.active,\r\n.nexus-filter-tab-btn.torbox.active {\r\n  background: rgba(167, 139, 250, 0.2) !important;\r\n  border-color: #a78bfa !important;\r\n  color: #c084fc !important;\r\n  box-shadow: 0 0 10px rgba(167, 139, 250, 0.4) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-actions-row,\r\n[dir] #nexus-manager-overlay .nexus-manager-actions-row,\r\n.nexus-manager-actions-row {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  flex-wrap: nowrap !important;\r\n  gap: 8px !important;\r\n  align-items: center !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action,\r\n.nexus-btn-manager-action {\r\n  background: rgba(15, 23, 42, 0.8) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\r\n  color: #f8fafc !important;\r\n  font-size: 0.72rem !important;\r\n  font-weight: 700 !important;\r\n  padding: 5px 12px !important;\r\n  border-radius: 8px !important;\r\n  cursor: pointer !important;\r\n  display: inline-flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  gap: 6px !important;\r\n  transition: all 0.2s ease !important;\r\n  margin: 0 !important;\r\n  white-space: nowrap !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n  width: auto !important;\r\n  min-width: 0 !important;\r\n  max-width: none !important;\r\n  height: auto !important;\r\n  box-sizing: border-box !important;\r\n  line-height: normal !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action:hover,\r\n.nexus-btn-manager-action:hover {\r\n  background: rgba(0, 242, 254, 0.15) !important;\r\n  border-color: var(--nexus-cyan) !important;\r\n  color: var(--nexus-cyan) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-subbar-left,\r\n[dir] #nexus-manager-overlay .nexus-subbar-left,\r\n.nexus-subbar-left {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 12px !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action.primary,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary,\r\n.nexus-btn-manager-action.primary {\r\n  background: rgba(0, 242, 254, 0.12) !important;\r\n  border: 1px solid var(--nexus-cyan) !important;\r\n  color: #00f2fe !important;\r\n  font-weight: 800 !important;\r\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2) !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action.primary:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.primary:hover,\r\n.nexus-btn-manager-action.primary:hover {\r\n  background: rgba(0, 242, 254, 0.2) !important;\r\n  color: #00f2fe !important;\r\n  border-color: #00f2fe !important;\r\n  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4) !important;\r\n  text-shadow: 0 0 6px rgba(0, 242, 254, 0.5) !important;\r\n  filter: none !important;\r\n  -webkit-text-stroke: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-tag-origin,\r\n[dir] #nexus-manager-overlay .nexus-tag-origin,\r\n.nexus-tag-origin {\r\n  background: rgba(56, 189, 248, 0.15) !important;\r\n  color: #38bdf8 !important;\r\n  border: 1px solid rgba(56, 189, 248, 0.35) !important;\r\n  font-weight: 700 !important;\r\n  padding: 1px 6px !important;\r\n  border-radius: 4px !important;\r\n  font-size: 8.5px !important;\r\n  line-height: 1.2 !important;\r\n  margin: 0 !important;\r\n  display: inline-block !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action.restart:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.restart:hover,\r\n.nexus-btn-manager-action.restart:hover {\r\n  background: rgba(245, 158, 11, 0.15) !important;\r\n  border-color: #f59e0b !important;\r\n  color: #f59e0b !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action.clear:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.clear:hover,\r\n.nexus-btn-manager-action.clear:hover {\r\n  background: rgba(168, 85, 247, 0.2) !important;\r\n  border-color: #c084fc !important;\r\n  color: #c084fc !important;\r\n  box-shadow: 0 0 10px rgba(192, 132, 252, 0.35) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action.cancel:hover,\r\n.nexus-btn-manager-action.cancel:hover {\r\n  background: rgba(239, 68, 68, 0.2) !important;\r\n  border-color: #ef4444 !important;\r\n  color: #fca5a5 !important;\r\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-btn-remove,\r\n[dir] #nexus-manager-overlay .nexus-item-btn-remove,\r\n.nexus-item-btn-remove {\r\n  background: transparent !important;\r\n  border: 1px solid transparent !important;\r\n  color: #64748b !important;\r\n  font-size: 11px !important;\r\n  cursor: pointer !important;\r\n  padding: 2px 6px !important;\r\n  border-radius: 4px !important;\r\n  transition: all 0.2s !important;\r\n  line-height: 1 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-subbar,\r\n[dir] #nexus-manager-overlay .nexus-manager-subbar,\r\n.nexus-manager-subbar {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  flex-wrap: nowrap !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  padding: 8px 20px !important;\r\n  background: rgba(15, 23, 42, 0.5) !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;\r\n  font-size: 0.76rem !important;\r\n  color: #94a3b8 !important;\r\n  gap: 10px !important;\r\n  width: 100% !important;\r\n  min-width: 0 !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-subbar-select-all,\r\n[dir] #nexus-manager-overlay .nexus-subbar-select-all,\r\n.nexus-subbar-select-all {\r\n  display: inline-flex !important;\r\n  flex-direction: row !important;\r\n  flex-wrap: nowrap !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  cursor: pointer !important;\r\n  user-select: none !important;\r\n  font-weight: 600 !important;\r\n  font-size: 0.76rem !important;\r\n  color: #cbd5e1 !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  line-height: normal !important;\r\n  border: none !important;\r\n  background: transparent !important;\r\n  flex-shrink: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-subbar-select-all span,\r\n[dir] #nexus-manager-overlay .nexus-subbar-select-all span,\r\n.nexus-subbar-select-all span {\r\n  display: inline-block !important;\r\n  position: static !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  font-size: inherit !important;\r\n  line-height: normal !important;\r\n  color: inherit !important;\r\n  vertical-align: middle !important;\r\n  letter-spacing: normal !important;\r\n  white-space: nowrap !important;\r\n}\r\n\r\n.nexus-root-container input[type=\"checkbox\"],\r\n#nexus-manager-overlay input[type=\"checkbox\"],\r\n#nexus-hud-container input[type=\"checkbox\"],\r\n#nexus-modal-overlay input[type=\"checkbox\"],\r\n#nexus-inpage-options-backdrop input[type=\"checkbox\"],\r\n.nexus-subbar-select-all input[type=\"checkbox\"],\r\n.nexus-item-chk,\r\n#nexus-select-all,\r\n#nexus-subbar-chk-all {\r\n  all: revert !important;\r\n  appearance: auto !important;\r\n  -webkit-appearance: checkbox !important;\r\n  -moz-appearance: checkbox !important;\r\n  width: 16px !important;\r\n  height: 16px !important;\r\n  min-width: 16px !important;\r\n  max-width: 16px !important;\r\n  min-height: 16px !important;\r\n  max-height: 16px !important;\r\n  box-sizing: border-box !important;\r\n  padding: 0 !important;\r\n  margin: 0 !important;\r\n  cursor: pointer !important;\r\n  display: inline-block !important;\r\n  vertical-align: middle !important;\r\n  accent-color: var(--nexus-cyan) !important;\r\n  flex-shrink: 0 !important;\r\n  background: transparent !important;\r\n  background-color: transparent !important;\r\n  border: none !important;\r\n  outline: none !important;\r\n  box-shadow: none !important;\r\n  position: static !important;\r\n  opacity: 1 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-subbar-actions,\r\n[dir] #nexus-manager-overlay .nexus-subbar-actions,\r\n.nexus-subbar-actions {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  flex-wrap: nowrap !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-tag-engine,\r\n[dir] #nexus-manager-overlay .nexus-tag-engine,\r\n.nexus-tag-engine {\r\n  background: rgba(59, 130, 246, 0.15) !important;\r\n  color: #60a5fa !important;\r\n  border: 1px solid rgba(59, 130, 246, 0.35) !important;\r\n  font-weight: 700 !important;\r\n  padding: 1px 6px !important;\r\n  border-radius: 4px !important;\r\n  font-size: 8.5px !important;\r\n  line-height: 1.2 !important;\r\n  margin: 0 !important;\r\n  display: inline-block !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-chk,\r\n[dir] #nexus-manager-overlay .nexus-item-chk,\r\n.nexus-item-chk {\r\n  accent-color: #00f2fe !important;\r\n  width: 15px !important;\r\n  height: 15px !important;\r\n  cursor: pointer !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  display: inline-block !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-actions-btn-group,\r\n[dir] #nexus-manager-overlay .nexus-item-actions-btn-group,\r\n.nexus-item-actions-btn-group {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 4px !important;\r\n  margin-left: 6px !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-item-action,\r\n[dir] #nexus-manager-overlay .nexus-btn-item-action,\r\n.nexus-btn-item-action {\r\n  background: rgba(255, 255, 255, 0.05) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.1) !important;\r\n  color: #94a3b8 !important;\r\n  width: 24px !important;\r\n  height: 24px !important;\r\n  min-width: 24px !important;\r\n  max-width: 24px !important;\r\n  min-height: 24px !important;\r\n  max-height: 24px !important;\r\n  flex-shrink: 0 !important;\r\n  flex-grow: 0 !important;\r\n  border-radius: 6px !important;\r\n  display: inline-flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s ease !important;\r\n  padding: 0 !important;\r\n  margin: 0 !important;\r\n  box-sizing: border-box !important;\r\n  line-height: normal !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-item-action:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-item-action:hover,\r\n.nexus-btn-item-action:hover {\r\n  background: rgba(0, 242, 254, 0.15) !important;\r\n  border-color: rgba(0, 242, 254, 0.4) !important;\r\n  color: #00f2fe !important;\r\n  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,\r\n[dir] #nexus-manager-overlay .nexus-btn-item-action.open-browser:hover,\r\n.nexus-btn-item-action.open-browser:hover {\r\n  background: rgba(167, 139, 250, 0.15) !important;\r\n  border-color: rgba(167, 139, 250, 0.4) !important;\r\n  color: #c084fc !important;\r\n  box-shadow: 0 0 8px rgba(167, 139, 250, 0.3) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-btn-manager-action:disabled,\r\n[dir] #nexus-manager-overlay .nexus-btn-manager-action:disabled,\r\n.nexus-btn-manager-action:disabled {\r\n  opacity: 0.45 !important;\r\n  cursor: not-allowed !important;\r\n  pointer-events: none !important;\r\n  border-color: rgba(255, 255, 255, 0.08) !important;\r\n  color: #64748b !important;\r\n  background: rgba(15, 23, 42, 0.5) !important;\r\n  box-shadow: none !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-list,\r\n[dir] #nexus-manager-overlay .nexus-manager-list,\r\n.nexus-manager-list {\r\n  flex: 1 !important;\r\n  overflow-y: auto !important;\r\n  padding: 12px 20px !important;\r\n  max-height: 380px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 8px !important;\r\n  margin: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar,\r\n.nexus-manager-list::-webkit-scrollbar {\r\n  width: 6px !important;\r\n}\r\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-track,\r\n.nexus-manager-list::-webkit-scrollbar-track {\r\n  background: rgba(15, 23, 42, 0.3) !important;\r\n  border-radius: 4px !important;\r\n}\r\n#nexus-manager-overlay .nexus-manager-list::-webkit-scrollbar-thumb,\r\n.nexus-manager-list::-webkit-scrollbar-thumb {\r\n  background: linear-gradient(180deg, #00f2fe, #7f00ff) !important;\r\n  border-radius: 4px !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-item,\r\n[dir] #nexus-manager-overlay .nexus-manager-item,\r\n.nexus-manager-item {\r\n  background: rgba(15, 23, 42, 0.55) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.06) !important;\r\n  border-radius: 10px !important;\r\n  padding: 10px 14px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 6px !important;\r\n  transition: border-color 0.2s, background 0.2s !important;\r\n  margin: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-manager-item:hover,\r\n[dir] #nexus-manager-overlay .nexus-manager-item:hover,\r\n.nexus-manager-item:hover {\r\n  background: rgba(15, 23, 42, 0.75) !important;\r\n  border-color: rgba(0, 242, 254, 0.25) !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-row-top,\r\n[dir] #nexus-manager-overlay .nexus-item-row-top,\r\n.nexus-item-row-top {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 10px !important;\r\n  width: 100% !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-title-group,\r\n[dir] #nexus-manager-overlay .nexus-item-title-group,\r\n.nexus-item-title-group {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  overflow: hidden !important;\r\n  width: 100% !important;\r\n  flex: 1 !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-name,\r\n[dir] #nexus-manager-overlay .nexus-item-name,\r\n.nexus-item-name {\r\n  font-size: 0.85rem !important;\r\n  font-weight: 700 !important;\r\n  color: #f8fafc !important;\r\n  overflow: hidden !important;\r\n  text-overflow: ellipsis !important;\r\n  white-space: nowrap !important;\r\n  flex: 1 !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  line-height: normal !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-meta,\r\n[dir] #nexus-manager-overlay .nexus-item-meta,\r\n.nexus-item-meta {\r\n  display: none !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-progress-bar-wrap,\r\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-wrap,\r\n.nexus-item-progress-bar-wrap {\r\n  width: 100% !important;\r\n  height: 4px !important;\r\n  background: rgba(255, 255, 255, 0.08) !important;\r\n  border-radius: 4px !important;\r\n  overflow: hidden !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-progress-bar-fill,\r\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill,\r\n.nexus-item-progress-bar-fill {\r\n  height: 100% !important;\r\n  background: linear-gradient(90deg, #00f2fe, #38bdf8) !important;\r\n  border-radius: 4px !important;\r\n  transition: width 0.3s ease !important;\r\n  display: block !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-progress-bar-fill.completed,\r\n[dir] #nexus-manager-overlay .nexus-item-progress-bar-fill.completed,\r\n.nexus-item-progress-bar-fill.completed {\r\n  background: #00f5a0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-row-bottom,\r\n[dir] #nexus-manager-overlay .nexus-item-row-bottom,\r\n.nexus-item-row-bottom {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  font-size: 0.72rem !important;\r\n  font-weight: 600 !important;\r\n  color: #94a3b8 !important;\r\n  gap: 8px !important;\r\n  flex-wrap: wrap !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-bottom-left,\r\n[dir] #nexus-manager-overlay .nexus-item-bottom-left,\r\n.nexus-item-bottom-left {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 6px !important;\r\n  flex-wrap: wrap !important;\r\n  flex: 1 !important;\r\n  overflow: hidden !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n  background: transparent !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-size,\r\n[dir] #nexus-manager-overlay .nexus-item-size,\r\n.nexus-item-size {\r\n  color: #cbd5e1 !important;\r\n  font-size: 0.74rem !important;\r\n  font-weight: 700 !important;\r\n  margin-right: 2px !important;\r\n  display: inline-block !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-status-tag,\r\n[dir] #nexus-manager-overlay .nexus-item-status-tag,\r\n.nexus-item-status-tag {\r\n  display: inline-flex !important;\r\n  align-items: center !important;\r\n  gap: 4px !important;\r\n  font-weight: 700 !important;\r\n  margin-right: 2px !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-status-tag.downloading,\r\n[dir] #nexus-manager-overlay .nexus-item-status-tag.downloading,\r\n.nexus-item-status-tag.downloading {\r\n  color: #38bdf8 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-status-tag.completed,\r\n[dir] #nexus-manager-overlay .nexus-item-status-tag.completed,\r\n.nexus-item-status-tag.completed {\r\n  color: #00f5a0 !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-status-tag.pending,\r\n[dir] #nexus-manager-overlay .nexus-item-status-tag.pending,\r\n.nexus-item-status-tag.pending {\r\n  color: #f59e0b !important;\r\n}\r\n\r\n#nexus-manager-overlay .nexus-item-status-tag.failed,\r\n[dir] #nexus-manager-overlay .nexus-item-status-tag.failed,\r\n.nexus-item-status-tag.failed {\r\n  color: #ef4444 !important;\r\n}\r\n\r\n/* ============================================================\r\n   POPUP DE CONFIRMAÇÃO DE REINÍCIO (ESTILO DARK GLASS OBSIDIAN)\r\n   ============================================================ */\r\n#nexus-confirm-overlay,\r\n[dir] #nexus-confirm-overlay {\r\n  position: fixed !important;\r\n  top: 0 !important;\r\n  left: 0 !important;\r\n  width: 100vw !important;\r\n  height: 100vh !important;\r\n  background: rgba(2, 3, 8, 0.82) !important;\r\n  backdrop-filter: blur(10px) !important;\r\n  -webkit-backdrop-filter: blur(10px) !important;\r\n  z-index: 2147483647 !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  font-family: var(--nexus-font) !important;\r\n  color: #f8fafc !important;\r\n  margin: 0 !important;\r\n  padding: 0 !important;\r\n  border: 0 !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-confirm-card,\r\n[dir] #nexus-confirm-overlay .nexus-confirm-card,\r\n.nexus-confirm-card {\r\n  width: 90% !important;\r\n  max-width: 420px !important;\r\n  background: rgba(10, 15, 30, 0.98) !important;\r\n  border: 1px solid rgba(245, 158, 11, 0.45) !important;\r\n  box-shadow: 0 0 35px rgba(245, 158, 11, 0.25), 0 20px 50px rgba(0, 0, 0, 0.9) !important;\r\n  border-radius: 18px !important;\r\n  padding: 24px !important;\r\n  text-align: center !important;\r\n  animation: nexus-modal-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  margin: auto !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  align-items: center !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-confirm-icon,\r\n[dir] #nexus-confirm-overlay .nexus-confirm-icon,\r\n.nexus-confirm-icon {\r\n  font-size: 2.2rem !important;\r\n  margin-bottom: 12px !important;\r\n  display: inline-block !important;\r\n  animation: nexus-pulse-warning 2s infinite ease-in-out !important;\r\n}\r\n\r\n@keyframes nexus-pulse-warning {\r\n  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4)); }\r\n  50% { transform: scale(1.1); filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.8)); }\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-confirm-title,\r\n[dir] #nexus-confirm-overlay .nexus-confirm-title,\r\n.nexus-confirm-title {\r\n  font-size: 1.2rem !important;\r\n  font-weight: 800 !important;\r\n  color: #f8fafc !important;\r\n  margin-bottom: 8px !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-confirm-desc,\r\n[dir] #nexus-confirm-overlay .nexus-confirm-desc,\r\n.nexus-confirm-desc {\r\n  font-size: 0.85rem !important;\r\n  color: #cbd5e1 !important;\r\n  line-height: 1.45 !important;\r\n  margin-bottom: 20px !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-confirm-actions,\r\n[dir] #nexus-confirm-overlay .nexus-confirm-actions,\r\n.nexus-confirm-actions {\r\n  display: flex !important;\r\n  gap: 10px !important;\r\n  justify-content: center !important;\r\n  width: 100% !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-btn-confirm-cancel,\r\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel,\r\n.nexus-btn-confirm-cancel {\r\n  flex: 1 !important;\r\n  padding: 10px 16px !important;\r\n  border-radius: 10px !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.18) !important;\r\n  background: rgba(255, 255, 255, 0.06) !important;\r\n  color: #f8fafc !important;\r\n  font-weight: 700 !important;\r\n  font-size: 0.82rem !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,\r\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-cancel:hover,\r\n.nexus-btn-confirm-cancel:hover {\r\n  background: rgba(255, 255, 255, 0.12) !important;\r\n  border-color: rgba(255, 255, 255, 0.3) !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-btn-confirm-restart,\r\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart,\r\n.nexus-btn-confirm-restart {\r\n  flex: 1 !important;\r\n  padding: 10px 16px !important;\r\n  border-radius: 10px !important;\r\n  border: none !important;\r\n  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%) !important;\r\n  color: #ffffff !important;\r\n  font-weight: 800 !important;\r\n  font-size: 0.82rem !important;\r\n  cursor: pointer !important;\r\n  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4) !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n#nexus-confirm-overlay .nexus-btn-confirm-restart:hover,\r\n[dir] #nexus-confirm-overlay .nexus-btn-confirm-restart:hover,\r\n.nexus-btn-confirm-restart:hover {\r\n  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6) !important;\r\n  transform: translateY(-1px) !important;\r\n}\r\n\r\n/* ============================================================\r\n   JANELA IN-PAGE DE CONFIGURAÇÕES COMPLETAS DA EXTENSÃO\r\n   Obsidian Glass, Overlay com Blur e Toggle Roxo Oficial\r\n   ============================================================ */\r\n#nexus-inpage-options-backdrop {\r\n  position: fixed !important;\r\n  inset: 0 !important;\r\n  background: rgba(3, 7, 18, 0.78) !important;\r\n  backdrop-filter: blur(10px) !important;\r\n  -webkit-backdrop-filter: blur(10px) !important;\r\n  z-index: 2147483648 !important;\r\n  opacity: 0;\r\n  pointer-events: none;\r\n  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n}\r\n\r\n#nexus-inpage-options-backdrop.active {\r\n  opacity: 1 !important;\r\n  pointer-events: auto !important;\r\n}\r\n\r\n#nexus-inpage-options-window {\r\n  position: fixed !important;\r\n  top: 50% !important;\r\n  left: 50% !important;\r\n  transform: translate(-50%, -50%) scale(0.96) !important;\r\n  width: 720px !important;\r\n  max-width: 94vw !important;\r\n  max-height: 90vh !important;\r\n  background: rgba(11, 15, 25, 0.98) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.14) !important;\r\n  border-radius: 18px !important;\r\n  box-shadow: 0 25px 65px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 242, 254, 0.15) !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  overflow: hidden !important;\r\n  z-index: 2147483649 !important;\r\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;\r\n  color: #f8fafc !important;\r\n  opacity: 0;\r\n  pointer-events: none;\r\n  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n}\r\n\r\n#nexus-inpage-options-backdrop.active #nexus-inpage-options-window {\r\n  opacity: 1 !important;\r\n  pointer-events: auto !important;\r\n  transform: translate(-50%, -50%) scale(1) !important;\r\n}\r\n\r\n.nexus-inpage-header {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  padding: 16px 22px !important;\r\n  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;\r\n  background: rgba(15, 23, 42, 0.6) !important;\r\n}\r\n\r\n.nexus-inpage-header-left {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 12px !important;\r\n}\r\n\r\n.nexus-inpage-title {\r\n  font-size: 1.05rem !important;\r\n  font-weight: 800 !important;\r\n  letter-spacing: 0.5px !important;\r\n  color: #ffffff !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n}\r\n\r\n.nexus-inpage-btn-close {\r\n  width: 32px !important;\r\n  height: 32px !important;\r\n  border-radius: 50% !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\r\n  background: rgba(255, 255, 255, 0.06) !important;\r\n  color: #cbd5e1 !important;\r\n  font-size: 15px !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n.nexus-inpage-btn-close:hover {\r\n  background: rgba(239, 68, 68, 0.8) !important;\r\n  color: #ffffff !important;\r\n  border-color: #ef4444 !important;\r\n  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5) !important;\r\n  transform: scale(1.05) !important;\r\n}\r\n\r\n.nexus-inpage-body {\r\n  padding: 20px 24px !important;\r\n  overflow-y: auto !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 16px !important;\r\n  max-height: calc(90vh - 130px) !important;\r\n}\r\n\r\n.nexus-inpage-card {\r\n  background: rgba(15, 23, 42, 0.45) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\r\n  border-radius: 14px !important;\r\n  padding: 16px 18px !important;\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 12px !important;\r\n}\r\n\r\n.nexus-inpage-card-header {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  gap: 16px !important;\r\n}\r\n\r\n.nexus-inpage-card-title {\r\n  font-size: 0.95rem !important;\r\n  font-weight: 700 !important;\r\n  color: #ffffff !important;\r\n  margin-bottom: 3px !important;\r\n}\r\n\r\n.nexus-inpage-card-desc {\r\n  font-size: 0.8rem !important;\r\n  color: #94a3b8 !important;\r\n  line-height: 1.4 !important;\r\n}\r\n\r\n/* TOGGLE ROXO NEXUS */\r\n.nexus-purple-toggle {\r\n  position: relative !important;\r\n  display: inline-block !important;\r\n  width: 48px !important;\r\n  height: 26px !important;\r\n  flex-shrink: 0 !important;\r\n}\r\n\r\n.nexus-purple-toggle input {\r\n  opacity: 0 !important;\r\n  width: 0 !important;\r\n  height: 0 !important;\r\n}\r\n\r\n.nexus-purple-slider {\r\n  position: absolute !important;\r\n  cursor: pointer !important;\r\n  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;\r\n  background-color: rgba(255, 255, 255, 0.12) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\r\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  border-radius: 26px !important;\r\n}\r\n\r\n.nexus-purple-slider:before {\r\n  position: absolute !important;\r\n  content: \"\" !important;\r\n  height: 18px !important;\r\n  width: 18px !important;\r\n  left: 3px !important;\r\n  bottom: 3px !important;\r\n  background-color: #ffffff !important;\r\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  border-radius: 50% !important;\r\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;\r\n}\r\n\r\n.nexus-purple-toggle input:checked + .nexus-purple-slider {\r\n  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;\r\n  border-color: #c084fc !important;\r\n  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6) !important;\r\n}\r\n\r\n.nexus-purple-toggle input:checked + .nexus-purple-slider:before {\r\n  transform: translateX(22px) !important;\r\n}\r\n\r\n/* TOGGLE VERDE (RECURSOS EXCLUSIVOS DA EXTENSÃO) */\r\n.nexus-green-toggle {\r\n  position: relative !important;\r\n  display: inline-block !important;\r\n  width: 48px !important;\r\n  height: 26px !important;\r\n  flex-shrink: 0 !important;\r\n}\r\n\r\n.nexus-green-toggle input {\r\n  opacity: 0 !important;\r\n  width: 0 !important;\r\n  height: 0 !important;\r\n}\r\n\r\n.nexus-green-slider {\r\n  position: absolute !important;\r\n  cursor: pointer !important;\r\n  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;\r\n  background-color: rgba(255, 255, 255, 0.12) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.2) !important;\r\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  border-radius: 26px !important;\r\n}\r\n\r\n.nexus-green-slider:before {\r\n  position: absolute !important;\r\n  content: \"\" !important;\r\n  height: 18px !important;\r\n  width: 18px !important;\r\n  left: 3px !important;\r\n  bottom: 3px !important;\r\n  background-color: #ffffff !important;\r\n  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;\r\n  border-radius: 50% !important;\r\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5) !important;\r\n}\r\n\r\n.nexus-green-toggle input:checked + .nexus-green-slider {\r\n  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;\r\n  border-color: #10b981 !important;\r\n  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6) !important;\r\n}\r\n\r\n.nexus-green-toggle input:checked + .nexus-green-slider:before {\r\n  transform: translateX(22px) !important;\r\n}\r\n\r\n/* CHAVE TORBOX E GATE VISUAL */\r\n.nexus-inpage-torbox-row {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  flex-wrap: wrap !important;\r\n}\r\n\r\n.nexus-inpage-torbox-input {\r\n  flex: 1 1 240px !important;\r\n  background: rgba(0, 0, 0, 0.35) !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.14) !important;\r\n  color: #ffffff !important;\r\n  padding: 8px 12px !important;\r\n  border-radius: 8px !important;\r\n  font-size: 0.85rem !important;\r\n  outline: none !important;\r\n  transition: border-color 0.2s !important;\r\n}\r\n\r\n.nexus-inpage-torbox-input:focus {\r\n  border-color: var(--nexus-cyan) !important;\r\n  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;\r\n}\r\n\r\n.nexus-inpage-torbox-input:disabled {\r\n  background: rgba(15, 23, 42, 0.6) !important;\r\n  color: #94a3b8 !important;\r\n  border-color: rgba(255, 255, 255, 0.08) !important;\r\n  cursor: not-allowed !important;\r\n  letter-spacing: 2px !important;\r\n}\r\n\r\n.nexus-inpage-btn-action {\r\n  padding: 8px 14px !important;\r\n  border-radius: 8px !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\r\n  background: rgba(255, 255, 255, 0.06) !important;\r\n  color: #e2e8f0 !important;\r\n  font-size: 0.82rem !important;\r\n  font-weight: 700 !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s !important;\r\n  white-space: nowrap !important;\r\n}\r\n\r\n.nexus-inpage-btn-action:hover:not(:disabled) {\r\n  background: rgba(0, 242, 254, 0.15) !important;\r\n  border-color: var(--nexus-cyan) !important;\r\n  color: #00f2fe !important;\r\n}\r\n\r\n.nexus-inpage-btn-action:disabled {\r\n  opacity: 0.45 !important;\r\n  cursor: not-allowed !important;\r\n  border-color: rgba(255, 255, 255, 0.05) !important;\r\n}\r\n\r\n.nexus-inpage-chips-row {\r\n  display: flex !important;\r\n  gap: 8px !important;\r\n  flex-wrap: wrap !important;\r\n}\r\n\r\n.nexus-inpage-chip {\r\n  padding: 7px 14px !important;\r\n  border-radius: 20px !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\r\n  background: rgba(15, 23, 42, 0.6) !important;\r\n  color: #94a3b8 !important;\r\n  font-size: 0.78rem !important;\r\n  font-weight: 700 !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.2s !important;\r\n}\r\n\r\n.nexus-inpage-chip:hover {\r\n  background: rgba(0, 242, 254, 0.08) !important;\r\n  color: #e2e8f0 !important;\r\n  border-color: rgba(0, 242, 254, 0.3) !important;\r\n}\r\n\r\n.nexus-inpage-chip.active {\r\n  background: rgba(16, 185, 129, 0.18) !important;\r\n  border-color: #10b981 !important;\r\n  color: #34d399 !important;\r\n  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;\r\n}\r\n\r\n.nexus-inpage-footer {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: flex-end !important;\r\n  gap: 12px !important;\r\n  padding: 16px 22px !important;\r\n  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;\r\n  background: rgba(15, 23, 42, 0.7) !important;\r\n}\r\n\r\n.nexus-inpage-btn-save {\r\n  padding: 9px 22px !important;\r\n  border-radius: 10px !important;\r\n  border: 1px solid rgba(168, 85, 247, 0.6) !important;\r\n  background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%) !important;\r\n  color: #ffffff !important;\r\n  font-weight: 800 !important;\r\n  font-size: 0.85rem !important;\r\n  cursor: pointer !important;\r\n  box-shadow: 0 0 16px rgba(168, 85, 247, 0.4) !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n.nexus-inpage-btn-save:hover {\r\n  box-shadow: 0 0 24px rgba(192, 132, 252, 0.7) !important;\r\n  transform: translateY(-1px) !important;\r\n}\r\n\r\n/* SELETOR DUAL NO MODAL IN-PAGE */\r\n.nexus-inpage-engine-modes {\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 10px !important;\r\n  margin-top: 8px !important;\r\n}\r\n\r\n.nexus-inpage-engine-option {\r\n  display: flex !important;\r\n  align-items: flex-start !important;\r\n  gap: 12px !important;\r\n  padding: 10px 14px !important;\r\n  border-radius: 10px !important;\r\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\r\n  background: rgba(15, 23, 42, 0.5) !important;\r\n  cursor: pointer !important;\r\n  transition: all 0.22s ease !important;\r\n  user-select: none !important;\r\n}\r\n\r\n.nexus-inpage-engine-option:hover {\r\n  background: rgba(30, 41, 59, 0.65) !important;\r\n  border-color: rgba(255, 255, 255, 0.2) !important;\r\n  transform: translateY(-1px) !important;\r\n}\r\n\r\n.nexus-inpage-engine-radio {\r\n  width: 18px !important;\r\n  height: 18px !important;\r\n  border-radius: 50% !important;\r\n  border: 2px solid #64748b !important;\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  flex-shrink: 0 !important;\r\n  margin-top: 2px !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n.nexus-inpage-radio-dot {\r\n  width: 8px !important;\r\n  height: 8px !important;\r\n  border-radius: 50% !important;\r\n  background: transparent !important;\r\n  transition: all 0.2s ease !important;\r\n}\r\n\r\n.nexus-inpage-engine-opt-title {\r\n  font-size: 0.84rem !important;\r\n  font-weight: 700 !important;\r\n  color: #f1f5f9 !important;\r\n  transition: color 0.2s ease !important;\r\n}\r\n\r\n.nexus-inpage-engine-opt-desc {\r\n  font-size: 0.74rem !important;\r\n  color: #94a3b8 !important;\r\n  line-height: 1.3 !important;\r\n  margin-top: 2px !important;\r\n}\r\n\r\n/* Modo Portable Ativo (Roxo Oficial) */\r\n.nexus-inpage-engine-option.mode-portable.active {\r\n  background: rgba(168, 85, 247, 0.12) !important;\r\n  border-color: rgba(168, 85, 247, 0.6) !important;\r\n  box-shadow: 0 0 16px rgba(168, 85, 247, 0.25) !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-radio {\r\n  border-color: #c084fc !important;\r\n  box-shadow: 0 0 8px rgba(192, 132, 252, 0.6) !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-radio-dot {\r\n  background: #c084fc !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-portable.active .nexus-inpage-engine-opt-title {\r\n  color: #e9d5ff !important;\r\n}\r\n\r\n/* Modo Extensão Ativo (Verde Esmeralda) */\r\n.nexus-inpage-engine-option.mode-extension.active {\r\n  background: rgba(16, 185, 129, 0.12) !important;\r\n  border-color: rgba(16, 185, 129, 0.6) !important;\r\n  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25) !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-radio {\r\n  border-color: #34d399 !important;\r\n  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6) !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-radio-dot {\r\n  background: #34d399 !important;\r\n}\r\n\r\n.nexus-inpage-engine-option.mode-extension.active .nexus-inpage-engine-opt-title {\r\n  color: #a7f3d0 !important;\r\n}\r\n\r\n/* Efeito highlight quando direcionado para configurar pasta */\r\n@keyframes nexusPulseGlow {\r\n  0% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.7); }\r\n  50% { box-shadow: 0 0 22px 6px rgba(0, 242, 254, 0.6); }\r\n  100% { box-shadow: 0 0 0 0 rgba(0, 242, 254, 0); }\r\n}\r\n\r\n.nexus-highlight-pulse {\r\n  animation: nexusPulseGlow 1.4s ease-out !important;\r\n  border-color: #00f2fe !important;\r\n}\r\n\r\n/* ============================================================\r\n   ARVORE DE PASTAS SELECIONAVEIS (GOOGLE DRIVE / MULTI-PASTAS)\r\n   ============================================================ */\r\n.nexus-folder-node {\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 6px !important;\r\n  width: 100% !important;\r\n}\r\n\r\n.nexus-folder-header {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  justify-content: space-between !important;\r\n  gap: 10px !important;\r\n  padding: 9px 12px !important;\r\n  background: rgba(15, 23, 42, 0.78) !important;\r\n  border: 1px solid rgba(56, 189, 248, 0.22) !important;\r\n  border-radius: 10px !important;\r\n  cursor: pointer !important;\r\n  transition: background 0.18s ease, border-color 0.18s ease !important;\r\n}\r\n\r\n.nexus-folder-header:hover {\r\n  background: rgba(30, 41, 59, 0.88) !important;\r\n  border-color: rgba(0, 242, 254, 0.5) !important;\r\n}\r\n\r\n.nexus-folder-header-left {\r\n  display: flex !important;\r\n  align-items: center !important;\r\n  gap: 8px !important;\r\n  flex: 1 1 auto !important;\r\n  min-width: 0 !important;\r\n}\r\n\r\n.nexus-folder-chevron {\r\n  display: inline-flex !important;\r\n  align-items: center !important;\r\n  justify-content: center !important;\r\n  color: #38bdf8 !important;\r\n  flex-shrink: 0 !important;\r\n  transition: transform 0.2s ease !important;\r\n}\r\n\r\n.nexus-folder-node.collapsed > .nexus-folder-header .nexus-folder-chevron {\r\n  transform: rotate(-90deg) !important;\r\n}\r\n\r\n.nexus-folder-name {\r\n  font-size: 0.84rem !important;\r\n  font-weight: 700 !important;\r\n  color: #f8fafc !important;\r\n  overflow: hidden !important;\r\n  text-overflow: ellipsis !important;\r\n  white-space: nowrap !important;\r\n  min-width: 0 !important;\r\n}\r\n\r\n.nexus-folder-badge {\r\n  background: rgba(0, 242, 254, 0.12) !important;\r\n  color: #38bdf8 !important;\r\n  border: 1px solid rgba(56, 189, 248, 0.3) !important;\r\n  font-size: 0.7rem !important;\r\n  font-weight: 700 !important;\r\n  padding: 2px 8px !important;\r\n  border-radius: 999px !important;\r\n  white-space: nowrap !important;\r\n  flex-shrink: 0 !important;\r\n}\r\n\r\n.nexus-folder-children {\r\n  display: flex !important;\r\n  flex-direction: column !important;\r\n  gap: 6px !important;\r\n  padding-left: 16px !important;\r\n  margin-left: 10px !important;\r\n  border-left: 1.5px solid rgba(56, 189, 248, 0.25) !important;\r\n}\r\n\r\n.nexus-folder-node.collapsed > .nexus-folder-children {\r\n  display: none !important;\r\n}\r\n";
 
   // Shadow DOM Encapsulation Engine (Isolamento total e definitivo de estilos e eventos)
   let _nexusShadowRoot = null;
@@ -319,6 +322,10 @@
     if (service === 'Torbox' || url.includes('tb-cdn') || url.includes('torbox')) {
       return { text: 'Torbox', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
     }
+    // 14.5. PlayStation CDN
+    if (service === 'PlayStation' || url.includes('dl.playstation.net') || url.includes('playstation.net')) {
+      return { text: 'PlayStation', bg: 'rgba(0, 112, 209, 0.22)', color: '#60a5fa', border: 'rgba(0, 112, 209, 0.5)' };
+    }
     // 15. MEGA
     if (service === 'MEGA' || url.includes('mega.nz') || url.includes('mega.co.nz') || url.includes('mega.io')) {
       return { text: 'MEGA', bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.4)' };
@@ -416,6 +423,24 @@
 
     // Executar escaneamento da página
     scanPage();
+
+    // Monitorar navegacao SPA (ex: Google Drive abrindo subpastas sem reload)
+    const handleSpaNav = () => {
+      if (window.location.href !== lastScannedUrl) {
+        lastScannedUrl = window.location.href;
+        detectedFiles = [];
+        selectedItemIds.clear();
+        expandedExtFolders.clear();
+        initializedFolderTreeKey = '';
+        updateHudInitialStats();
+        scanPage();
+      }
+    };
+    window.addEventListener('popstate', handleSpaNav);
+    window.addEventListener('hashchange', handleSpaNav);
+    if (window.location.hostname.toLowerCase().includes('drive.google.com')) {
+      setInterval(handleSpaNav, 1200);
+    }
   });
 
   // Atualizar quando configurações mudarem em tempo real
@@ -633,54 +658,122 @@
     let found = [];
     const seenUrls = new Set();
 
+    function extractMediaFireDirectUrlFromBtn(btn) {
+      if (!btn) return null;
+      const scrambled = btn.getAttribute('data-scrambled-url');
+      if (scrambled) {
+        try {
+          const decoded = atob(scrambled.trim()).trim();
+          if (decoded && decoded.startsWith('http') && !decoded.includes('/file/') && !decoded.includes('/folder/')) {
+            return decoded;
+          }
+        } catch (e) {}
+      }
+      const href = btn.getAttribute('href') || btn.href || '';
+      if (href && href.startsWith('http') && !href.includes('#') && !href.includes('/file/') && !href.includes('/folder/')) {
+        return href;
+      }
+      return null;
+    }
+
+    function extractMediaFireKeyFromUrl(urlStr) {
+      if (!urlStr) return null;
+      const m = urlStr.match(/\/(?:file|file_premium|download|view|listen|watch)\/([a-zA-Z0-9]+)/i);
+      if (m && m[1]) return m[1];
+      try {
+        const uObj = new URL(urlStr);
+        if (uObj.search && uObj.search.length > 1) {
+          const k = uObj.search.slice(1).split('&')[0].split('=')[0].trim();
+          if (/^[a-zA-Z0-9]{10,25}$/.test(k)) return k;
+        }
+      } catch (e) {}
+      return null;
+    }
+
     // 1. Scanner Autônomo Client-Side para MediaFire
     if (host.includes('mediafire.com')) {
       // Caso A: Pasta do MediaFire (/folder/key)
-      const folderMatch = url.match(/\/folder\/([a-zA-Z0-9]+)/i);
+      const folderMatch = url.match(/\/folder\/([a-zA-Z0-9,_-]+)/i);
       if (folderMatch && folderMatch[1]) {
-        const folderKey = folderMatch[1];
-        try {
-          const res = await fetch(`https://www.mediafire.com/api/1.4/folder/get_content.php?folder_key=${folderKey}&content_type=files&response_format=json`);
-          if (res.ok) {
-            const data = await res.json();
-            const mfFiles = data?.response?.folder_content?.files || [];
-            mfFiles.forEach(f => {
-              const fileUrl = f.links?.normal_download || `https://www.mediafire.com/file/${f.quickkey}/${encodeURIComponent(f.filename || 'file')}/file`;
-              seenUrls.add(fileUrl);
-              const sz = parseInt(f.size, 10) || 0;
-              found.push({
-                id: f.quickkey,
-                url: fileUrl,
-                directUrl: fileUrl,
-                downloadUrl: fileUrl,
-                filename: f.filename || 'arquivo',
-                size: sz,
-                sizeFormatted: formatBytes(sz),
-                service: 'MediaFire',
-                type: getFileType(f.filename || '')
-              });
-            });
-          }
-        } catch (err) {
-          console.warn('[Content] Erro na varredura de pasta MediaFire:', err);
-        }
-      }
+        const folderKeys = folderMatch[1].split(',').filter(Boolean);
+        for (const folderKey of folderKeys) {
+          try {
+            let folderTitle = 'MediaFire_Downloads';
+            try {
+              const infoRes = await fetch(`https://www.mediafire.com/api/1.4/folder/get_info.php?folder_key=${encodeURIComponent(folderKey)}&response_format=json`);
+              if (infoRes.ok) {
+                const infoJson = await infoRes.json();
+                if (infoJson?.response?.folder_info?.name) {
+                  folderTitle = sanitizeExtSegment(infoJson.response.folder_info.name);
+                }
+              }
+            } catch (e) {}
 
-      // Caso B: Arquivo único MediaFire (/file/key) ou botão na página
-      const dlBtn = document.querySelector('#downloadButton') || document.querySelector('a.popsok') || document.querySelector('a[aria-label="Download file"]');
-      if (dlBtn && dlBtn.href) {
+            let chunk = 1;
+            let moreChunks = true;
+            while (moreChunks) {
+              const res = await fetch(`https://www.mediafire.com/api/1.4/folder/get_content.php?folder_key=${encodeURIComponent(folderKey)}&content_type=files&chunk=${chunk}&response_format=json`);
+              if (!res.ok) break;
+              const data = await res.json();
+              const mfFiles = data?.response?.folder_content?.files || [];
+              mfFiles.forEach(f => {
+                const fileUrl = f.links?.normal_download || `https://www.mediafire.com/file/${f.quickkey}/${encodeURIComponent(f.filename || 'file')}/file`;
+                seenUrls.add(fileUrl);
+                const sz = parseInt(f.size, 10) || 0;
+                const fName = f.filename || 'arquivo';
+                found.push({
+                  id: `mediafire_${f.quickkey}`,
+                  fileId: `mf_${f.quickkey}`,
+                  numericId: f.quickkey,
+                  url: fileUrl,
+                  sourceUrl: fileUrl,
+                  mediafireUrl: fileUrl,
+                  directUrl: '',
+                  downloadUrl: '',
+                  filename: fName,
+                  name: fName,
+                  size: sz,
+                  sizeFormatted: formatBytes(sz),
+                  folderName: folderTitle,
+                  folderPath: folderTitle,
+                  relativePath: `${folderTitle}/${fName}`,
+                  preserveRelativePath: true,
+                  service: 'MediaFire',
+                  type: getFileType(fName)
+                });
+              });
+              moreChunks = data?.response?.folder_content?.more_chunks === 'yes';
+              chunk++;
+            }
+          } catch (err) {
+            console.warn('[Content] Erro na varredura de pasta MediaFire:', err);
+          }
+        }
+      } else {
+        // Caso B: Arquivo único MediaFire (/file/key, /?key, /download/key) ou botão na página
+        const mfKey = extractMediaFireKeyFromUrl(url);
+        const dlBtn = document.querySelector('#downloadButton') || document.querySelector('a[data-scrambled-url]') || document.querySelector('a.popsok') || document.querySelector('a[aria-label="Download file"]');
+        const directHref = extractMediaFireDirectUrlFromBtn(dlBtn);
         const nameEl = document.querySelector('.dl-btn-label') || document.querySelector('.filename') || document.querySelector('.file_name');
-        const fileName = nameEl ? (nameEl.title || nameEl.innerText.trim()) : document.title.replace(/MediaFire/i, '').trim() || 'arquivo';
-        seenUrls.add(dlBtn.href);
-        found.push({
-          id: 'mf-current',
-          url: url,
-          directUrl: dlBtn.href,
-          downloadUrl: dlBtn.href,
-          filename: fileName,
-          service: 'MediaFire',
-          type: getFileType(fileName)
-        });
+        const fileName = nameEl ? (nameEl.getAttribute('title') || nameEl.innerText.trim()) : document.title.replace(/\s*[-|]\s*MediaFire.*/i, '').trim() || 'arquivo';
+
+        if (dlBtn || mfKey) {
+          seenUrls.add(directHref || url);
+          found.push({
+            id: mfKey ? `mediafire_${mfKey}` : 'mf-current',
+            fileId: mfKey ? `mf_${mfKey}` : null,
+            numericId: mfKey,
+            url: url,
+            sourceUrl: url,
+            mediafireUrl: url,
+            directUrl: directHref || '',
+            downloadUrl: directHref || '',
+            filename: fileName,
+            name: fileName,
+            service: 'MediaFire',
+            type: getFileType(fileName)
+          });
+        }
       }
     }
 
@@ -1313,18 +1406,54 @@
       if (!href || seenUrls.has(href)) return;
 
       const lower = href.toLowerCase();
-      const isMedia = lower.match(/\.(mp4|mkv|avi|mov|zip|rar|7z|tar|gz|pdf|jpg|jpeg|png|webp|iso|exe|torrent)/i);
+      const isMedia = lower.match(/\.(mp4|mkv|avi|mov|zip|rar|7z|tar|gz|pdf|jpg|jpeg|png|webp|iso|exe|torrent|pkg)(?:[?#]|$)/i);
+      const isPsnLink = lower.includes('dl.playstation.net');
       const isMagnet = lower.startsWith('magnet:?');
 
-      if (isMedia || isMagnet || (currentSettings.monitoringMode === 'universal' && href.includes('/download'))) {
+      if (isMedia || isPsnLink || isMagnet || (currentSettings.monitoringMode === 'universal' && href.includes('/download'))) {
         seenUrls.add(href);
-        const name = (a.innerText.trim() || a.getAttribute('download') || href.split('/').pop().split('?')[0] || 'arquivo').substring(0, 45);
-        found.push({
-          url: href,
-          filename: name,
-          service: downloadProgressState.service,
-          type: getFileType(href)
-        });
+        let rawPathName = '';
+        try {
+          rawPathName = decodeURIComponent(href.split('/').pop().split('?')[0] || '');
+        } catch (e) {
+          rawPathName = (href.split('/').pop().split('?')[0] || '');
+        }
+
+        const isPsn = isPsnLink || lower.includes('.playstation.net') || /^[a-z]{2}\d{4}-[a-z]{4}\d{5}_\d{2}-.+\.pkg$/i.test(rawPathName);
+        if (isPsn) {
+          const pkgName = rawPathName || a.getAttribute('download') || a.innerText.trim() || 'package.pkg';
+          let psFolder = 'PlayStation';
+          const fullPkgMatch = pkgName.match(/^[A-Z]{2}\d{4}-([A-Z]{4}\d{5}_\d{2})-([A-Z0-9]+)(?:-([A-Z]\d{4}-V\d{4}))?(?:_\d+)?\.pkg$/i);
+          if (fullPkgMatch) {
+            const verTag = fullPkgMatch[3] ? ` (${fullPkgMatch[3].toUpperCase()})` : '';
+            psFolder = `${fullPkgMatch[1].toUpperCase()} - ${fullPkgMatch[2].toUpperCase()}${verTag}`;
+          } else {
+            const titleMatch = (pkgName + ' ' + href).match(/\b([A-Z]{4}\d{5}_\d{2})\b/i);
+            if (titleMatch) psFolder = `PlayStation - ${titleMatch[1].toUpperCase()}`;
+          }
+          found.push({
+            url: href,
+            directUrl: href,
+            downloadUrl: href,
+            filename: pkgName,
+            name: pkgName,
+            folderName: psFolder,
+            relativePath: `${psFolder}/${pkgName}`,
+            preserveRelativePath: true,
+            isHttpDirect: true,
+            service: 'PlayStation',
+            type: getFileType(pkgName)
+          });
+        } else {
+          const baseName = a.getAttribute('download') || rawPathName || a.innerText.trim() || 'arquivo';
+          const name = baseName.length > 120 ? baseName.substring(0, 120) : baseName;
+          found.push({
+            url: href,
+            filename: name,
+            service: downloadProgressState.service,
+            type: getFileType(href)
+          });
+        }
       }
     });
 
@@ -1344,35 +1473,47 @@
     });
 
     const isTeraBoxFolder = (host.includes('terabox') || host.includes('1024tera') || host.includes('freeterabox') || host.includes('gibibox')) && (url.includes('surl=') || url.includes('/s/'));
+    const isGoogleDrivePage = host.includes('drive.google.com');
+    const isGoogleDriveFolder = isGoogleDrivePage && (url.includes('/folders/') || url.includes('embeddedfolderview'));
 
     if (found.length > 0 || isSupportedHoster) {
       if (found.length > 0) {
         detectedFiles = found;
-      } else if (!isTeraBoxFolder) {
+      } else if (!isTeraBoxFolder && !isGoogleDriveFolder) {
         detectedFiles = [
-          { url: window.location.href, filename: document.title || 'arquivo', service: downloadProgressState.service, type: '.Vídeo' }
+          { url: window.location.href, filename: document.title || 'arquivo', service: downloadProgressState.service, type: isGoogleDrivePage ? '.Arquivo' : '.Vídeo' }
         ];
       }
 
-      if (detectedFiles.length > 0) {
+      if (detectedFiles.length > 0 || isGoogleDriveFolder) {
         downloadProgressState.total = detectedFiles.length;
-        downloadProgressState.type = detectedFiles[0].type || '.Vídeo';
+        downloadProgressState.type = (detectedFiles[0] && detectedFiles[0].type) || (isGoogleDrivePage ? '.Arquivo' : '.Vídeo');
         initHudWidget();
+        updateHudInitialStats();
       }
 
       // Re-verificação após 1.2s e 2.5s para páginas dinâmicas em React (TeraBox, MediaFire)
-      if ((isTeraBoxFolder || host.includes('mediafire.com')) && (!detectedFiles || detectedFiles.length <= 1)) {
+      if ((isTeraBoxFolder || (host.includes('mediafire.com') && !url.includes('/folder/'))) && (!detectedFiles || detectedFiles.length <= 1)) {
         setTimeout(() => {
-          const dlBtnLate = document.querySelector('#downloadButton') || document.querySelector('a.popsok');
-          if (dlBtnLate && dlBtnLate.href && dlBtnLate.href !== window.location.href) {
+          const alreadyHasDirectCdn = detectedFiles && detectedFiles[0] && /^https?:\/\/download\d*\.mediafire\.com\//i.test(detectedFiles[0].directUrl || '');
+          if (alreadyHasDirectCdn) return;
+          const dlBtnLate = document.querySelector('#downloadButton') || document.querySelector('a[data-scrambled-url]') || document.querySelector('a.popsok');
+          const lateDirectUrl = extractMediaFireDirectUrlFromBtn(dlBtnLate);
+          if (lateDirectUrl) {
             const nameEl = document.querySelector('.dl-btn-label') || document.querySelector('.filename');
-            const fileName = nameEl ? (nameEl.title || nameEl.innerText.trim()) : document.title.replace(/MediaFire/i, '').trim() || 'arquivo';
+            const fileName = nameEl ? (nameEl.getAttribute('title') || nameEl.innerText.trim()) : document.title.replace(/\s*[-|]\s*MediaFire.*/i, '').trim() || 'arquivo';
+            const mfKey = extractMediaFireKeyFromUrl(window.location.href);
             detectedFiles = [{
-              id: 'mf-current',
+              id: mfKey ? `mediafire_${mfKey}` : 'mf-current',
+              fileId: mfKey ? `mf_${mfKey}` : null,
+              numericId: mfKey,
               url: window.location.href,
-              directUrl: dlBtnLate.href,
-              downloadUrl: dlBtnLate.href,
+              sourceUrl: window.location.href,
+              mediafireUrl: window.location.href,
+              directUrl: lateDirectUrl,
+              downloadUrl: lateDirectUrl,
               filename: fileName,
+              name: fileName,
               service: 'MediaFire',
               type: getFileType(fileName)
             }];
@@ -1392,42 +1533,251 @@
         }
       }
 
-      // Consulta ao bridge do desktop com alta velocidade
+      const applyScannedFiles = (rawFiles) => {
+        detectedFiles = rawFiles.map(f => {
+          let svc = f.service || downloadProgressState.service;
+          if (svc === 'generic') svc = 'Sites Genéricos';
+          const fName = f.name || f.filename || 'arquivo';
+          return {
+            id: f.id,
+            url: f.url || window.location.href,
+            sourceUrl: f.sourceUrl || window.location.href,
+            directUrl: f.directUrl || f.downloadUrl || f.url,
+            downloadUrl: f.downloadUrl || f.directUrl || f.url,
+            referer: f.referer || window.location.href,
+            filename: fName,
+            name: fName,
+            size: f.size || 0,
+            sizeFormatted: f.sizeFormatted || (f.size ? formatBytes(f.size) : ''),
+            service: svc,
+            type: getFileType(fName || f.url || ''),
+            relativePath: f.relativePath || null,
+            folderPath: f.folderPath || null,
+            folderName: f.folderName || null,
+            preserveRelativePath: !!f.preserveRelativePath,
+            fileId: f.fileId || null,
+            numericId: f.numericId || null,
+            mediafireUrl: f.mediafireUrl || null,
+            gdriveFileId: f.gdriveFileId || null,
+            resourceKey: f.resourceKey || null,
+            megaFolderId: f.megaFolderId,
+            megaNodeId: f.megaNodeId,
+            megaFileKeyHex: f.megaFileKeyHex,
+            headers: f.headers
+          };
+        });
+        downloadProgressState.total = detectedFiles.length;
+        if (detectedFiles[0]) {
+          downloadProgressState.type = detectedFiles[0].type;
+          downloadProgressState.service = detectedFiles[0].service;
+        }
+        initHudWidget();
+        updateHudInitialStats();
+        if (downloadManagerOverlay) {
+          updateDownloadManagerUI();
+        }
+      };
+
+      // Consulta ao bridge do desktop com alta velocidade (+ Fallback standalone para Google Drive)
       if (isSupportedHoster || isTeraBoxFolder || url.includes('mega.nz') || url.includes('filester') || url.includes('1fichier.com')) {
-        chrome.runtime.sendMessage({ action: 'SCAN_PAGE_URL', url: window.location.href }, (scanRes) => {
+        const scanUrlSnapshot = window.location.href;
+        chrome.runtime.sendMessage({ action: 'SCAN_PAGE_URL', url: scanUrlSnapshot }, async (scanRes) => {
+          if (window.location.href !== scanUrlSnapshot) return;
           if (scanRes && scanRes.success && scanRes.files && scanRes.files.length > 0) {
-            detectedFiles = scanRes.files.map(f => {
-              let svc = f.service || downloadProgressState.service;
-              if (svc === 'generic') svc = 'Sites Genéricos';
-              return {
-                id: f.id,
-                url: f.url || window.location.href,
-                sourceUrl: f.sourceUrl || window.location.href,
-                directUrl: f.directUrl || f.downloadUrl || f.url,
-                downloadUrl: f.downloadUrl || f.directUrl || f.url,
-                referer: f.referer || window.location.href,
-                filename: f.name || f.filename || 'arquivo',
-                size: f.size || 0,
-                sizeFormatted: f.sizeFormatted || (f.size ? formatBytes(f.size) : ''),
-                service: svc,
-                type: getFileType(f.name || f.filename || f.url || ''),
-                megaFolderId: f.megaFolderId,
-                megaNodeId: f.megaNodeId,
-                megaFileKeyHex: f.megaFileKeyHex,
-                headers: f.headers
-              };
-            });
-            downloadProgressState.total = detectedFiles.length;
-            if (detectedFiles[0]) {
-              downloadProgressState.type = detectedFiles[0].type;
-              downloadProgressState.service = detectedFiles[0].service;
+            applyScannedFiles(scanRes.files);
+          } else if (isGoogleDrivePage) {
+            const clientFiles = await scanGoogleDriveClientSide(scanUrlSnapshot);
+            if (window.location.href !== scanUrlSnapshot) return;
+            if (clientFiles && clientFiles.length > 0) {
+              applyScannedFiles(clientFiles);
             }
-            initHudWidget();
-            updateHudInitialStats();
           }
         });
+
+        // Se modo for browser standalone (ou bridge indisponivel), dispara scan client-side imediato no Google Drive
+        if (isGoogleDrivePage && (currentSettings.downloadOnlyViaExtension === true || currentSettings.downloadEngine === 'browser')) {
+          scanGoogleDriveClientSide(scanUrlSnapshot).then(clientFiles => {
+            if (window.location.href !== scanUrlSnapshot) return;
+            if (clientFiles && clientFiles.length > 0 && detectedFiles.length === 0) {
+              applyScannedFiles(clientFiles);
+            }
+          }).catch(() => {});
+        }
       }
     }
+  }
+
+  function decodeHtmlExt(str) {
+    if (!str) return '';
+    const el = document.createElement('textarea');
+    el.innerHTML = String(str);
+    return el.value;
+  }
+
+  function sanitizeExtSegment(seg) {
+    return String(seg || 'Pasta').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || 'Pasta';
+  }
+
+  async function scanGoogleDriveClientSide(pageUrl) {
+    try {
+      const folderMatch = pageUrl.match(/\/folders\/([a-zA-Z0-9_-]{10,})/i) ||
+                          (pageUrl.includes('embeddedfolderview') ? pageUrl.match(/[?&]id=([a-zA-Z0-9_-]{10,})/i) : null);
+      const rkMatch = pageUrl.match(/[?&]resourcekey=([a-zA-Z0-9_-]+)/i);
+      const rootResourceKey = rkMatch && rkMatch[1] ? rkMatch[1] : null;
+
+      if (folderMatch && folderMatch[1]) {
+        const rootId = folderMatch[1];
+        const queue = [{ id: rootId, pathParts: [], resourceKey: rootResourceKey }];
+        const visited = new Set([rootId]);
+        const collected = [];
+        const docParser = new DOMParser();
+
+        while (queue.length > 0) {
+          const batch = queue.splice(0, 8);
+          await Promise.all(batch.map(async (node) => {
+            try {
+              let embUrl = `https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(node.id)}`;
+              const rk = node.resourceKey || rootResourceKey;
+              if (rk) embUrl += `&resourcekey=${encodeURIComponent(rk)}`;
+              const resp = await fetch(embUrl, { credentials: 'include' });
+              if (!resp.ok) return;
+              const html = await resp.text();
+              const parsedDoc = docParser.parseFromString(html, 'text/html');
+              const folderTitle = sanitizeExtSegment(parsedDoc.title || 'Pasta_Google_Drive');
+              const curParts = node.pathParts.length === 0 ? [folderTitle] : node.pathParts;
+
+              const entries = parsedDoc.querySelectorAll('.flip-entry');
+              entries.forEach(entry => {
+                const rawId = (entry.id || '').replace(/^entry-/, '').trim();
+                const linkEl = entry.querySelector('a[href]');
+                const titleEl = entry.querySelector('.flip-entry-title');
+                const href = linkEl ? linkEl.getAttribute('href') || '' : '';
+                const name = sanitizeExtSegment(titleEl ? titleEl.textContent : '');
+                const isDir = href.includes('/folders/') || !!entry.querySelector('[aria-label="Folder"], .drive-sprite-folder-grid-shared-icon, .drive-sprite-folder-list-shared-icon');
+
+                if (!rawId || !name) return;
+                const entryRkM = href.match(/[?&]resourcekey=([a-zA-Z0-9_-]+)/i);
+                const entryRk = (entryRkM && entryRkM[1]) || rk || null;
+
+                if (isDir) {
+                  if (!visited.has(rawId)) {
+                    visited.add(rawId);
+                    queue.push({ id: rawId, pathParts: [...curParts, name], resourceKey: entryRk });
+                  }
+                } else {
+                  let directUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(rawId)}&export=download&confirm=t`;
+                  let finalName = name;
+                  if (href.includes('docs.google.com/document/')) {
+                    directUrl = `https://docs.google.com/document/d/${rawId}/export?format=docx`;
+                    if (!finalName.toLowerCase().endsWith('.docx')) finalName += '.docx';
+                  } else if (href.includes('docs.google.com/spreadsheets/')) {
+                    directUrl = `https://docs.google.com/spreadsheets/d/${rawId}/export?format=xlsx`;
+                    if (!finalName.toLowerCase().endsWith('.xlsx')) finalName += '.xlsx';
+                  } else if (href.includes('docs.google.com/presentation/')) {
+                    directUrl = `https://docs.google.com/presentation/d/${rawId}/export?format=pptx`;
+                    if (!finalName.toLowerCase().endsWith('.pptx')) finalName += '.pptx';
+                  } else if (entryRk) {
+                    directUrl += `&resourcekey=${encodeURIComponent(entryRk)}`;
+                  }
+
+                  const folderPath = curParts.join('/');
+                  collected.push({
+                    id: `gdrive_${rawId}`,
+                    fileId: rawId,
+                    gdriveFileId: rawId,
+                    resourceKey: entryRk,
+                    name: finalName,
+                    filename: finalName,
+                    size: 0,
+                    sizeFormatted: '',
+                    relativePath: `${folderPath}/${finalName}`,
+                    folderPath,
+                    folderName: curParts[0] || folderTitle,
+                    preserveRelativePath: true,
+                    service: 'Google Drive',
+                    isHttpDirect: true,
+                    url: `https://drive.google.com/file/d/${rawId}/view`,
+                    sourceUrl: pageUrl,
+                    directUrl,
+                    downloadUrl: directUrl,
+                    referer: 'https://drive.google.com/'
+                  });
+                }
+              });
+            } catch (e) {}
+          }));
+        }
+
+        // Fallback leve para itens visiveis no DOM caso embeddedfolderview esteja bloqueado em workspace privado
+        if (collected.length === 0) {
+          const domTitle = sanitizeExtSegment((document.title || '').replace(/\s*-\s*Google Drive\s*$/i, '') || 'Pasta_Google_Drive');
+          const domNodes = document.querySelectorAll('[data-id][data-target="doc"]');
+          domNodes.forEach(el => {
+            const id = el.getAttribute('data-id');
+            const labelEl = el.querySelector('[aria-label], [data-tooltip]');
+            const rawName = labelEl ? (labelEl.getAttribute('data-tooltip') || labelEl.getAttribute('aria-label') || '').trim() : '';
+            if (id && id.length >= 10 && rawName) {
+              const safeName = sanitizeExtSegment(rawName.split('\n')[0]);
+              const dUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`;
+              collected.push({
+                id: `gdrive_${id}`,
+                fileId: id,
+                gdriveFileId: id,
+                resourceKey: rootResourceKey,
+                name: safeName,
+                filename: safeName,
+                size: 0,
+                sizeFormatted: '',
+                relativePath: `${domTitle}/${safeName}`,
+                folderPath: domTitle,
+                folderName: domTitle,
+                preserveRelativePath: true,
+                service: 'Google Drive',
+                isHttpDirect: true,
+                url: `https://drive.google.com/file/d/${id}/view`,
+                sourceUrl: pageUrl,
+                directUrl: dUrl,
+                downloadUrl: dUrl,
+                referer: 'https://drive.google.com/'
+              });
+            }
+          });
+        }
+
+        return collected;
+      }
+
+      // Caso arquivo individual (/file/d/ID)
+      const fileMatch = pageUrl.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/i) || pageUrl.match(/[?&]id=([a-zA-Z0-9_-]{10,})/i);
+      if (fileMatch && fileMatch[1]) {
+        const fId = fileMatch[1];
+        const fName = sanitizeExtSegment((document.title || '').replace(/\s*-\s*Google Drive\s*$/i, '') || `arquivo_${fId}`);
+        let dUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fId)}&export=download&confirm=t`;
+        if (rootResourceKey) dUrl += `&resourcekey=${encodeURIComponent(rootResourceKey)}`;
+        return [{
+          id: `gdrive_${fId}`,
+          fileId: fId,
+          gdriveFileId: fId,
+          resourceKey: rootResourceKey,
+          name: fName,
+          filename: fName,
+          size: 0,
+          sizeFormatted: '',
+          relativePath: fName,
+          folderName: null,
+          service: 'Google Drive',
+          isHttpDirect: true,
+          url: `https://drive.google.com/file/d/${fId}/view`,
+          sourceUrl: pageUrl,
+          directUrl: dUrl,
+          downloadUrl: dUrl,
+          referer: 'https://drive.google.com/'
+        }];
+      }
+    } catch (e) {
+      console.warn('[Content Google Drive Client Scanner] Erro:', e);
+    }
+    return [];
   }
 
   function updateHudInitialStats() {
@@ -1874,6 +2224,55 @@
     }
   }
 
+  function escapeHtmlExt(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function buildExtFolderTree(items) {
+    const root = { name: 'root', path: '', children: new Map(), files: [], allFileIds: [] };
+    items.forEach((item, idx) => {
+      const itemId = String(item.id || `det_${idx}`);
+      let dirParts = [];
+      if (item.folderPath && typeof item.folderPath === 'string') {
+        dirParts = item.folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
+      } else if (item.relativePath && (item.relativePath.includes('/') || item.relativePath.includes('\\'))) {
+        const segs = item.relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (segs.length > 1) dirParts = segs.slice(0, -1);
+      } else if (item.folderName) {
+        dirParts = [item.folderName];
+      } else {
+        dirParts = ['Arquivos'];
+      }
+
+      let cursor = root;
+      cursor.allFileIds.push(itemId);
+      let accPath = '';
+      for (const seg of dirParts) {
+        accPath = accPath ? `${accPath}/${seg}` : seg;
+        if (!cursor.children.has(seg)) {
+          cursor.children.set(seg, { name: seg, path: accPath, children: new Map(), files: [], allFileIds: [] });
+        }
+        cursor = cursor.children.get(seg);
+        cursor.allFileIds.push(itemId);
+      }
+      cursor.files.push({ item, idx, itemId });
+    });
+    return root;
+  }
+
+  function hasExtFolderHierarchy(items) {
+    return Array.isArray(items) && items.some(i =>
+      i.preserveRelativePath ||
+      (i.folderPath && String(i.folderPath).trim().length > 0) ||
+      (i.relativePath && (i.relativePath.includes('/') || i.relativePath.includes('\\')))
+    );
+  }
+
   // Modal de Seleção de Arquivos (In-Page)
   function showSelectionModal() {
     if (getNexusRootElement('nexus-modal-overlay')) return;
@@ -1890,15 +2289,63 @@
       });
     });
 
-    let filesHtml = detectedFiles.map((file, idx) => `
-      <div class="nexus-modal-file-row">
-        <div class="nexus-modal-file-info">
-          <input type="checkbox" class="nexus-file-chk" data-index="${idx}" checked>
-          <span title="${file.filename}">${file.filename}</span>
+    const isTreeMode = hasExtFolderHierarchy(detectedFiles);
+    const modalSelectedIds = new Set(detectedFiles.map((f, i) => String(f.id || `det_${i}`)));
+    const folderIdsMap = new Map();
+
+    const renderModalNodeHtml = (node, depth = 0) => {
+      folderIdsMap.set(node.path, node.allFileIds);
+      const isCollapsed = depth >= 1;
+      const subCount = node.children.size > 0 ? `${node.children.size} pasta(s) • ` : '';
+      const childrenHtml = Array.from(node.children.values())
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        .map(ch => renderModalNodeHtml(ch, depth + 1))
+        .join('');
+      const filesHtml = node.files.map(({ item, idx, itemId }) => `
+        <div class="nexus-modal-file-row">
+          <div class="nexus-modal-file-info">
+            <input type="checkbox" class="nexus-file-chk" data-index="${idx}" data-item-id="${escapeHtmlExt(itemId)}" checked>
+            <span title="${escapeHtmlExt(item.filename || item.name)}">${escapeHtmlExt(item.filename || item.name)}</span>
+          </div>
+          <span class="nexus-tag-type">${escapeHtmlExt(item.type || '.Arquivo')}</span>
         </div>
-        <span class="nexus-tag-type">${file.type}</span>
-      </div>
-    `).join('');
+      `).join('');
+
+      return `
+        <div class="nexus-folder-node ${isCollapsed ? 'collapsed' : ''}" data-folder-path="${escapeHtmlExt(node.path)}">
+          <div class="nexus-folder-header">
+            <div class="nexus-folder-header-left">
+              <span class="nexus-folder-chevron"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+              <input type="checkbox" class="nexus-folder-chk" data-folder-path="${escapeHtmlExt(node.path)}" checked>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              <span class="nexus-folder-name" title="${escapeHtmlExt(node.name)}">${escapeHtmlExt(node.name)}</span>
+            </div>
+            <span class="nexus-folder-badge">${subCount}${node.allFileIds.length} arq.</span>
+          </div>
+          <div class="nexus-folder-children">
+            ${childrenHtml}
+            ${filesHtml}
+          </div>
+        </div>
+      `;
+    };
+
+    let filesHtml = '';
+    if (isTreeMode) {
+      const tree = buildExtFolderTree(detectedFiles);
+      const topNodes = Array.from(tree.children.values());
+      filesHtml = topNodes.map(n => renderModalNodeHtml(n, 0)).join('');
+    } else {
+      filesHtml = detectedFiles.map((file, idx) => `
+        <div class="nexus-modal-file-row">
+          <div class="nexus-modal-file-info">
+            <input type="checkbox" class="nexus-file-chk" data-index="${idx}" data-item-id="${escapeHtmlExt(String(file.id || `det_${idx}`))}" checked>
+            <span title="${escapeHtmlExt(file.filename)}">${escapeHtmlExt(file.filename)}</span>
+          </div>
+          <span class="nexus-tag-type">${escapeHtmlExt(file.type)}</span>
+        </div>
+      `).join('');
+    }
 
     const sTag = getServiceTagStyle(downloadProgressState.service, window.location.href);
 
@@ -1923,7 +2370,7 @@
         <div class="nexus-modal-subbar">
           <div style="display:flex; align-items:center; gap:6px;">
             <span class="nexus-tag-service" style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-size: 9px; line-height: 1.2;">${sTag.text}</span>
-            <span style="font-weight:700;">${detectedFiles.length} Arquivos detectados</span>
+            <span style="font-weight:700;" id="nexus-modal-count-label">${detectedFiles.length} Arquivos detectados</span>
           </div>
           <label style="cursor:pointer; display:flex; align-items:center; gap:4px;">
             <input type="checkbox" id="nexus-select-all" checked>
@@ -1951,8 +2398,85 @@
 
     const chkSelectAll = overlay.querySelector('#nexus-select-all');
     const chks = overlay.querySelectorAll('.nexus-file-chk');
+    const folderChks = overlay.querySelectorAll('.nexus-folder-chk');
+    const countLabel = overlay.querySelector('#nexus-modal-count-label');
+
+    const syncModalCheckStates = () => {
+      chks.forEach(c => {
+        const id = c.getAttribute('data-item-id');
+        c.checked = modalSelectedIds.has(id);
+      });
+      folderChks.forEach(fc => {
+        const fPath = fc.getAttribute('data-folder-path');
+        const ids = folderIdsMap.get(fPath) || [];
+        let checkedInFolder = 0;
+        ids.forEach(id => { if (modalSelectedIds.has(id)) checkedInFolder++; });
+        if (checkedInFolder === 0) {
+          fc.checked = false;
+          fc.indeterminate = false;
+        } else if (checkedInFolder === ids.length) {
+          fc.checked = true;
+          fc.indeterminate = false;
+        } else {
+          fc.checked = false;
+          fc.indeterminate = true;
+        }
+      });
+      if (modalSelectedIds.size === 0) {
+        chkSelectAll.checked = false;
+        chkSelectAll.indeterminate = false;
+      } else if (modalSelectedIds.size === chks.length) {
+        chkSelectAll.checked = true;
+        chkSelectAll.indeterminate = false;
+      } else {
+        chkSelectAll.checked = false;
+        chkSelectAll.indeterminate = true;
+      }
+      if (countLabel) {
+        countLabel.textContent = `${modalSelectedIds.size}/${detectedFiles.length} selecionado(s)`;
+      }
+    };
+
     chkSelectAll.addEventListener('change', () => {
-      chks.forEach(c => c.checked = chkSelectAll.checked);
+      if (chkSelectAll.checked) {
+        chks.forEach(c => modalSelectedIds.add(c.getAttribute('data-item-id')));
+      } else {
+        modalSelectedIds.clear();
+      }
+      syncModalCheckStates();
+    });
+
+    chks.forEach(c => {
+      c.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const id = c.getAttribute('data-item-id');
+        if (c.checked) modalSelectedIds.add(id);
+        else modalSelectedIds.delete(id);
+        syncModalCheckStates();
+      });
+    });
+
+    folderChks.forEach(fc => {
+      fc.addEventListener('click', (e) => e.stopPropagation());
+      fc.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const fPath = fc.getAttribute('data-folder-path');
+        const ids = folderIdsMap.get(fPath) || [];
+        ids.forEach(id => {
+          if (fc.checked) modalSelectedIds.add(id);
+          else modalSelectedIds.delete(id);
+        });
+        syncModalCheckStates();
+      });
+    });
+
+    overlay.querySelectorAll('.nexus-folder-header').forEach(hdr => {
+      hdr.addEventListener('click', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('nexus-folder-chk')) return;
+        e.stopPropagation();
+        const nodeEl = hdr.closest('.nexus-folder-node');
+        if (nodeEl) nodeEl.classList.toggle('collapsed');
+      });
     });
 
     overlay.querySelector('#nexus-btn-confirm-download').addEventListener('click', () => {
@@ -2002,6 +2526,14 @@
         service: t.service || downloadProgressState.service,
         type: t.type || downloadProgressState.type,
         source: 'web',
+        relativePath: t.relativePath || null,
+        folderPath: t.folderPath || null,
+        folderName: t.folderName || null,
+        preserveRelativePath: !!t.preserveRelativePath,
+        numericId: t.numericId || null,
+        mediafireUrl: t.mediafireUrl || null,
+        gdriveFileId: t.gdriveFileId || null,
+        resourceKey: t.resourceKey || null,
         bunkrSlug: (t.url && (t.url.includes('bunkr') || t.url.includes('balbums')) ? (t.bunkrSlug || (t.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
         fileId: t.fileId || (t.url && (t.url.includes('bunkr') || t.url.includes('balbums')) ? (t.bunkrSlug || (t.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
         megaFolderId: t.megaFolderId || null,
@@ -2297,8 +2829,8 @@
     const detectedQueueItems = (detectedFiles || []).map((f, idx) => ({
       id: f.id || `det_${idx}`,
       url: f.url || f.directUrl || window.location.href,
-      directUrl: f.directUrl || f.downloadUrl || f.url,
-      downloadUrl: f.downloadUrl || f.directUrl || f.url,
+      directUrl: f.directUrl !== undefined ? f.directUrl : (f.downloadUrl || f.url),
+      downloadUrl: f.downloadUrl !== undefined ? f.downloadUrl : (f.directUrl || f.url),
       filename: f.filename || f.name || 'arquivo',
       name: f.filename || f.name || 'arquivo',
       status: 'pending',
@@ -2309,6 +2841,14 @@
       service: f.service || downloadProgressState.service,
       type: f.type || downloadProgressState.type,
       source: 'web',
+      relativePath: f.relativePath || null,
+      folderPath: f.folderPath || null,
+      folderName: f.folderName || null,
+      preserveRelativePath: !!f.preserveRelativePath,
+      numericId: f.numericId || null,
+      mediafireUrl: f.mediafireUrl || null,
+      gdriveFileId: f.gdriveFileId || null,
+      resourceKey: f.resourceKey || null,
       bunkrSlug: (f.url && (f.url.includes('bunkr') || f.url.includes('balbums')) ? (f.bunkrSlug || (f.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
       fileId: f.fileId || (f.url && (f.url.includes('bunkr') || f.url.includes('balbums')) ? (f.bunkrSlug || (f.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
       megaFolderId: f.megaFolderId || null,
@@ -2446,6 +2986,14 @@
               service: t.service || downloadProgressState.service,
               type: t.type || downloadProgressState.type,
               source: 'web',
+              relativePath: t.relativePath || null,
+              folderPath: t.folderPath || null,
+              folderName: t.folderName || null,
+              preserveRelativePath: !!t.preserveRelativePath,
+              numericId: t.numericId || null,
+              mediafireUrl: t.mediafireUrl || null,
+              gdriveFileId: t.gdriveFileId || null,
+              resourceKey: t.resourceKey || null,
               bunkrSlug: (t.url && (t.url.includes('bunkr') || t.url.includes('balbums')) ? (t.bunkrSlug || (t.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
               fileId: t.fileId || (t.url && (t.url.includes('bunkr') || t.url.includes('balbums')) ? (t.bunkrSlug || (t.url.match(/\/(?:f|v|i|d)\/([a-zA-Z0-9_-]+)/i) || [])[1]) : null),
               megaFolderId: t.megaFolderId || null,
@@ -2709,7 +3257,7 @@
       return;
     }
 
-    listEl.innerHTML = visibleItems.map(item => {
+    const renderItemCardHtml = (item) => {
       const isChecked = selectedItemIds.has(String(item.id));
       const itemPct = item.progress !== undefined ? Math.round(item.progress) : (item.status === 'completed' ? 100 : 0);
       let statusLabel = 'Na Fila';
@@ -2735,12 +3283,12 @@
       const sTagText = String(sTag.text || 'Web').replace(/[\[\]]/g, '');
 
       return `
-        <div class="nexus-manager-item" data-item-id="${item.id}">
+        <div class="nexus-manager-item" data-item-id="${escapeHtmlExt(item.id)}">
           <div class="nexus-item-row-top">
             <div class="nexus-item-title-group">
-              <input type="checkbox" class="nexus-item-chk" data-item-id="${item.id}" ${isChecked ? 'checked' : ''}>
+              <input type="checkbox" class="nexus-item-chk" data-item-id="${escapeHtmlExt(item.id)}" ${isChecked ? 'checked' : ''}>
               <span style="font-size: 1rem; flex-shrink: 0; display: inline-flex; align-items: center;">${getFileIcon(item.type)}</span>
-              <span class="nexus-item-name" title="${item.name}">${item.name}</span>
+              <span class="nexus-item-name" title="${escapeHtmlExt(item.name)}">${escapeHtmlExt(item.name)}</span>
             </div>
           </div>
           <div class="nexus-item-progress-bar-wrap">
@@ -2749,21 +3297,109 @@
           <div class="nexus-item-row-bottom">
             <div class="nexus-item-bottom-left">
               <span class="nexus-item-status-tag ${statusClass}">${statusLabel}</span>
-              ${item.sizeFormatted ? `<span class="nexus-item-size">${item.sizeFormatted}</span>` : ''}
+              ${item.sizeFormatted ? `<span class="nexus-item-size">${escapeHtmlExt(item.sizeFormatted)}</span>` : ''}
               <span class="nexus-tag-service" style="background: ${sTag.bg}; color: ${sTag.color}; border: 1px solid ${sTag.border}; font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 8.5px; white-space: nowrap;">${sTagText}</span>
               ${sTagText !== 'Web' ? `<span class="nexus-tag-origin" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 8.5px; white-space: nowrap;">Web</span>` : ''}
               <span class="nexus-tag-type" style="padding: 1px 6px; font-size: 8.5px; white-space: nowrap;">${typeTagText}</span>
-              ${item.speed ? `<span style="color:#38bdf8; font-weight:700; font-size:0.72rem;">${typeof item.speed === 'number' ? formatBytes(item.speed) + '/s' : item.speed}</span>` : ''}
+              ${item.speed ? `<span style="color:#38bdf8; font-weight:700; font-size:0.72rem;">${typeof item.speed === 'number' ? formatBytes(item.speed) + '/s' : escapeHtmlExt(item.speed)}</span>` : ''}
             </div>
             <div class="nexus-item-actions-btn-group">
-              <button type="button" class="nexus-btn-item-action copy-link" data-url="${originalUrl}" title="Copiar Link Original"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-              <button type="button" class="nexus-btn-item-action open-browser" data-url="${originalUrl}" title="Abrir Página"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
-              <button type="button" class="nexus-btn-item-action remove-item" data-remove-id="${item.id}" title="Remover da lista"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              <button type="button" class="nexus-btn-item-action copy-link" data-url="${escapeHtmlExt(originalUrl)}" title="Copiar Link Original"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+              <button type="button" class="nexus-btn-item-action open-browser" data-url="${escapeHtmlExt(originalUrl)}" title="Abrir Página"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+              <button type="button" class="nexus-btn-item-action remove-item" data-remove-id="${escapeHtmlExt(item.id)}" title="Remover da lista"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
           </div>
         </div>
       `;
-    }).join('');
+    };
+
+    const showMgrFolderTree = activeManagerFilter === 'all' && hasExtFolderHierarchy(visibleItems);
+    const mgrFolderIdsMap = new Map();
+
+    if (showMgrFolderTree) {
+      const tree = buildExtFolderTree(visibleItems);
+      const topNodes = Array.from(tree.children.values());
+      const treeKey = topNodes.map(n => n.path).join('|');
+      if (initializedFolderTreeKey !== treeKey) {
+        initializedFolderTreeKey = treeKey;
+        topNodes.forEach(n => expandedExtFolders.add(n.path));
+      }
+
+      const renderMgrNode = (node) => {
+        mgrFolderIdsMap.set(node.path, node.allFileIds);
+        const isExpanded = expandedExtFolders.has(node.path);
+        const subCount = node.children.size > 0 ? `${node.children.size} pasta(s) • ` : '';
+        const childrenHtml = Array.from(node.children.values())
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+          .map(ch => renderMgrNode(ch))
+          .join('');
+        const filesHtml = node.files.map(({ item }) => renderItemCardHtml(item)).join('');
+
+        return `
+          <div class="nexus-folder-node ${isExpanded ? '' : 'collapsed'}" data-folder-path="${escapeHtmlExt(node.path)}">
+            <div class="nexus-folder-header">
+              <div class="nexus-folder-header-left">
+                <span class="nexus-folder-chevron"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                <input type="checkbox" class="nexus-folder-chk" data-folder-path="${escapeHtmlExt(node.path)}">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="nexus-folder-name" title="${escapeHtmlExt(node.name)}">${escapeHtmlExt(node.name)}</span>
+              </div>
+              <span class="nexus-folder-badge">${subCount}${node.allFileIds.length} arq.</span>
+            </div>
+            <div class="nexus-folder-children">
+              ${childrenHtml}
+              ${filesHtml}
+            </div>
+          </div>
+        `;
+      };
+
+      listEl.innerHTML = topNodes.map(n => renderMgrNode(n)).join('');
+
+      // Sincroniza estado checked / indeterminate das pastas
+      listEl.querySelectorAll('.nexus-folder-chk').forEach(fc => {
+        const fPath = fc.getAttribute('data-folder-path');
+        const ids = mgrFolderIdsMap.get(fPath) || [];
+        let checkedInFolder = 0;
+        ids.forEach(id => { if (selectedItemIds.has(String(id))) checkedInFolder++; });
+        if (ids.length > 0 && checkedInFolder === ids.length) {
+          fc.checked = true;
+          fc.indeterminate = false;
+        } else if (checkedInFolder > 0) {
+          fc.checked = false;
+          fc.indeterminate = true;
+        } else {
+          fc.checked = false;
+          fc.indeterminate = false;
+        }
+
+        fc.addEventListener('click', (e) => e.stopPropagation());
+        fc.addEventListener('change', (e) => {
+          e.stopPropagation();
+          ids.forEach(id => {
+            if (fc.checked) selectedItemIds.add(String(id));
+            else selectedItemIds.delete(String(id));
+          });
+          updateDownloadManagerUI();
+        });
+      });
+
+      listEl.querySelectorAll('.nexus-folder-header').forEach(hdr => {
+        hdr.addEventListener('click', (e) => {
+          if (e.target && e.target.classList && e.target.classList.contains('nexus-folder-chk')) return;
+          e.stopPropagation();
+          const nodeEl = hdr.closest('.nexus-folder-node');
+          if (nodeEl) {
+            const fPath = nodeEl.getAttribute('data-folder-path');
+            if (expandedExtFolders.has(fPath)) expandedExtFolders.delete(fPath);
+            else expandedExtFolders.add(fPath);
+            updateDownloadManagerUI();
+          }
+        });
+      });
+    } else {
+      listEl.innerHTML = visibleItems.map(renderItemCardHtml).join('');
+    }
 
     // Eventos dos Checkboxes Individuais
     listEl.querySelectorAll('.nexus-item-chk').forEach(chk => {
@@ -3443,6 +4079,7 @@
       'image/webp': '.webp',
       'image/bmp': '.bmp',
       'application/vnd.android.package-archive': '.apk',
+      'application/vnd.apple.installer+xml': '.pkg',
       'application/x-msdownload': '.exe'
     };
     return mimeMap[cleanMime] || '';
@@ -3454,6 +4091,7 @@
     if (lower.match(/\.rar/)) return '.Rar';
     if (lower.match(/\.zip/)) return '.Zip';
     if (lower.match(/\.7z/)) return '.7z';
+    if (lower.match(/\.pkg(?:[?#]|$)/)) return '.Pkg';
     if (lower.match(/\.(tar|gz|bz2|xz|iso)/)) return '.Arquivo';
     if (lower.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)/)) return '.Foto';
     if (lower.match(/\.(torrent|magnet)/)) return '.Torrents';

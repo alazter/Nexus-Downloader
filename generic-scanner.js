@@ -2,7 +2,57 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { URL } = require('url');
+
+function shortUrlHash(str, len = 16) {
+  return crypto.createHash('sha256').update(String(str || '')).digest('hex').slice(0, len);
+}
+
+function isDirectBinaryFileUrl(urlStr) {
+  try {
+    const pathname = new URL(urlStr).pathname.toLowerCase();
+    return /\.(pkg|iso|bin|img|dmg|rar|zip|7z|tar|gz|bz2|xz|mp4|mkv|avi|mov|wmv|webm|flv|m4v|mp3|flac|wav|exe|msi|apk|deb|rpm|pdf|epub)$/.test(pathname);
+  } catch (e) {
+    return false;
+  }
+}
+
+function parsePlayStationCdnInfo(urlStr, fileName) {
+  try {
+    const parsed = new URL(urlStr);
+    const host = (parsed.hostname || '').toLowerCase();
+    const pathname = parsed.pathname || '';
+    const baseName = fileName || path.basename(pathname);
+    const isPsnHost = host.endsWith('.dl.playstation.net') || host === 'dl.playstation.net' || host.endsWith('.playstation.net');
+    const isPsnPkgName = /^[A-Z]{2}\d{4}-[A-Z]{4}\d{5}_\d{2}-.+\.pkg$/i.test(baseName);
+
+    if (!isPsnHost && !isPsnPkgName) {
+      return null;
+    }
+
+    let folderName = 'PlayStation';
+    const fullPkgMatch = baseName.match(/^[A-Z]{2}\d{4}-([A-Z]{4}\d{5}_\d{2})-([A-Z0-9]+)(?:-([A-Z]\d{4}-V\d{4}))?(?:_\d+)?\.pkg$/i);
+    if (fullPkgMatch) {
+      const titleId = fullPkgMatch[1].toUpperCase();
+      const gameSlug = fullPkgMatch[2].toUpperCase();
+      const verTag = fullPkgMatch[3] ? ` (${fullPkgMatch[3].toUpperCase()})` : '';
+      folderName = `${titleId} - ${gameSlug}${verTag}`;
+    } else {
+      const titleMatch = (baseName + ' ' + pathname).match(/\b([A-Z]{4}\d{5}_\d{2})\b/i);
+      if (titleMatch) {
+        folderName = `PlayStation - ${titleMatch[1].toUpperCase()}`;
+      }
+    }
+
+    return {
+      isPlayStation: true,
+      folderName
+    };
+  } catch (e) {
+    return null;
+  }
+}
 
 // Arquivo de cache persistente por domínio
 const getAppDataDir = () => {
@@ -268,7 +318,7 @@ async function scan1FichierSingleFile(urlStr) {
     }
 
     const cleanFileName = fileName.replace(/[\\/:*?"<>|]/g, '_');
-    const fileId = `1fichier_${Buffer.from(cleanUrl).toString('hex').slice(0, 12)}`;
+    const fileId = `1fichier_${shortUrlHash(cleanUrl, 12)}`;
 
     return [{
       id: fileId,
@@ -297,53 +347,108 @@ async function scan1FichierSingleFile(urlStr) {
 // MOTOR 2: Direct HTTP Probe Engine
 // ----------------------------------------------------
 async function scanDirectHttpProbe(urlStr) {
+  const psHint = parsePlayStationCdnInfo(urlStr);
   try {
-    const res = await makeHttpRequest(urlStr, { method: 'HEAD' });
-    const headers = res.headers || {};
-    const contentType = (headers['content-type'] || '').toLowerCase();
-    const contentLength = parseInt(headers['content-length'] || '0', 10);
-    const contentDisp = headers['content-disposition'] || '';
+    let res = await makeHttpRequest(urlStr, { method: 'HEAD' });
+    let statusCode = res.statusCode || 0;
+    let headers = res.headers || {};
+    let contentType = (headers['content-type'] || '').toLowerCase();
+    let contentLength = parseInt(headers['content-length'] || '0', 10) || 0;
+    let contentDisp = headers['content-disposition'] || '';
 
-    // Verifica se é uma resposta binária/mídia de download direto
-    const isBinaryType = contentType.includes('application/') || 
-                         contentType.includes('video/') || 
-                         contentType.includes('audio/') || 
-                         contentType.includes('image/') ||
-                         contentType.includes('octet-stream');
+    // Fallback com GET Range 1 byte se HEAD falhar (ex: 405/403) ou nao informar Content-Length em link binario direto
+    if ((statusCode >= 400 || contentLength === 0) && (psHint || isDirectBinaryFileUrl(urlStr))) {
+      try {
+        const rangeRes = await makeHttpRequest(urlStr, {
+          method: 'GET',
+          headers: { 'Range': 'bytes=0-0' }
+        });
+        if (rangeRes && rangeRes.statusCode && rangeRes.statusCode < 400) {
+          res = rangeRes;
+          statusCode = rangeRes.statusCode;
+          headers = rangeRes.headers || {};
+          contentType = (headers['content-type'] || '').toLowerCase();
+          contentDisp = headers['content-disposition'] || contentDisp;
+          if (headers['content-range']) {
+            const crMatch = headers['content-range'].match(/\/(\d+)$/);
+            if (crMatch) contentLength = parseInt(crMatch[1], 10) || contentLength;
+          }
+          if (!contentLength && headers['content-length'] && statusCode === 200) {
+            contentLength = parseInt(headers['content-length'], 10) || 0;
+          }
+        }
+      } catch (rangeErr) {}
+    }
+
+    if (statusCode >= 400) {
+      if (psHint && (statusCode === 404 || statusCode === 410)) {
+        throw new Error(`HTTP ${statusCode} - Arquivo nao encontrado no servidor PlayStation.`);
+      }
+      return null;
+    }
 
     const isHtml = contentType.includes('text/html');
 
     if (isHtml && contentLength < 500000 && !contentDisp) {
-      return null; // Não é arquivo direto, passar para HTML Scraper
+      return null; // Nao e arquivo direto, passar para HTML Scraper
     }
 
     let fileName = '';
     if (contentDisp) {
       const match = contentDisp.match(/filename\*?=['"]?(?:UTF-8'')?([^;'"]+)['"]?/i);
-      if (match) fileName = decodeURIComponent(match[1]);
+      if (match) {
+        try { fileName = decodeURIComponent(match[1]); } catch (e) { fileName = match[1]; }
+      }
     }
 
     if (!fileName) {
       const parsed = new URL(urlStr);
-      fileName = path.basename(parsed.pathname);
+      try { fileName = decodeURIComponent(path.basename(parsed.pathname)); } catch (e) { fileName = path.basename(parsed.pathname); }
     }
 
     if (!fileName || fileName === '/' || fileName === 'download') {
       fileName = 'arquivo_download.bin';
     }
 
-    const domain = getDomain(urlStr) || 'Servidor Genérico';
+    fileName = fileName.replace(/[\\/:*?"<>|]/g, '_');
+
+    const psInfo = parsePlayStationCdnInfo(urlStr, fileName);
+    if (psInfo) {
+      return [{
+        id: `psn_${shortUrlHash(urlStr)}`,
+        name: fileName,
+        size: contentLength,
+        downloadUrl: urlStr,
+        directUrl: urlStr,
+        url: urlStr,
+        sourceUrl: urlStr,
+        folderName: psInfo.folderName,
+        relativePath: `${psInfo.folderName}/${fileName}`,
+        preserveRelativePath: true,
+        isHttpDirect: true,
+        isAvulso: false,
+        isSingleFile: false,
+        service: 'PlayStation'
+      }];
+    }
+
     return [{
-      id: `generic_direct_${Buffer.from(urlStr).toString('hex').slice(0, 16)}`,
+      id: `generic_direct_${shortUrlHash(urlStr)}`,
       name: fileName,
       size: contentLength,
       downloadUrl: urlStr,
       directUrl: urlStr,
+      url: urlStr,
+      sourceUrl: urlStr,
       folderName: 'Sites Genéricos',
       relativePath: fileName,
+      isHttpDirect: true,
       service: 'generic'
     }];
   } catch (e) {
+    if (psHint && e && e.message && e.message.includes('HTTP 4')) {
+      throw e;
+    }
     return null;
   }
 }
@@ -394,7 +499,7 @@ async function scanSmartHtmlScraper(urlStr) {
       const directDlUrl = megaUpDlMatch ? megaUpDlMatch[1] : urlStr;
       console.log(`[MegaUp Engine] Arquivo detectado: "${megaUpName}" (${megaUpSizeFormatted || (megaUpSize ? formatBytes(megaUpSize) : 'Tamanho dinâmico')})`);
       return [{
-        id: `megaup_${Buffer.from(urlStr).toString('hex').slice(0, 16)}`,
+        id: `megaup_${shortUrlHash(urlStr)}`,
         name: megaUpName,
         size: megaUpSize,
         sizeFormatted: megaUpSizeFormatted || (megaUpSize ? formatBytes(megaUpSize) : 'Calculando...'),
@@ -464,7 +569,7 @@ async function scanSmartHtmlScraper(urlStr) {
         const u = new URL(dlUrl);
         const name = path.basename(u.pathname) || `arquivo_${idx + 1}`;
         results.push({
-          id: `scraper_${Buffer.from(dlUrl).toString('hex').slice(0, 16)}`,
+          id: `scraper_${shortUrlHash(dlUrl)}`,
           name: name,
           size: 0,
           downloadUrl: dlUrl,
@@ -488,7 +593,7 @@ async function scanSmartHtmlScraper(urlStr) {
 
     if (titleName && !isGenericTitle) {
       return [{
-        id: `scraper_page_${Buffer.from(urlStr).toString('hex').slice(0, 16)}`,
+        id: `scraper_page_${shortUrlHash(urlStr)}`,
         name: titleName,
         size: 0,
         downloadUrl: urlStr,
@@ -696,6 +801,7 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
   }
 
   // Etapa B: Direct HTTP Probe Engine
+  const psHint = parsePlayStationCdnInfo(urlStr);
   try {
     const files = await scanDirectHttpProbe(urlStr);
     if (files && files.length > 0) {
@@ -707,41 +813,72 @@ async function scanGenericLink(urlStr, torboxApiKey = null) {
     }
   } catch (e) {
     console.log('[Generic Scanner] Direct HTTP Probe falhou:', e.message);
+    if (psHint && e && e.message && e.message.includes('HTTP 4')) {
+      throw e;
+    }
   }
 
-  // Etapa C: Smart HTML Scraper Engine
-  try {
-    const files = await scanSmartHtmlScraper(urlStr);
-    if (files && files.length > 0) {
-      if (domain) {
-        domainCache[domain] = 'SmartHtmlScraper';
-        saveDomainCache();
+  // Etapa C: Smart HTML Scraper Engine (nunca baixar binarios diretos ou PKG como HTML em memoria)
+  if (!psHint && !isDirectBinaryFileUrl(urlStr)) {
+    try {
+      const files = await scanSmartHtmlScraper(urlStr);
+      if (files && files.length > 0) {
+        if (domain) {
+          domainCache[domain] = 'SmartHtmlScraper';
+          saveDomainCache();
+        }
+        return files;
       }
-      return files;
+    } catch (e) {
+      console.log('[Generic Scanner] Smart HTML Scraper falhou:', e.message);
     }
-  } catch (e) {
-    console.log('[Generic Scanner] Smart HTML Scraper falhou:', e.message);
   }
 
   // Etapa D: Fallback Universal para Links Diretos / Web Sites Sem Scraper Específico
   try {
     const parsed = new URL(urlStr);
-    let fileName = path.basename(parsed.pathname) || 'Download_Link.bin';
+    let fileName = '';
+    try { fileName = decodeURIComponent(path.basename(parsed.pathname)); } catch (e) { fileName = path.basename(parsed.pathname); }
+    if (!fileName) fileName = 'Download_Link.bin';
     if (!/\.[a-zA-Z0-9]{2,5}$/.test(fileName)) {
-      fileName = (domain ? domain.split('.')[0] : 'Download') + '_' + Math.random().toString(36).substring(2, 7) + '.bin';
+      fileName = (domain ? domain.split('.')[0] : 'Download') + '_' + shortUrlHash(urlStr, 6) + '.bin';
     }
     const cleanFileName = fileName.replace(/[\\/:*?"<>|]/g, '_');
 
+    const psFallback = parsePlayStationCdnInfo(urlStr, cleanFileName);
+    if (psFallback) {
+      console.log(`[Generic Scanner] Gerando item direto PlayStation CDN para: ${urlStr}`);
+      return [{
+        id: `psn_${shortUrlHash(urlStr)}`,
+        fileId: `psn_${shortUrlHash(urlStr, 12)}`,
+        name: cleanFileName,
+        size: 0,
+        sizeFormatted: 'Procurando...',
+        downloadUrl: urlStr,
+        directUrl: urlStr,
+        sourceUrl: urlStr,
+        folderName: psFallback.folderName,
+        relativePath: `${psFallback.folderName}/${cleanFileName}`,
+        preserveRelativePath: true,
+        isHttpDirect: true,
+        isAvulso: false,
+        isSingleFile: false,
+        service: 'PlayStation',
+        url: urlStr
+      }];
+    }
+
     console.log(`[Generic Scanner] Gerando item de Download Direto Universal para: ${urlStr}`);
     return [{
-      id: 'generic_' + Math.random().toString(36).substring(2, 9),
-      fileId: 'gen_' + Date.now(),
-      numericId: 'gen_' + Date.now(),
+      id: `generic_${shortUrlHash(urlStr)}`,
+      fileId: `gen_${shortUrlHash(urlStr, 12)}`,
+      numericId: `gen_${shortUrlHash(urlStr, 12)}`,
       name: cleanFileName,
       size: 0,
       sizeFormatted: 'Procurando...',
       downloadUrl: urlStr,
       directUrl: urlStr,
+      sourceUrl: urlStr,
       folderName: 'Sites Genéricos',
       relativePath: cleanFileName,
       isHttpDirect: true,
@@ -762,6 +899,7 @@ module.exports = {
   scanDirectHttpProbe,
   scanSmartHtmlScraper,
   scan1FichierDirectory,
-  scan1FichierSingleFile
+  scan1FichierSingleFile,
+  parsePlayStationCdnInfo
 };
 

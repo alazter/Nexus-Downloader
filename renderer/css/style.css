@@ -2629,7 +2629,7 @@ input[type="checkbox"]:checked::after,
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.folder-group-card.collapsed .folder-group-chevron {
+.folder-group-card.collapsed > .folder-group-header .folder-group-chevron {
   transform: rotate(-90deg);
 }
 
@@ -2639,13 +2639,45 @@ input[type="checkbox"]:checked::after,
   transition: max-height 0.3s ease;
 }
 
-.folder-group-card.collapsed .folder-group-body {
+.folder-group-card.collapsed > .folder-group-body {
   display: none;
 }
 
 .folder-group-body .results-table-wrapper {
   max-height: none;
   border-top: none;
+}
+
+.folder-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px 22px;
+  border-left: 2px solid rgba(56, 189, 248, 0.25);
+  margin-left: 14px;
+}
+
+.folder-group-card.is-subfolder {
+  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.folder-group-card.is-subfolder > .folder-group-header {
+  padding: 10px 14px;
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+.folder-group-checkbox:indeterminate {
+  background-color: rgba(0, 242, 254, 0.25) !important;
+  border-color: #00f2fe !important;
+}
+
+.folder-group-checkbox:indeterminate::after {
+  content: '' !important;
+  width: 9px !important;
+  height: 2px !important;
+  background-color: #00f2fe !important;
+  display: block !important;
 }
 
 /* Torbox Dashboard Stats Bar */

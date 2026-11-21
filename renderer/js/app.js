@@ -1140,155 +1140,217 @@ function renderResults() {
     resultsGroupsContainer.style.display = 'flex';
 
     groupsMap.forEach(({ groupName, groupItems }) => {
-      const totalGroupSize = groupItems.reduce((acc, item) => acc + item.file.size, 0);
+      const hasSubfolderDepth = groupItems.some(({ file }) => {
+        const rel = String(file.relativePath || '').replace(/\\/g, '/');
+        const parts = rel.split('/').filter(Boolean);
+        return parts.length >= 3;
+      });
 
-      const card = document.createElement('div');
-      card.className = 'folder-group-card';
+      const buildFolderTree = (items) => {
+        const root = { name: groupName, children: new Map(), files: [], totalFiles: 0, totalSize: 0 };
+        items.forEach(({ file, index }) => {
+          const rel = String(file.relativePath || file.folderPath || file.name || '').replace(/\\/g, '/');
+          const parts = rel.split('/').filter(Boolean);
+          const dirParts = parts.length > 1 ? parts.slice(0, -1) : [groupName];
+          const trimmedParts = (dirParts[0] === groupName) ? dirParts.slice(1) : dirParts;
 
-      // Header
-      const header = document.createElement('div');
-      header.className = 'folder-group-header';
+          let cursor = root;
+          cursor.totalFiles += 1;
+          cursor.totalSize += (file.size || 0);
 
-      const titleGroup = document.createElement('div');
-      titleGroup.className = 'folder-group-title-group';
+          for (const seg of trimmedParts) {
+            if (!cursor.children.has(seg)) {
+              cursor.children.set(seg, { name: seg, children: new Map(), files: [], totalFiles: 0, totalSize: 0 });
+            }
+            cursor = cursor.children.get(seg);
+            cursor.totalFiles += 1;
+            cursor.totalSize += (file.size || 0);
+          }
+          cursor.files.push({ file, index });
+        });
+        return root;
+      };
 
-      const groupCb = document.createElement('input');
-      groupCb.type = 'checkbox';
-      groupCb.className = 'folder-group-checkbox';
-      groupCb.checked = true;
+      const renderFolderNodeCard = (node, depth = 0, isTreeMode = false) => {
+        const card = document.createElement('div');
+        card.className = 'folder-group-card' + (depth > 0 ? ' is-subfolder' : '');
+        if (isTreeMode && depth >= 1 && (node.children.size > 0 || node.files.length > 0)) {
+          card.classList.add('collapsed');
+        }
 
-      const folderIcon = document.createElement('div');
-      folderIcon.className = 'queue-folder-icon';
-      folderIcon.style.marginRight = '2px';
-      folderIcon.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-        </svg>
-      `;
+        const header = document.createElement('div');
+        header.className = 'folder-group-header';
 
-      const sampleFile = groupItems[0].file;
-      const serviceTag = getServiceTag(sampleFile);
-      const folderTag = getFolderTypeTag(groupItems.map(gi => gi.file), groupName);
-      const tagsGroup = buildTagsGroupElement(serviceTag, folderTag, false, getOriginTag(sampleFile));
+        const titleGroup = document.createElement('div');
+        titleGroup.className = 'folder-group-title-group';
 
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'folder-group-name';
-      nameSpan.textContent = groupName;
+        const groupCb = document.createElement('input');
+        groupCb.type = 'checkbox';
+        groupCb.className = 'folder-group-checkbox';
+        groupCb.checked = true;
 
-      titleGroup.appendChild(groupCb);
-      titleGroup.appendChild(folderIcon);
-      titleGroup.appendChild(tagsGroup);
-      titleGroup.appendChild(nameSpan);
+        const folderIcon = document.createElement('div');
+        folderIcon.className = 'queue-folder-icon';
+        folderIcon.style.marginRight = '2px';
+        folderIcon.innerHTML = `
+          <svg viewBox="0 0 24 24" width="${depth > 0 ? 17 : 20}" height="${depth > 0 ? 17 : 20}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        `;
 
-      const metaDiv = document.createElement('div');
-      metaDiv.className = 'folder-group-meta';
+        titleGroup.appendChild(groupCb);
+        titleGroup.appendChild(folderIcon);
 
-      const badge = document.createElement('span');
-      badge.className = 'badge-cyan folder-group-badge';
-      badge.textContent = `${groupItems.length} arquivo(s) • ${totalGroupSize > 0 ? formatBytes(totalGroupSize) : 'Tamanho no Download'}`;
+        if (depth === 0) {
+          const sampleFile = groupItems[0].file;
+          const serviceTag = getServiceTag(sampleFile);
+          const folderTag = getFolderTypeTag(groupItems.map(gi => gi.file), node.name);
+          const tagsGroup = buildTagsGroupElement(serviceTag, folderTag, false, getOriginTag(sampleFile));
+          titleGroup.appendChild(tagsGroup);
+        }
 
-      const toggleBtn = document.createElement('button');
-      toggleBtn.className = 'folder-group-toggle';
-      toggleBtn.title = 'Expandir / Recolher';
-      toggleBtn.innerHTML = `
-        <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      `;
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'folder-group-name';
+        nameSpan.textContent = node.name;
+        titleGroup.appendChild(nameSpan);
 
-      metaDiv.appendChild(badge);
-      metaDiv.appendChild(toggleBtn);
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'folder-group-meta';
 
-      header.appendChild(titleGroup);
-      header.appendChild(metaDiv);
+        const subCountLabel = node.children.size > 0 ? `${node.children.size} pasta(s) • ` : '';
+        const badge = document.createElement('span');
+        badge.className = 'badge-cyan folder-group-badge';
+        badge.textContent = `${subCountLabel}${node.totalFiles} arquivo(s) • ${node.totalSize > 0 ? formatBytes(node.totalSize) : 'Tamanho no Download'}`;
 
-      // Body (Tabela)
-      const body = document.createElement('div');
-      body.className = 'folder-group-body';
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'folder-group-toggle';
+        toggleBtn.title = 'Expandir / Recolher';
+        toggleBtn.innerHTML = `
+          <svg class="folder-group-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        `;
 
-      const tableWrapper = document.createElement('div');
-      tableWrapper.className = 'results-table-wrapper';
+        metaDiv.appendChild(badge);
+        metaDiv.appendChild(toggleBtn);
+        header.appendChild(titleGroup);
+        header.appendChild(metaDiv);
 
-      const table = document.createElement('table');
-      table.className = 'results-table';
-      table.innerHTML = `
-        <thead>
-          <tr>
-            <th width="40"></th>
-            <th>Nome do Arquivo</th>
-            <th>Caminho Relativo</th>
-            <th width="120">Tamanho</th>
-          </tr>
-        </thead>
-      `;
+        const body = document.createElement('div');
+        body.className = 'folder-group-body';
 
-      const tbody = document.createElement('tbody');
+        if (node.children.size > 0) {
+          const childrenContainer = document.createElement('div');
+          childrenContainer.className = 'folder-tree-children';
+          const sortedChildren = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          sortedChildren.forEach(childNode => {
+            childrenContainer.appendChild(renderFolderNodeCard(childNode, depth + 1, isTreeMode));
+          });
+          body.appendChild(childrenContainer);
+        }
 
-      groupItems.forEach(({ file, index }) => {
-        const row = document.createElement('tr');
+        if (node.files.length > 0) {
+          const tableWrapper = document.createElement('div');
+          tableWrapper.className = 'results-table-wrapper';
 
-        const tdCheck = document.createElement('td');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = true;
-        cb.dataset.index = index;
-        cb.className = 'file-checkbox';
-        cb.addEventListener('change', () => {
-          updateGroupCheckboxState(groupCb, tbody);
+          const table = document.createElement('table');
+          table.className = 'results-table';
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th width="40"></th>
+                <th>Nome do Arquivo</th>
+                <th>Caminho Relativo</th>
+                <th width="120">Tamanho</th>
+              </tr>
+            </thead>
+          `;
+
+          const tbody = document.createElement('tbody');
+          node.files.forEach(({ file, index }) => {
+            const row = document.createElement('tr');
+
+            const tdCheck = document.createElement('td');
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = true;
+            cb.dataset.index = index;
+            cb.className = 'file-checkbox';
+            cb.addEventListener('change', () => {
+              updateSelectionSummary();
+            });
+            tdCheck.appendChild(cb);
+
+            const tdName = document.createElement('td');
+            tdName.className = 'text-truncate';
+            const sTag = getServiceTag(file);
+            const fTag = getFileTypeTag(file);
+            tdName.innerHTML = `${renderServiceTagHTML(sTag, true, getOriginTag(file))}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${escapeHtml(file.name)}`;
+            tdName.title = file.name;
+
+            const tdPath = document.createElement('td');
+            tdPath.className = 'text-truncate';
+            tdPath.textContent = file.relativePath || file.name;
+            tdPath.title = file.relativePath || file.name;
+
+            const tdSize = document.createElement('td');
+            tdSize.textContent = file.size > 0 ? formatBytes(file.size) : (file.sizeFormatted && file.sizeFormatted !== '0 Bytes' && file.sizeFormatted !== '0 B' ? file.sizeFormatted : 'Tamanho no Download');
+
+            row.appendChild(tdCheck);
+            row.appendChild(tdName);
+            row.appendChild(tdPath);
+            row.appendChild(tdSize);
+
+            tbody.appendChild(row);
+          });
+
+          table.appendChild(tbody);
+          tableWrapper.appendChild(table);
+          body.appendChild(tableWrapper);
+        }
+
+        card.appendChild(header);
+        card.appendChild(body);
+
+        groupCb.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+
+        groupCb.addEventListener('change', (e) => {
+          e.stopPropagation();
+          const checked = groupCb.checked;
+          card.querySelectorAll('.file-checkbox').forEach(c => {
+            c.checked = checked;
+          });
+          card.querySelectorAll('.folder-group-checkbox').forEach(c => {
+            c.checked = checked;
+            c.indeterminate = false;
+          });
           updateSelectionSummary();
         });
-        tdCheck.appendChild(cb);
 
-        const tdName = document.createElement('td');
-        tdName.className = 'text-truncate';
-        const sTag = getServiceTag(file);
-        const fTag = getFileTypeTag(file);
-        tdName.innerHTML = `${renderServiceTagHTML(sTag, true, getOriginTag(file))}<span style="background: ${fTag.bg}; color: ${fTag.color}; border: 1px solid ${fTag.border}; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 6px; display: inline-block; vertical-align: middle;">${fTag.text}</span>${file.name}`;
-        tdName.title = file.name;
-
-        const tdPath = document.createElement('td');
-        tdPath.className = 'text-truncate';
-        tdPath.textContent = file.relativePath || file.name;
-        tdPath.title = file.relativePath || file.name;
-
-        const tdSize = document.createElement('td');
-        tdSize.textContent = file.size > 0 ? formatBytes(file.size) : (file.sizeFormatted && file.sizeFormatted !== '0 Bytes' && file.sizeFormatted !== '0 B' ? file.sizeFormatted : 'Tamanho no Download');
-
-        row.appendChild(tdCheck);
-        row.appendChild(tdName);
-        row.appendChild(tdPath);
-        row.appendChild(tdSize);
-
-        tbody.appendChild(row);
-      });
-
-      table.appendChild(tbody);
-      tableWrapper.appendChild(table);
-      body.appendChild(tableWrapper);
-
-      card.appendChild(header);
-      card.appendChild(body);
-
-      // Eventos do Folder Group Card
-      groupCb.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
-
-      groupCb.addEventListener('change', () => {
-        const itemCbs = tbody.querySelectorAll('.file-checkbox');
-        itemCbs.forEach(c => {
-          c.checked = groupCb.checked;
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (e.target === groupCb || e.target.type === 'checkbox' || (e.target.classList && e.target.classList.contains('folder-group-checkbox'))) return;
+          card.classList.toggle('collapsed');
         });
-        groupCb.indeterminate = false;
-        updateSelectionSummary();
-      });
 
-      header.addEventListener('click', (e) => {
-        if (e.target === groupCb || e.target.type === 'checkbox' || (e.target.classList && e.target.classList.contains('folder-group-checkbox'))) return;
-        card.classList.toggle('collapsed');
-      });
+        return card;
+      };
 
-      resultsGroupsContainer.appendChild(card);
+      if (hasSubfolderDepth) {
+        const treeRoot = buildFolderTree(groupItems);
+        resultsGroupsContainer.appendChild(renderFolderNodeCard(treeRoot, 0, true));
+      } else {
+        const flatNode = {
+          name: groupName,
+          children: new Map(),
+          files: groupItems,
+          totalFiles: groupItems.length,
+          totalSize: groupItems.reduce((acc, item) => acc + (item.file.size || 0), 0)
+        };
+        resultsGroupsContainer.appendChild(renderFolderNodeCard(flatNode, 0, false));
+      }
     });
   } else {
     // Exibição simples
@@ -1393,10 +1455,21 @@ function updateSelectionSummary() {
   if (resultsGroupsContainer) {
     const cards = resultsGroupsContainer.querySelectorAll('.folder-group-card');
     cards.forEach(card => {
-      const gCb = card.querySelector('.folder-group-checkbox');
-      const tbody = card.querySelector('tbody');
-      if (gCb && tbody) {
-        updateGroupCheckboxState(gCb, tbody);
+      const gCb = card.querySelector(':scope > .folder-group-header .folder-group-checkbox');
+      const itemCbs = card.querySelectorAll('.file-checkbox');
+      if (gCb && itemCbs.length > 0) {
+        let checkedInCard = 0;
+        itemCbs.forEach(c => { if (c.checked) checkedInCard++; });
+        if (checkedInCard === 0) {
+          gCb.checked = false;
+          gCb.indeterminate = false;
+        } else if (checkedInCard === itemCbs.length) {
+          gCb.checked = true;
+          gCb.indeterminate = false;
+        } else {
+          gCb.checked = false;
+          gCb.indeterminate = true;
+        }
       }
     });
   }
@@ -1416,8 +1489,7 @@ btnAddSelected.addEventListener('click', async () => {
     }
   });
 
-  // Fallback infalível: Se nenhum checkbox individual foi capturado, mas scannedFiles possui itens
-  if (selectedFiles.length === 0 && scannedFiles && scannedFiles.length > 0) {
+  if (allFileCbs.length === 0 && selectedFiles.length === 0 && scannedFiles && scannedFiles.length > 0) {
     console.log('[Scanner UI] Fallback acionado: adicionando todos os scannedFiles à fila');
     selectedFiles.push(...scannedFiles);
   }
@@ -1522,6 +1594,10 @@ function getFileTypeTag(item) {
     return { text: '.Rar', bg: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.4)' };
   }
 
+  if (name.endsWith('.pkg')) {
+    return { text: '.Pkg', bg: 'rgba(0, 112, 209, 0.18)', color: '#38bdf8', border: 'rgba(0, 112, 209, 0.45)' };
+  }
+
   if (name.endsWith('.torrent') || (item && item.torboxType === 'torrent' && !name.includes('.'))) {
     return { text: '.Torrents', bg: 'rgba(139, 92, 246, 0.18)', color: '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' };
   }
@@ -1544,7 +1620,12 @@ function getFolderTypeTag(folderItems, folderName) {
     return { text: '.Zip', bg: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: 'rgba(16, 185, 129, 0.4)' };
   }
 
-  // 3. Vídeo
+  // 3. Pacotes PlayStation (.pkg)
+  if (folderItems.some(i => (i.name || '').toLowerCase().endsWith('.pkg')) || fName.endsWith('.pkg')) {
+    return { text: '.Pkg', bg: 'rgba(0, 112, 209, 0.18)', color: '#38bdf8', border: 'rgba(0, 112, 209, 0.45)' };
+  }
+
+  // 4. Vídeo
   if (folderItems.some(i => videoExts.some(ext => (i.name || '').toLowerCase().endsWith(ext))) || videoExts.some(ext => fName.endsWith(ext))) {
     return { text: '.Vídeo', bg: 'rgba(6, 182, 212, 0.18)', color: '#38bdf8', border: 'rgba(6, 182, 212, 0.4)' };
   }
@@ -1867,6 +1948,11 @@ function getServiceTag(file) {
   // 14. MEGA
   if (id.startsWith('mega_') || service.toLowerCase() === 'mega' || url.includes('mega.nz') || url.includes('mega.co.nz') || url.includes('mega.io')) {
     return { text: 'MEGA', bg: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: 'rgba(239, 68, 68, 0.4)' };
+  }
+
+  // 14.5. PlayStation CDN
+  if (id.startsWith('psn_') || service.toLowerCase() === 'playstation' || url.includes('dl.playstation.net') || url.includes('playstation.net')) {
+    return { text: 'PlayStation', bg: 'rgba(0, 112, 209, 0.22)', color: '#60a5fa', border: 'rgba(0, 112, 209, 0.5)' };
   }
 
   // 15. 1Fichier

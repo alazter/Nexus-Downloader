@@ -149,7 +149,7 @@ async function scanPageViaBridge(url) {
   if (!url) return { success: false, files: [] };
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
     const res = await fetch(`${BRIDGE_URL}/api/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -349,7 +349,16 @@ function isWebpageUrl(urlStr) {
 
     // 3. MediaFire: páginas de pasta ou visualização
     if (host.includes('mediafire.com')) {
-      if (!host.startsWith('download') && (pathname.includes('/file/') || pathname.includes('/folder/') || pathname.startsWith('/?'))) {
+      if (!host.startsWith('download') && (
+        pathname.includes('/file/') ||
+        pathname.includes('/file_premium/') ||
+        pathname.includes('/download/') ||
+        pathname.includes('/view/') ||
+        pathname.includes('/listen/') ||
+        pathname.includes('/watch/') ||
+        pathname.includes('/folder/') ||
+        (parsed.search && parsed.search.length > 1)
+      )) {
         return true;
       }
     }
@@ -368,9 +377,9 @@ function isWebpageUrl(urlStr) {
       }
     }
 
-    // 6. Google Drive: páginas de visualizador
+    // 6. Google Drive: páginas de visualizador ou pastas
     if (host.includes('drive.google.com')) {
-      if (pathname.includes('/view') || pathname.includes('/preview')) {
+      if (pathname.includes('/view') || pathname.includes('/preview') || pathname.includes('/folders/') || pathname.includes('/open')) {
         return true;
       }
     }
@@ -586,13 +595,18 @@ async function resolveBunkrDirectUrl(item) {
  */
 async function resolveMediaFireDirectUrl(item) {
   try {
-    const rawUrl = item.downloadUrl || item.directUrl || item.url || '';
+    const rawUrl = item.mediafireUrl || item.url || item.downloadUrl || item.directUrl || '';
     if (!rawUrl.includes('mediafire.com')) return null;
 
+    if (/^https?:\/\/download\d*\.mediafire\.com\//i.test(rawUrl)) {
+      return rawUrl;
+    }
+
     const ctrl = new AbortController();
-    const tId = setTimeout(() => ctrl.abort(), 6000);
+    const tId = setTimeout(() => ctrl.abort(), 10000);
     const resp = await fetch(rawUrl, {
       signal: ctrl.signal,
+      credentials: 'include',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
@@ -605,8 +619,8 @@ async function resolveMediaFireDirectUrl(item) {
 
       // Extrair nome real do arquivo
       const nameMatch = html.match(/class="filename">([^<]+)<\/div>/i) ||
-                        html.match(/<meta property="og:title" content="([^"]+)"/i) ||
-                        html.match(/<div class="dl-btn-label"[^>]*title="([^"]+)"/i);
+                        html.match(/<div[^>]*class=["'][^"']*dl-btn-label[^"']*["'][^>]*title=["']([^"']+)["']/i) ||
+                        html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
       if (nameMatch && nameMatch[1]) {
         const cleanName = nameMatch[1].trim();
         if (cleanName) {
@@ -629,13 +643,31 @@ async function resolveMediaFireDirectUrl(item) {
         }
       }
 
-      // Extrair link direto
-      const match = html.match(/href="(https?:\/\/download\d*?\.mediafire\.com\/[^"]+)"/i) ||
-                    html.match(/aria-label="Download file"\s+href="(https?:\/\/[^"]+)"/i) ||
-                    html.match(/id="downloadButton"\s+href="(https?:\/\/[^"]+)"/i) ||
-                    html.match(/id=["']downloadButton["'][^>]*href=["']([^"']+)["']/i);
-      if (match && match[1] && !match[1].includes('/file/')) {
-        return match[1];
+      // 1. Prioridade: data-scrambled-url (Base64)
+      const scrambledMatch = html.match(/data-scrambled-url=["']([A-Za-z0-9+/=_-]+)["']/i);
+      if (scrambledMatch && scrambledMatch[1]) {
+        try {
+          const decoded = atob(scrambledMatch[1].trim()).trim();
+          if (decoded.startsWith('http') && !decoded.includes('/file/') && !decoded.includes('/folder/')) {
+            return decoded;
+          }
+        } catch (e) {}
+      }
+
+      // 2. Link CDN direto ou href em #downloadButton / .popsok
+      const cdnMatch = html.match(/(https?:\/\/download\d*\.mediafire\.com\/[^"'\s<>]+)/i);
+      if (cdnMatch && cdnMatch[1]) {
+        return cdnMatch[1].replace(/&amp;/g, '&');
+      }
+
+      const anchorTags = html.match(/<a\b[^>]*>/gi) || [];
+      for (const tag of anchorTags) {
+        if (/id=["']downloadButton["']/i.test(tag) || /aria-label=["']Download file["']/i.test(tag) || /\bpopsok\b/i.test(tag)) {
+          const hrefM = tag.match(/href=["'](https?:\/\/[^"']+)["']/i);
+          if (hrefM && hrefM[1] && !hrefM[1].includes('/file/') && !hrefM[1].includes('#')) {
+            return hrefM[1].replace(/&amp;/g, '&');
+          }
+        }
       }
     }
   } catch (err) {
@@ -806,12 +838,70 @@ async function resolveMegaUpDirectUrl(item) {
   return null;
 }
 
-// Resolução client-side / background de links diretos de download (MediaFire, Bunkr, Vik1ngFile, MegaUp, etc.)
+async function resolveGoogleDriveDirectUrl(item) {
+  const rawUrl = item.downloadUrl || item.directUrl || item.url || '';
+  let fileId = item.gdriveFileId || item.fileId || '';
+  if (!fileId && item.id && String(item.id).startsWith('gdrive_')) {
+    fileId = String(item.id).replace(/^gdrive_/, '');
+  }
+  if (!fileId && rawUrl) {
+    const m = rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/i) || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]{10,})/i);
+    if (m && m[1]) fileId = m[1];
+  }
+  if (!fileId) return null;
+
+  let candidate = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`;
+  if (item.resourceKey) {
+    candidate += `&resourcekey=${encodeURIComponent(item.resourceKey)}`;
+  }
+
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 10000);
+    const resp = await fetch(candidate, {
+      method: 'GET',
+      headers: { 'Range': 'bytes=0-0' },
+      signal: ctrl.signal
+    });
+    clearTimeout(tid);
+    const ct = (resp.headers.get('content-type') || '').toLowerCase();
+    const cd = (resp.headers.get('content-disposition') || '').toLowerCase();
+    if (ct.includes('text/html') && !cd.includes('attachment')) {
+      const html = await resp.text();
+      const formMatch = html.match(/<form[^>]+action=["']([^"']+)["'][^>]*>([\s\S]*?)<\/form>/i);
+      if (formMatch) {
+        let actionUrl = formMatch[1].replace(/&amp;/g, '&');
+        if (actionUrl.startsWith('/')) actionUrl = 'https://drive.usercontent.google.com' + actionUrl;
+        const params = new URLSearchParams();
+        const inpRegex = /<input[^>]+>/gi;
+        let m;
+        while ((m = inpRegex.exec(formMatch[2])) !== null) {
+          const n = m[0].match(/name=["']([^"']+)["']/i);
+          const v = m[0].match(/value=["']([^"']*)["']/i);
+          if (n && n[1]) params.append(n[1], (v ? v[1] : '').replace(/&amp;/g, '&'));
+        }
+        return actionUrl + (actionUrl.includes('?') ? '&' : '?') + params.toString();
+      }
+    }
+    return resp.url || candidate;
+  } catch (e) {}
+  return candidate;
+}
+
+// Resolução client-side / background de links diretos de download (MediaFire, Bunkr, Vik1ngFile, MegaUp, Google Drive, etc.)
 async function resolveDirectDownloadUrl(item) {
   if (item.directUrl && !isWebpageUrl(item.directUrl)) return item.directUrl;
   if (item.downloadUrl && !isWebpageUrl(item.downloadUrl)) return item.downloadUrl;
   const rawUrl = item.downloadUrl || item.directUrl || item.url;
   if (!rawUrl) return null;
+
+  // 0. Google Drive
+  if (item.gdriveFileId || (item.id && String(item.id).startsWith('gdrive_')) || item.service === 'Google Drive' || rawUrl.includes('drive.google.com') || rawUrl.includes('drive.usercontent.google.com')) {
+    const gdResolved = await resolveGoogleDriveDirectUrl(item);
+    if (gdResolved && !isWebpageUrl(gdResolved)) {
+      return gdResolved;
+    }
+  }
 
   // 1. Tentar resolver via bridge do desktop se estiver disponível
   try {
@@ -1041,7 +1131,15 @@ async function startBrowserDownload(items, tabId) {
       if (cleanName.toLowerCase().endsWith('.html') || cleanName.toLowerCase().endsWith('.htm')) {
         cleanName = cleanName.replace(/\.html?$/i, '.mp4');
       }
-      const targetFilename = folder ? `${folder}/${cleanName}` : cleanName;
+      let relDir = '';
+      if ((item.preserveRelativePath || item.service === 'Google Drive') && item.relativePath && (item.relativePath.includes('/') || item.relativePath.includes('\\'))) {
+        const parts = item.relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length > 1) {
+          relDir = parts.slice(0, -1).map(s => sanitizeDownloadFilename(s)).filter(Boolean).join('/');
+        }
+      }
+      const basePrefix = folder ? (relDir ? `${folder}/${relDir}` : folder) : relDir;
+      const targetFilename = basePrefix ? `${basePrefix}/${cleanName}` : cleanName;
 
       const dlOptions = {
         url: downloadUrl,
@@ -1462,6 +1560,7 @@ function getFileType(url) {
   if (lower.match(/\.rar/)) return '.Rar';
   if (lower.match(/\.zip/)) return '.Zip';
   if (lower.match(/\.7z/)) return '.7z';
+  if (lower.match(/\.pkg(?:[?#]|$)/)) return '.Pkg';
   if (lower.match(/\.(tar|gz|bz2|xz|iso)/)) return '.Arquivo';
   if (lower.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)/)) return '.Foto';
   if (lower.match(/\.(torrent|magnet)/)) return '.Torrents';

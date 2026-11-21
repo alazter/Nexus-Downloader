@@ -2228,3 +2228,87 @@
   animation: nexusPulseGlow 1.4s ease-out !important;
   border-color: #00f2fe !important;
 }
+
+/* ============================================================
+   ARVORE DE PASTAS SELECIONAVEIS (GOOGLE DRIVE / MULTI-PASTAS)
+   ============================================================ */
+.nexus-folder-node {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  width: 100% !important;
+}
+
+.nexus-folder-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 9px 12px !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  border: 1px solid rgba(56, 189, 248, 0.22) !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+  transition: background 0.18s ease, border-color 0.18s ease !important;
+}
+
+.nexus-folder-header:hover {
+  background: rgba(30, 41, 59, 0.88) !important;
+  border-color: rgba(0, 242, 254, 0.5) !important;
+}
+
+.nexus-folder-header-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.nexus-folder-chevron {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #38bdf8 !important;
+  flex-shrink: 0 !important;
+  transition: transform 0.2s ease !important;
+}
+
+.nexus-folder-node.collapsed > .nexus-folder-header .nexus-folder-chevron {
+  transform: rotate(-90deg) !important;
+}
+
+.nexus-folder-name {
+  font-size: 0.84rem !important;
+  font-weight: 700 !important;
+  color: #f8fafc !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+.nexus-folder-badge {
+  background: rgba(0, 242, 254, 0.12) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.nexus-folder-children {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  padding-left: 16px !important;
+  margin-left: 10px !important;
+  border-left: 1.5px solid rgba(56, 189, 248, 0.25) !important;
+}
+
+.nexus-folder-node.collapsed > .nexus-folder-children {
+  display: none !important;
+}
